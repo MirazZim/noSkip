@@ -1,0 +1,1 @@
+ALTER TABLE public.habits ADD COLUMN preferred_time time WITHOUT TIME ZONE DEFAULT NULL;
