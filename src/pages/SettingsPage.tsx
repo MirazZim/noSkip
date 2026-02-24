@@ -40,6 +40,8 @@ export default function SettingsPage() {
         </div>
 
         {/* Appearance */}
+        
+        
         <Card>
           <CardHeader>
             <CardTitle className="text-sm font-medium">Appearance</CardTitle>
