@@ -104,34 +104,6 @@ export function HabitDetailPanel({ habit, completions }: Props) {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="text-center">
-        <span className="text-3xl">{habit.emoji}</span>
-        <h2 className="font-bold font-display text-lg mt-1">{habit.name}</h2>
-        <p className="text-xs text-muted-foreground capitalize">
-          {habit.frequency_type}
-          {habit.preferred_time && ` at ${new Date(`2000-01-01T${habit.preferred_time}`).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`}
-        </p>
-      </div>
-
-      {/* Stats cards */}
-      <div className="grid grid-cols-3 gap-2">
-        <div className="rounded-lg bg-muted/50 p-3 text-center">
-          <Flame className="h-4 w-4 text-destructive mx-auto mb-1" />
-          <p className="text-lg font-bold">{streak}</p>
-          <p className="text-[10px] text-muted-foreground">Current Streak</p>
-        </div>
-        <div className="rounded-lg bg-muted/50 p-3 text-center">
-          <Trophy className="h-4 w-4 text-accent mx-auto mb-1" />
-          <p className="text-lg font-bold">{best}</p>
-          <p className="text-[10px] text-muted-foreground">Best Streak</p>
-        </div>
-        <div className="rounded-lg bg-muted/50 p-3 text-center">
-          <Check className="h-4 w-4 text-primary mx-auto mb-1" />
-          <p className="text-lg font-bold">{totalDone}</p>
-          <p className="text-[10px] text-muted-foreground">Total Done</p>
-        </div>
-      </div>
 
       {/* Monthly Calendar */}
       <div className="rounded-xl border border-border bg-card p-4">
