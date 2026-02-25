@@ -129,12 +129,19 @@ export default function Expenses() {
                   <input
                     type="date"
                     value={txDate}
+                    max={format(new Date(), "yyyy-MM-dd")}
                     onChange={(e) => setTxDate(e.target.value)}
                     className="h-9 flex-1 px-3 rounded-xl border border-border/60 bg-background text-sm font-bold focus:outline-none focus:ring-2 focus:ring-ring"
                   />
                   <button
                     onClick={() => setTxDate(format(subDays(new Date(txDate), -1), "yyyy-MM-dd"))}
-                    className="h-8 w-8 flex items-center justify-center rounded-xl bg-muted hover:bg-muted/80 transition-colors active:scale-95">
+                    disabled={txDate >= format(new Date(), "yyyy-MM-dd")}
+                    className={cn(
+                      "h-8 w-8 flex items-center justify-center rounded-xl transition-colors active:scale-95",
+                      txDate >= format(new Date(), "yyyy-MM-dd")
+                        ? "bg-muted/30 text-muted-foreground/40 cursor-not-allowed"
+                        : "bg-muted hover:bg-muted/80"
+                    )}>
                     <ChevronRight className="h-4 w-4" />
                   </button>
                 </div>

@@ -129,6 +129,8 @@ export function AddExpenseDialog({ defaultDate, onDateUsed }: AddExpenseDialogPr
                       <Input
                         type="number"
                         step="0.01"
+                        inputMode="decimal"
+                        pattern="[0-9]*\.?[0-9]*"
                         placeholder="0.00"
                         className="pl-8 h-12 text-xl font-black rounded-xl border-border/60 focus:border-primary/50 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                         style={accentColor ? { "--tw-ring-color": accentColor } as React.CSSProperties : {}}
