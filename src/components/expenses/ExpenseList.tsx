@@ -226,6 +226,9 @@ export function ExpenseList({ expenses, title }: ExpenseListProps) {
   const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
   const [openRowId, setOpenRowId]           = useState<string | null>(null);
 
+  // Calculate total for the selected day
+  const dayTotal = expenses.reduce((sum, exp) => sum + exp.amount, 0);
+
   const handleDelete = async (id: string) => {
     try {
       await deleteExpense.mutateAsync(id);
@@ -256,6 +259,31 @@ export function ExpenseList({ expenses, title }: ExpenseListProps) {
           {title}
         </p>
       )}
+
+      {/* Day total display */}
+      <div className="flex items-center justify-end mb-4">
+        <div className="relative group">
+          {/* Glow effect background */}
+          <div className="absolute -inset-0.5 bg-gradient-to-r from-violet-500/20 via-blue-500/20 to-cyan-500/20 rounded-full blur-lg opacity-0 group-hover:opacity-100 transition-all duration-500" />
+          
+          <div className="relative inline-flex items-center gap-3 rounded-full bg-gradient-to-r from-violet-500/10 via-blue-500/10 to-cyan-500/10 border border-violet-200/30 px-4 py-2.5 shadow-lg shadow-violet-500/5 backdrop-blur-sm">
+            {/* Icon */}
+            <div className="flex items-center justify-center w-5 h-5 rounded-full bg-gradient-to-br from-violet-500 to-blue-500 text-white">
+              <span className="text-[10px] font-black">Σ</span>
+            </div>
+            
+            {/* Label */}
+            <span className="text-xs font-bold uppercase tracking-wider text-violet-600 dark:text-violet-400">
+              Total
+            </span>
+            
+            {/* Amount */}
+            <span className="text-sm font-black bg-gradient-to-r from-violet-600 to-blue-600 bg-clip-text text-transparent tabular-nums">
+              {formatAmount(dayTotal)}
+            </span>
+          </div>
+        </div>
+      </div>
 
       <p className="sm:hidden text-[10px] text-muted-foreground/35 text-right mb-1.5 select-none pr-1">
         ← swipe to edit · delete

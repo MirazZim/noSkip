@@ -104,52 +104,6 @@ export default function Expenses() {
         ══════════════════════════════════════════════════════════════ */}
         {activeTab === "transactions" && (
           <div className="space-y-4" style={{ animation: "expIn 0.28s ease both" }}>
-            <div className="rounded-2xl border border-border/60 bg-card shadow-sm p-4 flex flex-col sm:flex-row sm:items-center gap-3">
-              <div className="flex-1">
-                <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-1.5">
-                  Showing transactions for
-                </p>
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => setTxDate(format(subDays(new Date(txDate), 1), "yyyy-MM-dd"))}
-                    className="h-8 w-8 flex items-center justify-center rounded-xl bg-muted hover:bg-muted/80 transition-colors active:scale-95">
-                    <ChevronLeft className="h-4 w-4" />
-                  </button>
-                  <input
-                    type="date"
-                    value={txDate}
-                     max={format(new Date(), "yyyy-MM-dd")}
-                    onChange={(e) => setTxDate(e.target.value)}
-                    className="h-9 flex-1 px-3 rounded-xl border border-border/60 bg-background text-sm font-bold focus:outline-none focus:ring-2 focus:ring-ring"
-                  />
-                  <button
-                    onClick={() => setTxDate(format(subDays(new Date(txDate), -1), "yyyy-MM-dd"))}
-                    disabled={txDate >= format(new Date(), "yyyy-MM-dd")}
-                    className={cn(
-                      "h-8 w-8 flex items-center justify-center rounded-xl transition-colors active:scale-95",
-                      txDate >= format(new Date(), "yyyy-MM-dd")
-                        ? "bg-muted/30 text-muted-foreground/40 cursor-not-allowed"
-                        : "bg-muted hover:bg-muted/80"
-                    )}>
-                    <ChevronRight className="h-4 w-4" />
-                  </button>
-                </div>
-              </div>
-              <div className="flex gap-1.5">
-                {[0, 1, 2].map((offset) => {
-                  const d   = format(subDays(new Date(), offset), "yyyy-MM-dd");
-                  const lbl = offset === 0 ? "Today" : offset === 1 ? "Yesterday" : format(subDays(new Date(), offset), "EEE");
-                  return (
-                    <button key={d} onClick={() => setTxDate(d)}
-                      className={cn(
-                        "px-3 py-1.5 rounded-xl text-xs font-bold transition-all active:scale-95",
-                        txDate === d ? "bg-foreground text-background" : "bg-muted text-muted-foreground hover:bg-muted/80"
-                      )}>{lbl}</button>
-                  );
-                })}
-              </div>
-            </div>
-
             {txExpenses.length > 0 ? (
               <ExpenseList expenses={txExpenses} />
             ) : (
