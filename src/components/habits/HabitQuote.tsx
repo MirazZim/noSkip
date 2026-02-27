@@ -3,7 +3,19 @@ import { ChevronLeft, ChevronRight } from "lucide-react";
 
 const QUOTES = [
   { text: "We are what we repeatedly do. Excellence, then, is not an act, but a habit.", author: "Aristotle" },
-  { text: "The chains of habit are too weak to be felt until they are too strong to be broken.", author: "Samuel Johnson" },
+  { text: "The chains of habit are too weak to be felt until they are too strong to be broken.", author: "Miraz Zim" },
+  { 
+    text: "Excellence is an art won by training and habituation.", 
+    author: "Will Durant" 
+  },
+  { 
+    text: "Quality is not an act, it is a habit.", 
+    author: "Will Durant (on Aristotle)" 
+  },
+  { 
+    text: "Your net worth to the world is usually determined by what remains after your bad habits are subtracted from your good ones.", 
+    author: "Benjamin Franklin" 
+  },
   { text: "A knight who trains daily fears no battle; a knight who trains never fears every shadow.", author: "Medieval Proverb" },
   { text: "Discipline is the bridge between goals and accomplishment.", author: "Jim Rohn" },
   { text: "First we make our habits, then our habits make us.", author: "John Dryden" },

@@ -3,7 +3,7 @@ import { Sword, Shield, Crown, Scroll, Flame, Landmark, Star, ChevronLeft, Chevr
 
 const QUOTES = [
   { text: "A wise man doth not hoard his gold, but spendeth it with purpose and honour.", author: "The Code of the Ledger", icon: Scroll },
-  { text: "He who keepeth account of every coin shall never be a servant to debt.", author: "The Merchant's Creed", icon: Crown },
+  { text: "He who keepeth account of every coin shall never be a servant to debt.", author: "Miraz Zim", icon: Crown },
   { text: "Discipline in thy purse is the truest armour against the siege of ruin.", author: "Sir Edmund the Frugal", icon: Shield },
   { text: "Spend not thy silver on fleeting pleasures, but invest in the fortress of thy future.", author: "The Order of the Golden Quill", icon: Landmark },
   { text: "A knight who knoweth his expenses fighteth not in the dark.", author: "The Treasury Scrolls", icon: Sword },

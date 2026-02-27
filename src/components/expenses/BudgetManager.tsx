@@ -30,9 +30,9 @@ interface CycleRange { start: Date; end: Date; label: string; daysLeft: number; 
 function getCycleRange(config: CycleConfig, ref: Date): CycleRange {
   if (config.type === "calendar") {
     const start = startOfMonth(ref);
-    const end   = endOfMonth(ref);
+    const end = endOfMonth(ref);
     const daysTotal = end.getDate();
-    const daysLeft  = daysTotal - ref.getDate() + 1;
+    const daysLeft = daysTotal - ref.getDate() + 1;
     return { start, end, label: format(ref, "MMMM yyyy"), daysLeft, daysTotal };
   }
 
@@ -45,13 +45,13 @@ function getCycleRange(config: CycleConfig, ref: Date): CycleRange {
     cycleStart = setDate(new Date(prev.getFullYear(), prev.getMonth(), day), day);
   }
   const nextPayday = addMonths(cycleStart, 1);
-  const cycleEnd   = new Date(nextPayday.getTime() - 86_400_000);
-  const daysTotal  = Math.round((cycleEnd.getTime() - cycleStart.getTime()) / 86_400_000) + 1;
-  const daysLeft   = Math.round((cycleEnd.getTime() - ref.getTime()) / 86_400_000) + 1;
+  const cycleEnd = new Date(nextPayday.getTime() - 86_400_000);
+  const daysTotal = Math.round((cycleEnd.getTime() - cycleStart.getTime()) / 86_400_000) + 1;
+  const daysLeft = Math.round((cycleEnd.getTime() - ref.getTime()) / 86_400_000) + 1;
 
   return {
     start: cycleStart,
-    end:   cycleEnd,
+    end: cycleEnd,
     label: `${format(cycleStart, "MMM d")} – ${format(cycleEnd, "MMM d, yyyy")}`,
     daysLeft: Math.max(0, daysLeft),
     daysTotal,
@@ -72,23 +72,23 @@ function ordinal(n: number) {
 
 const STORAGE_KEY = "budget_cycle_v1";
 function loadConfig(): CycleConfig {
-  try { const r = localStorage.getItem(STORAGE_KEY); if (r) return JSON.parse(r); } catch {}
+  try { const r = localStorage.getItem(STORAGE_KEY); if (r) return JSON.parse(r); } catch { }
   return { type: "calendar", payday: 1 };
 }
 function saveConfig(c: CycleConfig) {
-  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(c)); } catch {}
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(c)); } catch { }
 }
 
 /* ═══════════════════════════════════════════════════════════════════════
    Component
 ═══════════════════════════════════════════════════════════════════════ */
 export function BudgetManager({ budgets, expenses, month }: Props) {
-  const [open, setOpen]         = useState(false);
-  const [tab, setTab]           = useState<"budget" | "cycle">("budget");
+  const [open, setOpen] = useState(false);
+  const [tab, setTab] = useState<"budget" | "cycle">("budget");
   const [category, setCategory] = useState("Overall");
-  const [amount, setAmount]     = useState("");
-  const [config, setConfig]     = useState<CycleConfig>(loadConfig);
-  const [draft, setDraft]       = useState<CycleConfig>(loadConfig);
+  const [amount, setAmount] = useState("");
+  const [config, setConfig] = useState<CycleConfig>(loadConfig);
+  const [draft, setDraft] = useState<CycleConfig>(loadConfig);
 
   const upsert = useUpsertBudget();
   const remove = useDeleteBudget();
@@ -190,9 +190,9 @@ export function BudgetManager({ budgets, expenses, month }: Props) {
               const spent = cycleExpenses
                 .filter((e) => e.category === b.category)
                 .reduce((s, e) => s + e.amount, 0);
-              const pct  = Math.min((spent / b.amount) * 100, 100);
+              const pct = Math.min((spent / b.amount) * 100, 100);
               const color = CATEGORY_COLORS[b.category as ExpenseCategory] || CATEGORY_COLORS.Other;
-              const sc   = statusColor(pct);
+              const sc = statusColor(pct);
               const remaining = b.amount - spent;
 
               return (
@@ -248,7 +248,7 @@ export function BudgetManager({ budgets, expenses, month }: Props) {
           </button>
         </DialogTrigger>
 
-        <DialogContent className="sm:max-w-sm p-0 gap-0 overflow-hidden rounded-3xl border-border/60">
+        <DialogContent className="sm:max-w-sm p-0 gap-0 rounded-3xl border-border/60 max-h-[90dvh] overflow-y-auto">
           {/* Accent bar */}
           <div className="h-1 w-full bg-gradient-to-r from-violet-500 via-primary to-emerald-500" />
 
@@ -356,7 +356,7 @@ export function BudgetManager({ budgets, expenses, month }: Props) {
 
           {/* ── Cycle tab ───────────────────────────────────────────── */}
           {tab === "cycle" && (
-            <div className="px-6 pb-6 space-y-4">
+            <div className="px-4 sm:px-6 pb-4 sm:pb-6 space-y-3 sm:space-y-4">
               <p className="text-xs text-muted-foreground leading-relaxed">
                 Align your budget window with how you actually receive money — by calendar month or by your payday.
               </p>
@@ -418,7 +418,7 @@ export function BudgetManager({ budgets, expenses, month }: Props) {
               {/* Payday day picker */}
               {draft.type === "payday" && (
                 <div
-                  className="rounded-2xl border border-violet-500/20 bg-violet-500/[0.04] p-4 space-y-3"
+                  className="rounded-2xl border border-violet-500/20 bg-violet-500/[0.04] p-3 sm:p-4 space-y-2 sm:space-y-3"
                   style={{ animation: "fadeSlideIn 0.2s ease both" }}>
 
                   <div>
@@ -434,7 +434,7 @@ export function BudgetManager({ budgets, expenses, month }: Props) {
                         <button key={d}
                           onClick={() => setDraft((c) => ({ ...c, payday: d }))}
                           className={cn(
-                            "h-9 w-full rounded-xl text-xs font-bold transition-all duration-150 active:scale-90",
+                            "h-7 sm:h-9 w-full rounded-lg sm:rounded-xl text-[11px] sm:text-xs font-bold transition-all duration-150 active:scale-90",
                             active
                               ? "bg-violet-500 text-white shadow-sm shadow-violet-500/30"
                               : "bg-muted/60 text-foreground hover:bg-muted"
@@ -444,7 +444,6 @@ export function BudgetManager({ budgets, expenses, month }: Props) {
                       );
                     })}
                   </div>
-
                   {/* Live preview */}
                   {draftCyclePreview && (
                     <div
