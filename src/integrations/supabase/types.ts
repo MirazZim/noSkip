@@ -41,6 +41,36 @@ export type Database = {
         }
         Relationships: []
       }
+      incomes: {
+        Row: {
+          id: string;
+          user_id: string;
+          amount: number;
+          source: string;
+          note: string | null;
+          date: string;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          user_id?: string;
+          amount: number;
+          source?: string;
+          note?: string | null;
+          date?: string;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          user_id?: string;
+          amount?: number;
+          source?: string;
+          note?: string | null;
+          date?: string;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
       custom_categories: {
         Row: {
           id: string;

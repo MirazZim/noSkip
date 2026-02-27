@@ -1,8 +1,9 @@
 import { useState } from "react";
-import { format, subDays } from "date-fns";
+import { format } from "date-fns";
 import { AppLayout } from "@/components/AppLayout";
 import { MonthPicker } from "@/components/expenses/MonthPicker";
 import { AddExpenseDialog } from "@/components/expenses/AddExpenseDialog";
+import { AddIncomeDialog } from "@/components/expenses/AddIncomeDialog";
 import { ExpenseList } from "@/components/expenses/ExpenseList";
 import { ExpenseSummaryCards } from "@/components/expenses/ExpenseSummaryCards";
 import { ExpenseCharts } from "@/components/expenses/ExpenseCharts";
@@ -11,35 +12,43 @@ import { MonthCalendarView } from "@/components/expenses/MonthCalendarView";
 import { MedievalQuote } from "@/components/expenses/MedievalQuote";
 import { DayDetailView } from "@/components/expenses/DayDetailView";
 import { useExpenses, usePrevMonthExpenses, useBudgets } from "@/hooks/useExpenses";
+import { useIncomes, usePrevMonthIncomes } from "@/hooks/useIncomes";
 import { Skeleton } from "@/components/ui/skeleton";
-import { List, CalendarDays, LayoutGrid, ChevronLeft, ChevronRight } from "lucide-react";
+import { List, CalendarDays, LayoutGrid, ChevronLeft } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 type Tab = "transactions" | "calendar" | "overview";
 
 const TABS: { id: Tab; label: string; icon: React.ElementType }[] = [
-  { id: "transactions", label: "Transactions", icon: List        },
-  { id: "calendar",     label: "Calendar",     icon: CalendarDays },
-  { id: "overview",     label: "Overview",     icon: LayoutGrid  },
+  { id: "transactions", label: "Transactions", icon: List },
+  { id: "calendar", label: "Calendar", icon: CalendarDays },
+  { id: "overview", label: "Overview", icon: LayoutGrid },
 ];
 
 export default function Expenses() {
-  const [month, setMonth]                 = useState(new Date());
-  const [activeTab, setActiveTab]         = useState<Tab>("transactions");
+  const [month, setMonth] = useState(new Date());
+  const [activeTab, setActiveTab] = useState<Tab>("transactions");
   const [addDialogDate, setAddDialogDate] = useState<string | undefined>();
-  const [selectedDay, setSelectedDay]     = useState<string | null>(null);
-  const [txDate, setTxDate]               = useState(format(new Date(), "yyyy-MM-dd"));
+  const [selectedDay, setSelectedDay] = useState<string | null>(null);
+  const [txDate] = useState(format(new Date(), "yyyy-MM-dd"));
 
   const { data: expenses, isLoading } = useExpenses(month);
-  const { data: prevExpenses }        = usePrevMonthExpenses(month);
-  const { data: budgets }             = useBudgets(month);
+  const { data: prevExpenses } = usePrevMonthExpenses(month);
+  const { data: budgets } = useBudgets(month);
+  // Inside the component, alongside existing hooks:
+  const { data: incomes } = useIncomes(month);
+  const { data: prevIncomes } = usePrevMonthIncomes(month);
 
-  const allExpenses = expenses     || [];
-  const allPrev     = prevExpenses || [];
-  const allBudgets  = budgets      || [];
-  const txExpenses  = allExpenses.filter((e) => e.date === txDate);
+  const allExpenses = expenses || [];
+  const allPrev = prevExpenses || [];
+  const allBudgets = budgets || [];
+  const allIncomes = incomes || [];
+  const allPrevIncomes = prevIncomes || [];
 
-  const handleDayClick   = (date: string) => setSelectedDay(date);
+
+  const txExpenses = allExpenses.filter((e) => e.date === txDate);
+
+  const handleDayClick = (date: string) => setSelectedDay(date);
   const handleAddFromDay = (date: string) => { setAddDialogDate(date); setSelectedDay(null); };
   const switchTab = (tab: Tab) => { setActiveTab(tab); setSelectedDay(null); };
 
@@ -65,14 +74,30 @@ export default function Expenses() {
     <AppLayout>
       <div className="space-y-5 pb-32 sm:pb-24" style={{ animation: "expIn 0.3s ease both" }}>
 
-        {/* ── Header — Add button intentionally absent here ─────────── */}
+        {/* ── Header ───────────────────────────────────────────────────── */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
           <div>
             <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Finance</p>
             <h1 className="text-2xl font-black font-display tracking-tight">Expenses</h1>
           </div>
-          <div className="flex items-center gap-2 flex-wrap">
+
+          {/*
+            Action cluster — right side of header.
+            Income button sits between BudgetManager and MonthPicker,
+            visually grouped but distinct from the budget controls.
+          */}
+          {/* flex-nowrap keeps all three on one row on every screen size */}
+          <div className="flex items-center gap-2 flex-nowrap min-w-0">
             <BudgetManager budgets={allBudgets} expenses={allExpenses} month={month} />
+
+            {/* Divider between budget controls and income */}
+            <div className="hidden sm:block h-5 w-px bg-border/60 shrink-0" />
+
+            <AddIncomeDialog
+              defaultDate={addDialogDate}
+              onDateUsed={() => setAddDialogDate(undefined)}
+            />
+
             <MonthPicker month={month} onChange={setMonth} />
           </div>
         </div>
@@ -83,16 +108,21 @@ export default function Expenses() {
         </div>
 
         {/* ── Desktop tab bar ───────────────────────────────────────────── */}
-        <div className="hidden sm:flex gap-1 rounded-2xl bg-muted/60 border border-border/40 p-1"
-          style={{ animation: "expIn 0.35s ease both", animationDelay: "50ms" }}>
+        <div
+          className="hidden sm:flex gap-1 rounded-2xl bg-muted/60 border border-border/40 p-1"
+          style={{ animation: "expIn 0.35s ease both", animationDelay: "50ms" }}
+        >
           {TABS.map(({ id, label, icon: Icon }) => (
-            <button key={id} onClick={() => switchTab(id)}
+            <button
+              key={id}
+              onClick={() => switchTab(id)}
               className={cn(
                 "flex-1 flex items-center justify-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-wider transition-all duration-200",
                 activeTab === id
                   ? "bg-card text-foreground shadow-sm"
                   : "text-muted-foreground hover:text-foreground"
-              )}>
+              )}
+            >
               <Icon className="h-3.5 w-3.5 shrink-0" />
               {label}
             </button>
@@ -125,15 +155,21 @@ export default function Expenses() {
         ══════════════════════════════════════════════════════════════ */}
         {activeTab === "calendar" && !selectedDay && (
           <div style={{ animation: "expIn 0.28s ease both" }}>
-            <MonthCalendarView expenses={allExpenses} month={month} onDayClick={handleDayClick} />
+            <MonthCalendarView
+              expenses={allExpenses}
+              month={month}
+              onDayClick={handleDayClick}
+            />
           </div>
         )}
 
         {activeTab === "calendar" && selectedDay && (
           <div style={{ animation: "expIn 0.28s ease both" }}>
             <div className="flex items-center gap-3 mb-4">
-              <button onClick={() => setSelectedDay(null)}
-                className="flex items-center gap-1.5 text-sm font-bold text-muted-foreground hover:text-foreground transition-colors rounded-xl px-3 py-1.5 bg-muted hover:bg-muted/80">
+              <button
+                onClick={() => setSelectedDay(null)}
+                className="flex items-center gap-1.5 text-sm font-bold text-muted-foreground hover:text-foreground transition-colors rounded-xl px-3 py-1.5 bg-muted hover:bg-muted/80"
+              >
                 <ChevronLeft className="h-4 w-4" />
                 Calendar
               </button>
@@ -155,7 +191,13 @@ export default function Expenses() {
         ══════════════════════════════════════════════════════════════ */}
         {activeTab === "overview" && (
           <div className="space-y-5" style={{ animation: "expIn 0.28s ease both" }}>
-            <ExpenseSummaryCards expenses={allExpenses} prevExpenses={allPrev} budgets={allBudgets} />
+            <ExpenseSummaryCards
+              expenses={allExpenses}
+              prevExpenses={allPrev}
+              budgets={allBudgets}
+              incomes={allIncomes}
+              prevIncomes={allPrevIncomes}
+            />
             {allBudgets.filter((b) => b.category !== "Overall").length > 0 && (
               <BudgetManager budgets={allBudgets} expenses={allExpenses} month={month} />
             )}
@@ -164,30 +206,26 @@ export default function Expenses() {
         )}
       </div>
 
-      {/* ══════════════════════════════════════════════════════════════════
-          DESKTOP FAB — fixed bottom-right
-          Only visible on sm: and above
-      ══════════════════════════════════════════════════════════════════ */}
-      <div
-        className="hidden sm:block fixed bottom-8 right-8 z-50"
-        style={{ animation: "fabIn 0.4s cubic-bezier(0.34,1.56,0.64,1) both", animationDelay: "200ms" }}
-      >
-        <AddExpenseDialog defaultDate={addDialogDate} onDateUsed={() => setAddDialogDate(undefined)} />
-      </div>
+      {/* DESKTOP FAB — only on transactions tab */}
+      {activeTab === "transactions" && (
+        <div
+          className="hidden sm:block fixed bottom-8 right-8 z-50"
+          style={{ animation: "fabIn 0.4s cubic-bezier(0.34,1.56,0.64,1) both", animationDelay: "200ms" }}
+        >
+          <AddExpenseDialog
+            defaultDate={addDialogDate}
+            onDateUsed={() => setAddDialogDate(undefined)}
+          />
+        </div>
+      )}
 
       {/* ══════════════════════════════════════════════════════════════════
-          MOBILE: Add button above bottom nav + bottom nav
-          Only visible below sm:
+          MOBILE: income in a slim bar above the nav + expense FAB in nav
       ══════════════════════════════════════════════════════════════════ */}
       <div
         className="sm:hidden fixed bottom-0 left-0 right-0 z-50 flex flex-col"
         style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
       >
-        {/* Add button sits flush above nav with same glass background */}
-        <div className="px-4 pt-2 pb-2 bg-card/95 backdrop-blur-md">
-          <AddExpenseDialog defaultDate={addDialogDate} onDateUsed={() => setAddDialogDate(undefined)} />
-        </div>
-
         {/* Bottom nav */}
         <nav className="flex items-stretch bg-card/95 backdrop-blur-md border-t border-border/60">
           {TABS.map(({ id, label, icon: Icon }) => {
@@ -222,6 +260,19 @@ export default function Expenses() {
           })}
         </nav>
       </div>
+
+      {/* Mobile expense FAB — transactions tab only */}
+      {activeTab === "transactions" && (
+        <div
+          className="sm:hidden fixed bottom-16 right-2 z-50"
+          style={{ animation: "fabIn 0.4s cubic-bezier(0.34,1.56,0.64,1) both", animationDelay: "200ms" }}
+        >
+          <AddExpenseDialog
+            defaultDate={addDialogDate}
+            onDateUsed={() => setAddDialogDate(undefined)}
+          />
+        </div>
+      )}
 
       <style>{`
         @keyframes expIn {
