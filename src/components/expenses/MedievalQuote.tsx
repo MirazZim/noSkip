@@ -37,7 +37,6 @@ export function MedievalQuote() {
   const [current, setCurrent] = useState(startIndex);
   const [isAnimating, setIsAnimating] = useState(false);
   const [direction, setDirection] = useState("next");
-  const [isPaused, setIsPaused] = useState(false);
 
   // Swipe tracking refs
   const touchStartX = useRef(null);
@@ -69,19 +68,11 @@ export function MedievalQuote() {
     }, 300);
   }, [isAnimating, current]);
 
-  // Auto-play every 6 seconds
-  useEffect(() => {
-    if (isPaused) return;
-    const timer = setInterval(() => navigate("next"), 6000);
-    return () => clearInterval(timer);
-  }, [navigate, isPaused]);
-
   // ── Touch handlers ──────────────────────────────────────────
   const handleTouchStart = useCallback((e) => {
     touchStartX.current = e.touches[0].clientX;
     touchStartY.current = e.touches[0].clientY;
     isDragging.current = true;
-    setIsPaused(true);
     setDragOffset(0);
   }, []);
 
@@ -120,8 +111,6 @@ export function MedievalQuote() {
     if (Math.abs(deltaX) >= SWIPE_THRESHOLD) {
       navigate(deltaX < 0 ? "next" : "prev");
     }
-
-    setIsPaused(false);
   }, [navigate]);
   // ────────────────────────────────────────────────────────────
 
@@ -142,8 +131,6 @@ export function MedievalQuote() {
   return (
     <div
       className="relative rounded-2xl border border-border/70 bg-card overflow-hidden shadow-sm select-none"
-      onMouseEnter={() => setIsPaused(true)}
-      onMouseLeave={() => setIsPaused(false)}
       onTouchStart={handleTouchStart}
       onTouchMove={handleTouchMove}
       onTouchEnd={handleTouchEnd}

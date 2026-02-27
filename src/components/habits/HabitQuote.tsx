@@ -27,7 +27,7 @@ export function HabitQuote() {
   const [current, setCurrent] = useState(0);
   const [isAnimating, setIsAnimating] = useState(false);
   const [direction, setDirection] = useState("next");
-  const [isPaused, setIsPaused] = useState(false);
+
   const [dragOffset, setDragOffset] = useState(0);
 
   const touchStartX = useRef<number | null>(null);
@@ -58,19 +58,11 @@ export function HabitQuote() {
     }, 300);
   }, [isAnimating, current]);
 
-  // Auto-play every 6 seconds
-  useEffect(() => {
-    if (isPaused) return;
-    const timer = setInterval(() => navigate("next"), 6000);
-    return () => clearInterval(timer);
-  }, [navigate, isPaused]);
-
   // Touch swipe handlers
   const handleTouchStart = useCallback((e: React.TouchEvent) => {
     touchStartX.current = e.touches[0].clientX;
     touchStartY.current = e.touches[0].clientY;
     isDragging.current = true;
-    setIsPaused(true);
     setDragOffset(0);
   }, []);
 
@@ -95,7 +87,6 @@ export function HabitQuote() {
     touchStartX.current = null;
     touchStartY.current = null;
     if (Math.abs(deltaX) >= 40) navigate(deltaX < 0 ? "next" : "prev");
-    setIsPaused(false);
   }, [navigate]);
 
   const quote = QUOTES[current];
@@ -113,8 +104,6 @@ export function HabitQuote() {
   return (
     <div
       className="relative rounded-2xl border border-border/70 bg-card overflow-hidden shadow-sm select-none"
-      onMouseEnter={() => setIsPaused(true)}
-      onMouseLeave={() => setIsPaused(false)}
       onTouchStart={handleTouchStart}
       onTouchMove={handleTouchMove}
       onTouchEnd={handleTouchEnd}
