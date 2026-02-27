@@ -4,6 +4,10 @@ import { Expense, Budget } from "@/hooks/useExpenses";
 import { useCurrency } from "@/hooks/useCurrency";
 import { cn } from "@/lib/utils";
 
+// ExpenseSummaryCards uses fixed accent colors (emerald/violet/amber/rose) for
+// the card widgets themselves — not category colors — so no custom category
+// changes are needed here. File is unchanged from original.
+
 interface Props {
   expenses: Expense[];
   prevExpenses: Expense[];
@@ -51,7 +55,6 @@ function SummaryCard({ label, value, sub, icon, accent }: CardProps) {
         "transition-shadow duration-200 hover:shadow-md"
       )}
     >
-      {/* Top row */}
       <div className="flex items-start justify-between">
         <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground leading-none pt-0.5">
           {label}
@@ -61,7 +64,6 @@ function SummaryCard({ label, value, sub, icon, accent }: CardProps) {
         </span>
       </div>
 
-      {/* Value */}
       <div className="flex flex-col gap-1">
         <div className="text-xl sm:text-2xl font-bold font-display leading-none tracking-tight text-foreground">
           {value}
@@ -88,10 +90,7 @@ export function ExpenseSummaryCards({ expenses, prevExpenses, budgets }: Props) 
   const weekStart = startOfWeek(now, { weekStartsOn: 1 });
   const weekEnd = endOfWeek(now, { weekStartsOn: 1 });
   const weeklySpend = expenses
-    .filter((e) => {
-      const d = parseISO(e.date);
-      return isWithinInterval(d, { start: weekStart, end: weekEnd });
-    })
+    .filter((e) => isWithinInterval(parseISO(e.date), { start: weekStart, end: weekEnd }))
     .reduce((s, e) => s + e.amount, 0);
 
   const dayTotals: Record<string, number> = {};
@@ -101,17 +100,18 @@ export function ExpenseSummaryCards({ expenses, prevExpenses, budgets }: Props) 
   const highestDay = Object.entries(dayTotals).sort((a, b) => b[1] - a[1])[0];
 
   const overallBudget = budgets.find((b) => b.category === "Overall");
-  const budgetProgress =
-    overallBudget ? Math.min((totalSpend / overallBudget.amount) * 100, 100) : null;
+  const budgetProgress = overallBudget
+    ? Math.min((totalSpend / overallBudget.amount) * 100, 100)
+    : null;
 
   const budgetBarColor =
     budgetProgress === null
       ? ""
       : budgetProgress >= 90
-      ? "bg-rose-500"
-      : budgetProgress >= 70
-      ? "bg-amber-500"
-      : "bg-emerald-500";
+        ? "bg-rose-500"
+        : budgetProgress >= 70
+          ? "bg-amber-500"
+          : "bg-emerald-500";
 
   return (
     <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
@@ -135,8 +135,8 @@ export function ExpenseSummaryCards({ expenses, prevExpenses, budgets }: Props) 
                 changePercent > 0
                   ? "text-rose-500"
                   : changePercent < 0
-                  ? "text-emerald-500"
-                  : "text-muted-foreground"
+                    ? "text-emerald-500"
+                    : "text-muted-foreground"
               )}
             >
               {Math.abs(changePercent)}% vs last month
@@ -154,7 +154,7 @@ export function ExpenseSummaryCards({ expenses, prevExpenses, budgets }: Props) 
         sub={`${expenses.length} transaction${expenses.length !== 1 ? "s" : ""}`}
       />
 
-      {/* Highest Day */}
+      {/* Peak Day */}
       <SummaryCard
         label="Peak Day"
         accent="amber"

@@ -6,6 +6,7 @@ import {
 import {
   Expense, useDeleteExpense, CATEGORY_COLORS, type ExpenseCategory,
 } from "@/hooks/useExpenses";
+import { useCustomCategories } from "@/hooks/useCustomCategories";
 import { useCurrency } from "@/hooks/useCurrency";
 import { Button } from "@/components/ui/button";
 import { EditExpenseDialog } from "./EditExpenseDialog";
@@ -17,26 +18,26 @@ interface ExpenseListProps {
 }
 
 const CATEGORY_ICONS: Record<string, React.ElementType> = {
-  Food:          Utensils,
-  Groceries:     ShoppingCart,
-  Transport:     Car,
-  Housing:       Home,
-  Utilities:     Zap,
-  Health:        Heart,
-  Travel:        Plane,
+  Food: Utensils,
+  Groceries: ShoppingCart,
+  Transport: Car,
+  Housing: Home,
+  Utilities: Zap,
+  Health: Heart,
+  Travel: Plane,
   Entertainment: Music,
-  Education:     BookOpen,
-  Tech:          Monitor,
-  Coffee:        Coffee,
-  Gifts:         Gift,
-  Shopping:      ShoppingCart,
-  Other:         MoreHorizontal,
+  Education: BookOpen,
+  Tech: Monitor,
+  Coffee: Coffee,
+  Gifts: Gift,
+  Shopping: ShoppingCart,
+  Other: MoreHorizontal,
 };
 
 const ACTION_WIDTH = 136;
 const SWIPE_THRESH = 40;
-const EASE         = "cubic-bezier(0.25,1,0.5,1)";
-const DURATION     = "0.28s";
+const EASE = "cubic-bezier(0.25,1,0.5,1)";
+const DURATION = "0.28s";
 
 function CategoryIcon({ category, color }: { category: string; color: string }) {
   const Icon = CATEGORY_ICONS[category] ?? MoreHorizontal;
@@ -51,50 +52,37 @@ function CategoryIcon({ category, color }: { category: string; color: string }) 
 }
 
 interface SwipeRowProps {
-  exp:          Expense;
-  color:        string;
+  exp: Expense;
+  color: string;
   formatAmount: (n: number) => string;
-  onEdit:       () => void;
-  onDelete:     () => void;
-  openId:       string | null;
-  setOpenId:    (id: string | null) => void;
+  onEdit: () => void;
+  onDelete: () => void;
+  openId: string | null;
+  setOpenId: (id: string | null) => void;
 }
 
 function SwipeRow({ exp, color, formatAmount, onEdit, onDelete, openId, setOpenId }: SwipeRowProps) {
-  const isOpen     = openId === exp.id;
-  const startX     = useRef(0);
-  const startY     = useRef(0);
-  const baseX      = useRef(0);
-  const curX       = useRef(0);
-  const dragging   = useRef(false);
+  const isOpen = openId === exp.id;
+  const startX = useRef(0);
+  const startY = useRef(0);
+  const baseX = useRef(0);
+  const curX = useRef(0);
+  const dragging = useRef(false);
   const axisLocked = useRef<"h" | "v" | null>(null);
-
-  // Two separate refs — row for translate, content for opacity
-  const rowRef     = useRef<HTMLDivElement>(null);
+  const rowRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
 
-  /**
-   * Single source of truth for visual state.
-   * x: 0 (closed) → -ACTION_WIDTH (open)
-   * animated: whether to use CSS transition or snap immediately (no flicker)
-   */
   function commit(x: number, animated: boolean) {
-    const row     = rowRef.current;
+    const row = rowRef.current;
     const content = contentRef.current;
     if (!row || !content) return;
-
     const t = animated ? `${DURATION} ${EASE}` : "none";
-
-    // Slide the row
     row.style.transition = t;
-    row.style.transform  = `translateX(${x}px)`;
-
-    // Fade content: 1 at x=0, drops to 0.22 at full open
-    const pct     = Math.abs(x) / ACTION_WIDTH;           // 0 → 1
-    const opacity = 1 - pct * 0.78;                       // 1 → 0.22
-
+    row.style.transform = `translateX(${x}px)`;
+    const pct = Math.abs(x) / ACTION_WIDTH;
+    const opacity = 1 - pct * 0.78;
     content.style.transition = t;
-    content.style.opacity    = String(opacity);
+    content.style.opacity = String(opacity);
   }
 
   function snapTo(open: boolean) {
@@ -103,14 +91,12 @@ function SwipeRow({ exp, color, formatAmount, onEdit, onDelete, openId, setOpenI
   }
 
   function onTouchStart(e: React.TouchEvent) {
-    startX.current   = e.touches[0].clientX;
-    startY.current   = e.touches[0].clientY;
-    baseX.current    = isOpen ? -ACTION_WIDTH : 0;
-    curX.current     = baseX.current;
+    startX.current = e.touches[0].clientX;
+    startY.current = e.touches[0].clientY;
+    baseX.current = isOpen ? -ACTION_WIDTH : 0;
+    curX.current = baseX.current;
     dragging.current = true;
     axisLocked.current = null;
-
-    // Kill transition so it tracks finger instantly
     commit(baseX.current, false);
   }
 
@@ -118,21 +104,14 @@ function SwipeRow({ exp, color, formatAmount, onEdit, onDelete, openId, setOpenI
     if (!dragging.current) return;
     const dx = e.touches[0].clientX - startX.current;
     const dy = e.touches[0].clientY - startY.current;
-
-    // Lock axis on first meaningful movement
     if (axisLocked.current === null) {
-      if (Math.abs(dx) > Math.abs(dy)) axisLocked.current = "h";
-      else axisLocked.current = "v";
+      axisLocked.current = Math.abs(dx) > Math.abs(dy) ? "h" : "v";
     }
     if (axisLocked.current !== "h") return;
-
     e.preventDefault();
-
-    // Close any other open row
     if (openId && openId !== exp.id) setOpenId(null);
-
     curX.current = Math.max(-ACTION_WIDTH, Math.min(0, baseX.current + dx));
-    commit(curX.current, false);   // ← no transition → live-tracks finger
+    commit(curX.current, false);
   }
 
   function onTouchEnd() {
@@ -144,8 +123,7 @@ function SwipeRow({ exp, color, formatAmount, onEdit, onDelete, openId, setOpenI
 
   return (
     <div className="relative overflow-hidden">
-
-      {/* Action tray — revealed as row slides left */}
+      {/* Action tray */}
       <div className="absolute inset-y-0 right-0 flex" style={{ width: ACTION_WIDTH }}>
         <button
           onPointerDown={(e) => { e.stopPropagation(); snapTo(false); onEdit(); }}
@@ -163,7 +141,7 @@ function SwipeRow({ exp, color, formatAmount, onEdit, onDelete, openId, setOpenI
         </button>
       </div>
 
-      {/* Sliding row — bg-card makes it fully opaque so it covers the tray */}
+      {/* Sliding row */}
       <div
         ref={rowRef}
         className="group relative bg-card will-change-transform"
@@ -179,27 +157,20 @@ function SwipeRow({ exp, color, formatAmount, onEdit, onDelete, openId, setOpenI
           style={{ backgroundColor: color }}
         />
 
-        {/* Content — opacity driven by commit() */}
-        <div
-          ref={contentRef}
-          className="flex items-center gap-3 px-4 py-3.5"
-          /* No inline opacity here — let commit() own it entirely */
-        >
+        <div ref={contentRef} className="flex items-center gap-3 px-4 py-3.5">
           <CategoryIcon category={exp.category} color={color} />
-
           <div className="flex-1 min-w-0">
             <p className="text-sm font-bold truncate leading-snug">{exp.category}</p>
             {exp.note && (
               <p className="text-xs text-muted-foreground truncate mt-0.5">{exp.note}</p>
             )}
           </div>
-
           <span className="text-sm font-black tabular-nums shrink-0" style={{ color }}>
             {formatAmount(exp.amount)}
           </span>
         </div>
 
-        {/* Desktop hover actions — visible only on sm+ */}
+        {/* Desktop hover actions */}
         <div className="absolute right-3 top-1/2 -translate-y-1/2 hidden sm:flex items-center
           opacity-0 translate-x-1 group-hover:opacity-100 group-hover:translate-x-0
           transition-all duration-150 pointer-events-none group-hover:pointer-events-auto">
@@ -222,11 +193,20 @@ function SwipeRow({ exp, color, formatAmount, onEdit, onDelete, openId, setOpenI
 ═══════════════════════════════════════════════════════════════════════ */
 export function ExpenseList({ expenses, title }: ExpenseListProps) {
   const { formatAmount } = useCurrency();
-  const deleteExpense    = useDeleteExpense();
+  const deleteExpense = useDeleteExpense();
+  const { data: customCategories = [] } = useCustomCategories();
   const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
-  const [openRowId, setOpenRowId]           = useState<string | null>(null);
+  const [openRowId, setOpenRowId] = useState<string | null>(null);
 
-  // Calculate total for the selected day
+  // Resolve color for both built-in and custom categories
+  function resolveColor(category: string): string {
+    return (
+      CATEGORY_COLORS[category as ExpenseCategory] ??
+      customCategories.find((c) => c.name === category)?.color ??
+      CATEGORY_COLORS.Other
+    );
+  }
+
   const dayTotal = expenses.reduce((sum, exp) => sum + exp.amount, 0);
 
   const handleDelete = async (id: string) => {
@@ -260,24 +240,17 @@ export function ExpenseList({ expenses, title }: ExpenseListProps) {
         </p>
       )}
 
-      {/* Day total display */}
+      {/* Day total */}
       <div className="flex items-center justify-end mb-4">
         <div className="relative group">
-          {/* Glow effect background */}
           <div className="absolute -inset-0.5 bg-gradient-to-r from-violet-500/20 via-blue-500/20 to-cyan-500/20 rounded-full blur-lg opacity-0 group-hover:opacity-100 transition-all duration-500" />
-          
           <div className="relative inline-flex items-center gap-3 rounded-full bg-gradient-to-r from-violet-500/10 via-blue-500/10 to-cyan-500/10 border border-violet-200/30 px-4 py-2.5 shadow-lg shadow-violet-500/5 backdrop-blur-sm">
-            {/* Icon */}
             <div className="flex items-center justify-center w-5 h-5 rounded-full bg-gradient-to-br from-violet-500 to-blue-500 text-white">
               <span className="text-[10px] font-black">Σ</span>
             </div>
-            
-            {/* Label */}
             <span className="text-xs font-bold uppercase tracking-wider text-violet-600 dark:text-violet-400">
               Total
             </span>
-            
-            {/* Amount */}
             <span className="text-sm font-black bg-gradient-to-r from-violet-600 to-blue-600 bg-clip-text text-transparent tabular-nums">
               {formatAmount(dayTotal)}
             </span>
@@ -290,25 +263,22 @@ export function ExpenseList({ expenses, title }: ExpenseListProps) {
       </p>
 
       <div className="rounded-2xl border border-border/60 overflow-hidden divide-y divide-border/40 shadow-sm">
-        {expenses.map((exp, idx) => {
-          const color = CATEGORY_COLORS[exp.category as ExpenseCategory] || CATEGORY_COLORS.Other;
-          return (
-            <div
-              key={exp.id}
-              style={{ animation: "rowIn 0.3s ease both", animationDelay: `${idx * 35}ms` }}
-            >
-              <SwipeRow
-                exp={exp}
-                color={color}
-                formatAmount={formatAmount}
-                onEdit={() => setEditingExpense(exp)}
-                onDelete={() => handleDelete(exp.id)}
-                openId={openRowId}
-                setOpenId={setOpenRowId}
-              />
-            </div>
-          );
-        })}
+        {expenses.map((exp, idx) => (
+          <div
+            key={exp.id}
+            style={{ animation: "rowIn 0.3s ease both", animationDelay: `${idx * 35}ms` }}
+          >
+            <SwipeRow
+              exp={exp}
+              color={resolveColor(exp.category)}
+              formatAmount={formatAmount}
+              onEdit={() => setEditingExpense(exp)}
+              onDelete={() => handleDelete(exp.id)}
+              openId={openRowId}
+              setOpenId={setOpenRowId}
+            />
+          </div>
+        ))}
       </div>
 
       <style>{`
