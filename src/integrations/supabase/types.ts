@@ -71,6 +71,42 @@ export type Database = {
         };
         Relationships: [];
       };
+      loans: {
+        Row: {
+          id: string;
+          user_id: string;
+          person_name: string;
+          amount: number;
+          direction: string;
+          due_date: string | null;
+          note: string | null;
+          is_paid: boolean;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          user_id?: string;
+          person_name: string;
+          amount: number;
+          direction: string;
+          due_date?: string | null;
+          note?: string | null;
+          is_paid?: boolean;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          user_id?: string;
+          person_name?: string;
+          amount?: number;
+          direction?: string;
+          due_date?: string | null;
+          note?: string | null;
+          is_paid?: boolean;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
       custom_categories: {
         Row: {
           id: string;
