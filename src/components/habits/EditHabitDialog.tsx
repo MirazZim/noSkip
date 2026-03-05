@@ -11,7 +11,9 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Habit, useUpdateHabit } from "@/hooks/useHabits";
 import { toast } from "sonner";
 
-const EMOJIS = ["✅", "💪", "📖", "🏃", "🧘", "💧", "🎯", "🔥", "🌱", "💤", "🍎", "✍️"];
+const EMOJIS = ["✅", "💪", "📖", "🏃", "🧘", "💧", "🎯", "🔥", "🌱", "💤", "🍎", "✍️", "🎵", "🏋️", "🚴",
+  "🧠", "💊", "🛏", "☕", "🥗", "🎨", "🧹", "💰", "📅", "⏰", "🚶", "🤸", "🧴", "🦷", "🫁",
+  "📝", "🏆", "❤️", "🌞", "🌙", "⚡", "🎉", "🙌", "💡", "🔑", "🌈", "🍀", "🎶", "🧩", "🪴",];
 const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
 const schema = z.object({
@@ -108,11 +110,10 @@ export function EditHabitDialog({ habit, open, onOpenChange }: Props) {
                         key={e}
                         type="button"
                         onClick={() => field.onChange(e)}
-                        className={`h-9 w-9 rounded-lg text-lg flex items-center justify-center border transition-colors ${
-                          field.value === e
+                        className={`h-9 w-9 rounded-lg text-lg flex items-center justify-center border transition-colors ${field.value === e
                             ? "border-primary bg-primary/10"
                             : "border-border bg-muted/50 hover:bg-muted"
-                        }`}
+                          }`}
                       >
                         {e}
                       </button>
