@@ -10,13 +10,11 @@ import { toast } from "sonner";
 import { HandCoins } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-// Direction options in plain human language
 const DIRECTIONS: {
   value: LoanDirection;
   emoji: string;
   title: string;
   subtitle: string;
-  color: string;
   activeClass: string;
   buttonClass: string;
   personLabel: string;
@@ -27,8 +25,7 @@ const DIRECTIONS: {
       value: "lent",
       emoji: "💸",
       title: "I gave money",
-      subtitle: "You lent money to someone",
-      color: "emerald",
+      subtitle: "They owe you",
       activeClass: "border-emerald-500 bg-emerald-500/10",
       buttonClass: "bg-emerald-500 hover:bg-emerald-600 text-white",
       personLabel: "Who did you give money to?",
@@ -39,8 +36,7 @@ const DIRECTIONS: {
       value: "borrowed",
       emoji: "🤝",
       title: "Someone gave me",
-      subtitle: "You received money from someone",
-      color: "rose",
+      subtitle: "You owe them",
       activeClass: "border-rose-500 bg-rose-500/10",
       buttonClass: "bg-rose-500 hover:bg-rose-600 text-white",
       personLabel: "Who gave you the money?",
@@ -54,6 +50,7 @@ export function AddLoanDialog() {
   const [direction, setDirection] = useState<LoanDirection>("lent");
   const [personName, setPersonName] = useState("");
   const [amount, setAmount] = useState("");
+  const [loanDate, setLoanDate] = useState(format(new Date(), "yyyy-MM-dd"));
   const [dueDate, setDueDate] = useState("");
   const [note, setNote] = useState("");
 
@@ -66,26 +63,35 @@ export function AddLoanDialog() {
     setDirection("lent");
     setPersonName("");
     setAmount("");
+    setLoanDate(format(new Date(), "yyyy-MM-dd"));
     setDueDate("");
     setNote("");
+  };
+
+  // Only allow digits and a single decimal point
+  const handleAmountChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = e.target.value;
+    // Strip anything that isn't a digit or decimal point
+    const clean = val.replace(/[^0-9.]/g, "");
+    // Prevent more than one decimal point
+    const parts = clean.split(".");
+    if (parts.length > 2) return;
+    // Max 2 decimal places
+    if (parts[1] && parts[1].length > 2) return;
+    setAmount(clean);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const amt = parseFloat(amount);
-    if (!personName.trim()) {
-      toast.error("Please enter the person's name.");
-      return;
-    }
-    if (isNaN(amt) || amt <= 0) {
-      toast.error("Please enter a valid amount.");
-      return;
-    }
+    if (!personName.trim()) { toast.error("Please enter the person's name."); return; }
+    if (isNaN(amt) || amt <= 0) { toast.error("Please enter a valid amount."); return; }
     try {
       await addLoan({
         person_name: personName.trim(),
         amount: amt,
         direction,
+        loan_date: loanDate,
         due_date: dueDate || null,
         note: note.trim() || null,
       });
@@ -106,120 +112,119 @@ export function AddLoanDialog() {
         </Button>
       </DialogTrigger>
 
-      <DialogContent className="max-w-sm rounded-2xl p-0 overflow-hidden gap-0">
+      <DialogContent className="max-w-sm w-[calc(100vw-32px)] rounded-2xl p-0 overflow-hidden gap-0 max-h-[90dvh] overflow-y-auto">
 
-        {/* ── Top header bar ── */}
+        {/* ── Header ── */}
         <div className={cn(
-          "px-5 pt-5 pb-4 border-b border-border/60 transition-colors duration-200",
+          "px-4 pt-4 pb-3 border-b border-border/60 transition-colors duration-200",
           direction === "lent" ? "bg-emerald-500/[0.06]" : "bg-rose-500/[0.06]"
         )}>
           <DialogHeader>
-            <DialogTitle className="text-base font-black tracking-tight">Track a Loan</DialogTitle>
+            <DialogTitle className="text-sm font-black tracking-tight">Track a Loan</DialogTitle>
           </DialogHeader>
-          <p className="text-xs text-muted-foreground mt-0.5">
+          <p className="text-[11px] text-muted-foreground mt-0.5">
             Keep a record so you never forget who owes what.
           </p>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-5 px-5 py-5">
+        <form onSubmit={handleSubmit} className="px-4 py-4 space-y-3.5">
 
-          {/* ── Step 1: Pick direction ── */}
-          <div className="space-y-2">
-            <Label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">
-              What happened?
-            </Label>
-            <div className="grid grid-cols-2 gap-2">
-              {DIRECTIONS.map((d) => (
-                <button
-                  key={d.value}
-                  type="button"
-                  onClick={() => setDirection(d.value)}
-                  className={cn(
-                    "flex flex-col items-start gap-1 rounded-2xl border-2 px-3.5 py-3 text-left transition-all duration-150",
-                    direction === d.value
-                      ? d.activeClass
-                      : "border-border/50 bg-card hover:border-border"
-                  )}
-                >
-                  <span className="text-xl">{d.emoji}</span>
-                  <span className="text-sm font-bold leading-tight">{d.title}</span>
-                  <span className="text-[11px] text-muted-foreground leading-tight">{d.subtitle}</span>
-                </button>
-              ))}
-            </div>
+          {/* Direction — compact two cards */}
+          <div className="grid grid-cols-2 gap-2">
+            {DIRECTIONS.map((d) => (
+              <button
+                key={d.value}
+                type="button"
+                onClick={() => setDirection(d.value)}
+                className={cn(
+                  "flex items-center gap-2 rounded-xl border-2 px-3 py-2.5 text-left transition-all duration-150",
+                  direction === d.value ? d.activeClass : "border-border/50 bg-card hover:border-border"
+                )}
+              >
+                <span className="text-lg shrink-0">{d.emoji}</span>
+                <div className="min-w-0">
+                  <p className="text-xs font-bold leading-tight truncate">{d.title}</p>
+                  <p className="text-[10px] text-muted-foreground leading-tight">{d.subtitle}</p>
+                </div>
+              </button>
+            ))}
           </div>
 
-          {/* ── Step 2: Person name ── */}
-          <div className="space-y-1.5">
-            <Label className="text-xs font-bold">
-              {active.personLabel}
-            </Label>
+          {/* Person name */}
+          <div className="space-y-1">
+            <Label className="text-xs font-bold">{active.personLabel}</Label>
             <Input
               placeholder={active.personPlaceholder}
               value={personName}
               onChange={(e) => setPersonName(e.target.value)}
               required
               autoComplete="off"
-              className="rounded-xl"
+              className="rounded-xl h-9 text-sm"
             />
           </div>
 
-          {/* ── Step 3: Amount ── */}
-          <div className="space-y-1.5">
+          {/* Amount — numbers only, no keyboard type="number" quirks */}
+          <div className="space-y-1">
             <Label className="text-xs font-bold">
-              How much? <span className="text-muted-foreground font-normal">({symbol})</span>
+              How much?{" "}
+              <span className="text-muted-foreground font-normal">({symbol})</span>
             </Label>
             <Input
-              type="number"
+              inputMode="decimal"   // shows numeric keyboard on mobile
               placeholder="0.00"
-              min="0.01"
-              step="0.01"
               value={amount}
-              onChange={(e) => setAmount(e.target.value)}
+              onChange={handleAmountChange}
               required
-              className="rounded-xl text-lg font-bold"
+              className="rounded-xl h-9 text-sm font-bold"
             />
           </div>
 
-          {/* ── Step 4: Due date (optional) ── */}
-          <div className="space-y-1.5">
-            <Label className="text-xs font-bold">
-              When should it be paid back?{" "}
-              <span className="text-muted-foreground font-normal">— optional</span>
-            </Label>
-            <Input
-              type="date"
-              value={dueDate}
-              min={format(new Date(), "yyyy-MM-dd")}
-              onChange={(e) => setDueDate(e.target.value)}
-              className="rounded-xl"
-            />
-            {!dueDate && (
-              <p className="text-[11px] text-muted-foreground">
-                No deadline? Leave it empty.
-              </p>
-            )}
+          {/* Dates — side by side to save space */}
+          <div className="grid grid-cols-2 gap-2">
+            <div className="space-y-1">
+              <Label className="text-xs font-bold">When?</Label>
+              <Input
+                type="date"
+                value={loanDate}
+                max={format(new Date(), "yyyy-MM-dd")}
+                onChange={(e) => setLoanDate(e.target.value)}
+                className="rounded-xl h-9 text-xs"
+              />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs font-bold">
+                Due date{" "}
+                <span className="text-muted-foreground font-normal">(optional)</span>
+              </Label>
+              <Input
+                type="date"
+                value={dueDate}
+                min={format(new Date(), "yyyy-MM-dd")}
+                onChange={(e) => setDueDate(e.target.value)}
+                className="rounded-xl h-9 text-xs"
+              />
+            </div>
           </div>
 
-          {/* ── Step 5: Note (optional) ── */}
-          <div className="space-y-1.5">
+          {/* Note */}
+          <div className="space-y-1">
             <Label className="text-xs font-bold">
-              What was it for?{" "}
-              <span className="text-muted-foreground font-normal">— optional</span>
+              What for?{" "}
+              <span className="text-muted-foreground font-normal">(optional)</span>
             </Label>
             <Input
               placeholder="e.g. Lunch, Birthday gift, Rent..."
               value={note}
               onChange={(e) => setNote(e.target.value)}
-              className="rounded-xl"
+              className="rounded-xl h-9 text-sm"
             />
           </div>
 
-          {/* ── Submit ── */}
+          {/* Submit */}
           <Button
             type="submit"
             disabled={isPending}
-            className={cn("w-full rounded-xl font-bold text-sm h-11", active.buttonClass)}
+            className={cn("w-full rounded-xl font-bold text-sm h-10 mt-1", active.buttonClass)}
           >
             {isPending
               ? "Saving..."

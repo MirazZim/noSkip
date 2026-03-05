@@ -22,6 +22,7 @@ import { useIncomes, usePrevMonthIncomes } from "@/hooks/useIncomes";
 import { useLoans } from "@/hooks/useLoans";
 import { IncomeList } from "@/components/expenses/IncomeList";
 import { Skeleton } from "@/components/ui/skeleton";
+import { LoanOverviewWidget } from "@/components/expenses/LoanOverviewWidget";
 import { List, CalendarDays, LayoutGrid, ChevronLeft, HandCoins } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -286,7 +287,7 @@ export default function Expenses() {
             TAB: OVERVIEW
         ══════════════════════════════════════════════════════════════ */}
         {activeTab === "overview" && (
-          <div className="space-y-5" style={{ animation: "expIn 0.28s ease both" }}>
+          <div className="space-y-4" style={{ animation: "expIn 0.28s ease both" }}>
             <ExpenseSummaryCards
               expenses={allExpenses}
               prevExpenses={allPrev}
@@ -295,6 +296,15 @@ export default function Expenses() {
               prevIncomes={allPrevIncomes}
               onBudgetClick={() => setBudgetDialogOpen(true)}
             />
+
+            {/* Loan snapshot — only shown when there are active loans */}
+            {allLoans.some((l) => !l.is_paid) && (
+              <LoanOverviewWidget
+                loans={allLoans}
+                onGoToLoans={() => switchTab("loans")}
+              />
+            )}
+
             {allBudgets.filter((b) => b.category !== "Overall").length > 0 && (
               <BudgetManager
                 budgets={allBudgets}

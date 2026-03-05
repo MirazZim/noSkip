@@ -13,6 +13,8 @@ export const INCOME_SOURCES = [
     "Rental",
     "Gift",
     "Other",
+    "Loan Received",
+    "Loan Recovered",
 ] as const;
 
 export type IncomeSource = (typeof INCOME_SOURCES)[number];
@@ -25,6 +27,8 @@ export const INCOME_SOURCE_COLORS: Record<IncomeSource, string> = {
     Rental: "hsl(32, 95%, 54%)",
     Gift: "hsl(340, 70%, 55%)",
     Other: "hsl(220, 10%, 55%)",
+    "Loan Received": "hsl(120, 60%, 50%)", // Lighter Green - money in
+    "Loan Recovered": "hsl(120, 60%, 40%)", // Green - money out
 };
 
 // ─── Types ────────────────────────────────────────────────────────────────────

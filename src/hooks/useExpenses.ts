@@ -19,6 +19,8 @@ export const EXPENSE_CATEGORIES = [
   "Education",
   "Gifts",
   "Smoking",
+  "Loan Given",
+  "Loan Repaid",
   "Other",
 ] as const;
 
@@ -43,6 +45,8 @@ export const CATEGORY_COLORS: Record<ExpenseCategory, string> = {
   Education: "hsl(260, 70%, 55%)",     // Purple - learning
   Gifts: "hsl(330, 75%, 55%)",
   Smoking: "hsl(20, 40%, 45%)",     // Pink - presents
+  "Loan Given": "hsl(120, 60%, 40%)", // Green - money out
+  "Loan Repaid": "hsl(120, 60%, 50%)", // Lighter Green - money in
 };
 
 export interface Expense {

@@ -78,9 +78,11 @@ export type Database = {
           person_name: string;
           amount: number;
           direction: string;
+          loan_date: string;       // ← new
           due_date: string | null;
           note: string | null;
           is_paid: boolean;
+          paid_date: string | null; // ← new
           created_at: string;
         };
         Insert: {
@@ -89,9 +91,11 @@ export type Database = {
           person_name: string;
           amount: number;
           direction: string;
+          loan_date?: string;       // ← new (defaults to today)
           due_date?: string | null;
           note?: string | null;
           is_paid?: boolean;
+          paid_date?: string | null; // ← new
           created_at?: string;
         };
         Update: {
@@ -100,9 +104,11 @@ export type Database = {
           person_name?: string;
           amount?: number;
           direction?: string;
+          loan_date?: string;       // ← new
           due_date?: string | null;
           note?: string | null;
           is_paid?: boolean;
+          paid_date?: string | null; // ← new
           created_at?: string;
         };
         Relationships: [];

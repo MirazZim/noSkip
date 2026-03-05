@@ -54,14 +54,15 @@ function LoanCard({ loan, onEdit }: { loan: Loan; onEdit?: (loan: Loan) => void 
   const handleTogglePaid = () => {
     closeSwipe();
     markPaid(
-      { id: loan.id, is_paid: !loan.is_paid },
+      { id: loan.id, is_paid: !loan.is_paid, loan },
       { onSuccess: () => toast.success(loan.is_paid ? "Marked as unpaid" : "All settled! ✓") }
     );
   };
 
   const handleDelete = () => {
     closeSwipe();
-    deleteLoan(loan.id, { onSuccess: () => toast.success("Loan removed") });
+    // Pass full loan object so the hook can clean up mirrored expense/income entries
+    deleteLoan(loan, { onSuccess: () => toast.success("Loan removed") });
   };
 
   const handleEdit = () => {
