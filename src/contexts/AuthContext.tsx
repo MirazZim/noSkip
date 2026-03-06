@@ -2,6 +2,7 @@ import { createContext, useContext, useEffect, useState, ReactNode } from "react
 import { Session, User } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
 import { useNavigate } from "react-router-dom";
+import { auditLog } from "@/lib/auditLog";
 
 interface AuthContextType {
   session: Session | null;
@@ -43,16 +44,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       password,
       options: { emailRedirectTo: window.location.origin },
     });
+    if (!error) {
+      auditLog({ action: "user.signup" });
+    }
     return { error: error as Error | null };
   };
 
   const signIn = async (email: string, password: string) => {
     const { error } = await supabase.auth.signInWithPassword({ email, password });
+    if (!error) {
+      auditLog({ action: "user.login" });
+    }
     return { error: error as Error | null };
   };
 
   const signOut = async () => {
     await supabase.auth.signOut();
+    auditLog({ action: "user.logout" });
   };
 
   return (
