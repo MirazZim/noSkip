@@ -12,6 +12,96 @@ interface Props {
   onSelect: () => void;
 }
 
+
+// ── Burst effect ──────────────────────────────────────────────────────────────
+function fireConfetti(originX: number, originY: number) {
+  const canvas = document.createElement("canvas");
+  canvas.style.cssText =
+    "position:fixed;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:9999;";
+  document.body.appendChild(canvas);
+  const ctx = canvas.getContext("2d")!;
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
+
+  const primaryHsl = getComputedStyle(document.documentElement)
+    .getPropertyValue("--primary").trim() || "243 75% 59%";
+  const primaryColor = `hsl(${primaryHsl})`;
+  const COLORS = [primaryColor, "rgba(255,255,255,0.9)", "rgba(255,220,80,0.95)", "rgba(160,120,255,0.9)", "rgba(80,220,180,0.9)"];
+
+  const rings = [{ r: 0, maxR: 52, opacity: 0.7, speed: 2.8 }, { r: 0, maxR: 36, opacity: 0.45, speed: 1.9 }];
+
+  const COUNT = 18;
+  interface Dot { angle: number; speed: number; r: number; targetR: number; size: number; color: string; opacity: number; trail: { x: number; y: number }[]; }
+  const dots: Dot[] = Array.from({ length: COUNT }, (_, i) => ({
+    angle: (i / COUNT) * Math.PI * 2 + (Math.random() - 0.5) * 0.35,
+    speed: (Math.random() * 0.04 + 0.01) * (Math.random() > 0.5 ? 1 : -1),
+    r: 0, targetR: Math.random() * 44 + 28,
+    size: Math.random() * 3.5 + 2,
+    color: COLORS[Math.floor(Math.random() * COLORS.length)],
+    opacity: 1, trail: [],
+  }));
+
+  interface Spark { x: number; y: number; vx: number; vy: number; size: number; color: string; life: number; }
+  const sparks: Spark[] = Array.from({ length: 22 }, () => {
+    const a = Math.random() * Math.PI * 2, spd = Math.random() * 5 + 2.5;
+    return {
+      x: originX, y: originY, vx: Math.cos(a) * spd, vy: Math.sin(a) * spd,
+      size: Math.random() * 2.5 + 1, color: COLORS[Math.floor(Math.random() * COLORS.length)], life: 1
+    };
+  });
+
+  let frame = 0;
+  const TOTAL = 72;
+  const easeOut = (t: number) => 1 - Math.pow(1 - t, 3);
+
+  const animate = () => {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    const t = Math.min(frame / TOTAL, 1);
+
+    for (const ring of rings) {
+      ring.r += ring.speed;
+      const a = ring.opacity * (1 - ring.r / ring.maxR);
+      if (a > 0) {
+        ctx.beginPath(); ctx.arc(originX, originY, ring.r, 0, Math.PI * 2);
+        ctx.strokeStyle = primaryColor; ctx.globalAlpha = Math.max(0, a); ctx.lineWidth = 2; ctx.stroke();
+      }
+    }
+
+    for (const dot of dots) {
+      dot.r = easeOut(Math.min(t * 2, 1)) * dot.targetR;
+      dot.angle += dot.speed;
+      dot.opacity = t < 0.6 ? 1 : 1 - (t - 0.6) / 0.4;
+      const x = originX + Math.cos(dot.angle) * dot.r;
+      const y = originY + Math.sin(dot.angle) * dot.r;
+      dot.trail.push({ x, y });
+      if (dot.trail.length > 6) dot.trail.shift();
+      for (let i = 0; i < dot.trail.length; i++) {
+        const tp = dot.trail[i];
+        ctx.beginPath(); ctx.arc(tp.x, tp.y, Math.max(0.5, dot.size * (i / dot.trail.length) * 0.7), 0, Math.PI * 2);
+        ctx.globalAlpha = Math.max(0, (i / dot.trail.length) * dot.opacity * 0.35);
+        ctx.fillStyle = dot.color; ctx.fill();
+      }
+      ctx.globalAlpha = Math.max(0, dot.opacity);
+      ctx.shadowColor = dot.color; ctx.shadowBlur = 8;
+      ctx.beginPath(); ctx.arc(x, y, dot.size, 0, Math.PI * 2);
+      ctx.fillStyle = dot.color; ctx.fill(); ctx.shadowBlur = 0;
+    }
+
+    for (const sp of sparks) {
+      sp.x += sp.vx; sp.y += sp.vy; sp.vx *= 0.93; sp.vy *= 0.93; sp.life -= 0.028;
+      if (sp.life <= 0) continue;
+      ctx.globalAlpha = sp.life * 0.85; ctx.shadowColor = sp.color; ctx.shadowBlur = 6;
+      ctx.beginPath(); ctx.arc(sp.x, sp.y, sp.size, 0, Math.PI * 2);
+      ctx.fillStyle = sp.color; ctx.fill(); ctx.shadowBlur = 0;
+    }
+
+    ctx.globalAlpha = 1;
+    frame++;
+    if (frame < TOTAL) requestAnimationFrame(animate); else canvas.remove();
+  };
+  requestAnimationFrame(animate);
+}
+
 // ── Icons ──────────────────────────────────────────────────────────────────────
 const CheckIcon = ({ size = 16 }: { size?: number }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.8" strokeLinecap="round" strokeLinejoin="round">
@@ -62,7 +152,15 @@ function SevenDayRow({ completions, habitId }: { completions: HabitCompletion[];
 }
 
 // ── Circular check ─────────────────────────────────────────────────────────────
-function CircleCheck({ done, pending, onToggle }: { done: boolean; pending: boolean; onToggle: (e: React.MouseEvent) => void }) {
+function CircleCheck({
+  done,
+  pending,
+  onToggle,
+}: {
+  done: boolean;
+  pending: boolean;
+  onToggle: (e: React.MouseEvent) => void;
+}) {
   return (
     <button
       className={cn("hi-circle-check", done && "hi-circle-check--done")}
@@ -88,7 +186,7 @@ function ContextMenu({ onEdit, onDelete, onClose }: { onEdit: () => void; onDele
 // ── Constants ──────────────────────────────────────────────────────────────────
 const SWIPE_START_THRESHOLD = 10;
 const SWIPE_OPEN_AT = 50;
-const SWIPE_OPEN_WIDTH = 124; // just enough for two small pill buttons
+const SWIPE_OPEN_WIDTH = 124;
 
 export function HabitListItem({ habit, completions, isSelected, onSelect }: Props) {
   const toggle = useToggleHabitCompletion();
@@ -114,8 +212,25 @@ export function HabitListItem({ habit, completions, isSelected, onSelect }: Prop
 
   const handleToggle = async (date: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    try { await toggle.mutateAsync({ habitId: habit.id, date }); }
-    catch { toast.error("Failed to update"); }
+    const wasAlreadyDone = completions.some((c) => c.habit_id === habit.id && c.date === date);
+
+    // Capture position NOW — e.currentTarget becomes null after the await
+    const btn = e.currentTarget as HTMLElement;
+    const rect = btn.getBoundingClientRect();
+    const cx = rect.left + rect.width / 2;
+    const cy = rect.top + rect.height / 2;
+
+    try {
+      await toggle.mutateAsync({ habitId: habit.id, date });
+    } catch {
+      toast.error("Failed to update");
+      return;
+    }
+
+    // Only fire confetti + toast when marking AS done (not undoing)
+    if (!wasAlreadyDone) {
+      fireConfetti(cx, cy);
+    }
   };
 
   const handleDelete = async () => {
@@ -137,13 +252,11 @@ export function HabitListItem({ habit, completions, isSelected, onSelect }: Prop
     const dy = e.touches[0].clientY - touchStartY.current;
     const absDx = Math.abs(dx);
     const absDy = Math.abs(dy);
-
     if (swipeIntent.current === "none") {
       if (absDx < SWIPE_START_THRESHOLD && absDy < SWIPE_START_THRESHOLD) return;
       swipeIntent.current = absDy > absDx ? "scroll" : "swipe";
     }
     if (swipeIntent.current === "scroll") return;
-
     e.preventDefault();
     const base = isSwipeOpen ? -SWIPE_OPEN_WIDTH : 0;
     const raw = base + dx;
@@ -170,11 +283,9 @@ export function HabitListItem({ habit, completions, isSelected, onSelect }: Prop
         .hi-wrap {
           position: relative;
           border-radius: 14px;
-          /* overflow hidden clips the swipe buttons */
           overflow: hidden;
         }
 
-        /* ── Swipe actions: two small floating pills ── */
         .hi-swipe-actions {
           position: absolute;
           right: 10px;
@@ -208,25 +319,15 @@ export function HabitListItem({ habit, completions, isSelected, onSelect }: Prop
           transition: transform 0.15s, filter 0.15s, opacity 0.2s;
           opacity: 0;
         }
-        .hi-swipe-actions.hi-swipe-visible .hi-swipe-btn {
-          opacity: 1;
-        }
+        .hi-swipe-actions.hi-swipe-visible .hi-swipe-btn { opacity: 1; }
         .hi-swipe-btn:active { transform: scale(0.92); filter: brightness(0.85); }
-        .hi-swipe-btn--edit {
-          background: hsl(var(--primary));
-          color: hsl(var(--primary-foreground));
-        }
-        .hi-swipe-btn--delete {
-          background: hsl(var(--destructive));
-          color: #fff;
-        }
+        .hi-swipe-btn--edit { background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); }
+        .hi-swipe-btn--delete { background: hsl(var(--destructive)); color: #fff; }
 
-        /* Only show on touch devices */
         @media (hover: hover) and (pointer: fine) {
           .hi-swipe-actions { display: none; }
         }
 
-        /* ── Main item row ── */
         .hi-item {
           position: relative;
           z-index: 1;
@@ -235,17 +336,13 @@ export function HabitListItem({ habit, completions, isSelected, onSelect }: Prop
           gap: 14px;
           padding: 16px 18px;
           cursor: pointer;
-          /* Solid background — never transparent */
           background: hsl(var(--background));
           border-radius: 14px;
           touch-action: pan-y;
           will-change: transform;
         }
-        .hi-item--snap {
-          transition: transform 0.28s cubic-bezier(0.25, 1, 0.5, 1);
-        }
+        .hi-item--snap { transition: transform 0.28s cubic-bezier(0.25, 1, 0.5, 1); }
         .hi-item:hover { background: hsl(var(--muted)); }
-        /* Selected: keep solid, just add the accent bar */
         .hi-item--selected { background: hsl(var(--muted)); }
         .hi-item--selected::before {
           content: '';
@@ -264,10 +361,7 @@ export function HabitListItem({ habit, completions, isSelected, onSelect }: Prop
           font-size: 22px; line-height: 1;
           transition: filter 0.3s;
         }
-        /* selected state: slightly different emoji bg so it doesn't blend */
-        .hi-item--selected .hi-emoji-wrap {
-          background: hsl(var(--border));
-        }
+        .hi-item--selected .hi-emoji-wrap { background: hsl(var(--border)); }
 
         .hi-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 8px; }
         .hi-name-row { display: flex; align-items: baseline; gap: 8px; }
@@ -291,10 +385,7 @@ export function HabitListItem({ habit, completions, isSelected, onSelect }: Prop
           background: hsl(var(--border));
           transition: background 0.2s, transform 0.2s;
         }
-        .hi-7day-pip--done {
-          background: hsl(var(--primary));
-          transform: scaleY(1.4); transform-origin: bottom;
-        }
+        .hi-7day-pip--done { background: hsl(var(--primary)); transform: scaleY(1.4); transform-origin: bottom; }
         .hi-7day-pip--today { background: hsl(var(--primary) / 0.3); }
         .hi-7day-label {
           font-size: 8.5px; font-weight: 500;
@@ -336,10 +427,7 @@ export function HabitListItem({ habit, completions, isSelected, onSelect }: Prop
           display: flex; align-items: center; justify-content: center;
           flex-shrink: 0; padding: 0;
         }
-        .hi-circle-check:hover {
-          border-color: hsl(var(--primary) / 0.6);
-          background: hsl(var(--primary) / 0.06);
-        }
+        .hi-circle-check:hover { border-color: hsl(var(--primary) / 0.6); background: hsl(var(--primary) / 0.06); }
         .hi-circle-check:active { transform: scale(0.88); }
         .hi-circle-check:disabled { opacity: 0.4; cursor: default; }
         .hi-circle-check--done {
@@ -363,7 +451,7 @@ export function HabitListItem({ habit, completions, isSelected, onSelect }: Prop
         }
         @keyframes hiCheckIconIn {
           from { opacity: 0; transform: scale(0.5) rotate(-10deg); }
-          to { opacity: 1; transform: scale(1) rotate(0deg); }
+          to   { opacity: 1; transform: scale(1) rotate(0deg); }
         }
         .hi-circle-check:not(.hi-circle-check--done):hover .hi-circle-check-icon {
           color: hsl(var(--primary) / 0.7);
@@ -378,7 +466,7 @@ export function HabitListItem({ habit, completions, isSelected, onSelect }: Prop
         }
         @keyframes hiMenuIn {
           from { opacity: 0; transform: translateY(-6px) scale(0.97); }
-          to { opacity: 1; transform: translateY(0) scale(1); }
+          to   { opacity: 1; transform: translateY(0) scale(1); }
         }
         .hi-menu-item {
           display: flex; align-items: center; gap: 9px;
@@ -392,19 +480,17 @@ export function HabitListItem({ habit, completions, isSelected, onSelect }: Prop
       `}</style>
 
       <div className="hi-wrap">
-        {/* Small pill buttons revealed on swipe — sit behind the row */}
+        {/* Swipe action buttons */}
         <div className={cn("hi-swipe-actions", isSwipeOpen && "hi-swipe-visible")}>
           <button className="hi-swipe-btn hi-swipe-btn--edit" onClick={() => { setEditOpen(true); closeSwipe(); }}>
-            <PencilIcon />
-            Edit
+            <PencilIcon /> Edit
           </button>
           <button className="hi-swipe-btn hi-swipe-btn--delete" onClick={() => { handleDelete(); closeSwipe(); }}>
-            <TrashIcon />
-            Delete
+            <TrashIcon /> Delete
           </button>
         </div>
 
-        {/* Main row — always z-index: 1, always fully opaque background */}
+        {/* Main row */}
         <div
           className={cn("hi-item", isSelected && "hi-item--selected", !isActiveSwipe && "hi-item--snap")}
           style={{ transform: `translateX(${swipeX}px)` }}
@@ -455,7 +541,11 @@ export function HabitListItem({ habit, completions, isSelected, onSelect }: Prop
                 )}
               </div>
             </div>
-            <CircleCheck done={isDoneToday} pending={toggle.isPending} onToggle={(e) => handleToggle(today, e)} />
+            <CircleCheck
+              done={isDoneToday}
+              pending={toggle.isPending}
+              onToggle={(e) => handleToggle(today, e)}
+            />
           </div>
         </div>
       </div>
