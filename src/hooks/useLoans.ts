@@ -185,6 +185,93 @@ export function useMarkLoanPaid() {
   });
 }
 
+// ─── Update ───────────────────────────────────────────────────────────────────
+// When a loan is updated, we need to update the mirrored expense/income entry
+
+export function useUpdateLoan() {
+  const qc = useQueryClient();
+  const { user } = useAuth();
+
+  return useMutation({
+    mutationFn: async ({
+      id,
+      updates,
+      oldLoan,
+    }: {
+      id: string;
+      updates: {
+        person_name?: string;
+        amount?: number;
+        direction?: LoanDirection;
+        loan_date?: string;
+        due_date?: string | null;
+        note?: string | null;
+      };
+      oldLoan: Loan;
+    }) => {
+      if (!user) throw new Error("Not authenticated");
+
+      // 1. Update the loan record
+      const { error: updateError } = await supabase
+        .from("loans")
+        .update(updates)
+        .eq("id", id);
+      if (updateError) throw updateError;
+
+      // 2. Delete old mirrored entry
+      if (oldLoan.direction === "lent") {
+        await supabase
+          .from("expenses")
+          .delete()
+          .eq("user_id", user.id)
+          .eq("category", "Loan Given")
+          .eq("amount", oldLoan.amount)
+          .eq("date", oldLoan.loan_date);
+      } else {
+        await supabase
+          .from("incomes")
+          .delete()
+          .eq("user_id", user.id)
+          .eq("source", "Loan Received")
+          .eq("amount", oldLoan.amount)
+          .eq("date", oldLoan.loan_date);
+      }
+
+      // 3. Create new mirrored entry with updated values
+      const newDirection = updates.direction ?? oldLoan.direction;
+      const newAmount = updates.amount ?? oldLoan.amount;
+      const newDate = updates.loan_date ?? oldLoan.loan_date;
+      const newPersonName = updates.person_name ?? oldLoan.person_name;
+      const newNote = updates.note ?? oldLoan.note;
+
+      if (newDirection === "lent") {
+        const { error } = await supabase.from("expenses").insert({
+          user_id: user.id,
+          amount: newAmount,
+          category: "Loan Given",
+          date: newDate,
+          note: `Lent to ${newPersonName}${newNote ? ` — ${newNote}` : ""}`,
+        });
+        if (error) throw error;
+      } else {
+        const { error } = await supabase.from("incomes").insert({
+          user_id: user.id,
+          amount: newAmount,
+          source: "Loan Received",
+          date: newDate,
+          note: `Borrowed from ${newPersonName}${newNote ? ` — ${newNote}` : ""}`,
+        });
+        if (error) throw error;
+      }
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: QK });
+      qc.invalidateQueries({ queryKey: ["expenses"] });
+      qc.invalidateQueries({ queryKey: ["incomes"] });
+    },
+  });
+}
+
 // ─── Delete ───────────────────────────────────────────────────────────────────
 // When a loan is deleted, also remove the original mirrored entry so your
 // expenses/incomes don't have a ghost record.

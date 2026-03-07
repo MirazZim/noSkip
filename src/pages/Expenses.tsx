@@ -7,10 +7,12 @@ import { AddIncomeDialog } from "@/components/expenses/AddIncomeDialog";
 import { AddLoanDialog } from "@/components/expenses/AddLoanDialog";
 import { EditExpenseDialog } from "@/components/expenses/EditExpenseDialog";
 import { EditIncomeDialog } from "@/components/expenses/EditIncomeDialog";
+import { EditLoanDialog } from "@/components/expenses/EditLoanDialog";
 import { ExpenseList } from "@/components/expenses/ExpenseList";
 import { LoanList } from "@/components/expenses/LoanList";
 import type { Expense } from "@/hooks/useExpenses";
 import type { Income } from "@/hooks/useIncomes";
+import type { Loan } from "@/hooks/useLoans";
 import { ExpenseSummaryCards } from "@/components/expenses/ExpenseSummaryCards";
 import { ExpenseCharts } from "@/components/expenses/ExpenseCharts";
 import { BudgetManager } from "@/components/expenses/BudgetManager";
@@ -67,6 +69,7 @@ export default function Expenses() {
   const [txDate] = useState(format(new Date(), "yyyy-MM-dd"));
   const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
   const [editingIncome, setEditingIncome] = useState<Income | null>(null);
+  const [editingLoan, setEditingLoan] = useState<Loan | null>(null);
   const [budgetDialogOpen, setBudgetDialogOpen] = useState(false);
 
   // ── Reactive cycle config ─────────────────────────────────────────────────
@@ -140,6 +143,7 @@ export default function Expenses() {
   const switchTab = (tab: Tab) => { setActiveTab(tab); setSelectedDay(null); };
   const handleEditExpense = (expense: Expense) => setEditingExpense(expense);
   const handleEditIncome = (income: Income) => setEditingIncome(income);
+  const handleEditLoan = (loan: Loan) => setEditingLoan(loan);
 
   /* ── Skeleton ──────────────────────────────────────────────────────── */
   if (isLoading) return (
@@ -402,7 +406,7 @@ export default function Expenses() {
               </p>
               <AddLoanDialog />
             </div>
-            <LoanList loans={allLoans} />
+            <LoanList loans={allLoans} onEdit={handleEditLoan} />
           </div>
         )}
       </div>
@@ -440,6 +444,13 @@ export default function Expenses() {
           />
         </>
       )}
+
+      {/* Edit loan dialog */}
+      <EditLoanDialog
+        loan={editingLoan}
+        open={!!editingLoan}
+        onOpenChange={(open) => !open && setEditingLoan(null)}
+      />
 
       {/* ── Mobile bottom nav ───────────────────────────────────────── */}
       <div
