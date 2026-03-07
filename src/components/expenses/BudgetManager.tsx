@@ -72,13 +72,20 @@ function ordinal(n: number) {
   return n + (s[(v - 20) % 10] || s[v] || s[0]);
 }
 
-const STORAGE_KEY = "budget_cycle_v1";
-function loadConfig(): CycleConfig {
-  try { const r = localStorage.getItem(STORAGE_KEY); if (r) return JSON.parse(r); } catch { }
+export const CYCLE_STORAGE_KEY = "budget_cycle_v1";
+export const CYCLE_CHANGE_EVENT = "cycleConfigChanged";
+
+export function loadCycleConfig(): CycleConfig {
+  try { const r = localStorage.getItem(CYCLE_STORAGE_KEY); if (r) return JSON.parse(r); } catch { }
   return { type: "calendar", payday: 1 };
 }
+
 function saveConfig(c: CycleConfig) {
-  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(c)); } catch { }
+  try {
+    localStorage.setItem(CYCLE_STORAGE_KEY, JSON.stringify(c));
+    // Notify same-tab listeners (e.g. Expenses.tsx) that the cycle changed
+    window.dispatchEvent(new CustomEvent(CYCLE_CHANGE_EVENT, { detail: c }));
+  } catch { }
 }
 
 /* ═══════════════════════════════════════════════════════════════════════
@@ -91,8 +98,8 @@ export function BudgetManager({ budgets, expenses, month, open: controlledOpen, 
   const [tab, setTab] = useState<"budget" | "cycle">("budget");
   const [category, setCategory] = useState("Overall");
   const [amount, setAmount] = useState("");
-  const [config, setConfig] = useState<CycleConfig>(loadConfig);
-  const [draft, setDraft] = useState<CycleConfig>(loadConfig);
+  const [config, setConfig] = useState<CycleConfig>(loadCycleConfig);
+  const [draft, setDraft] = useState<CycleConfig>(loadCycleConfig);
 
   const upsert = useUpsertBudget();
   const remove = useDeleteBudget();

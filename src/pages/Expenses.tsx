@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { format } from "date-fns";
+import { useState, useMemo, useEffect } from "react";
+import { format, startOfMonth, endOfMonth, addMonths, subMonths, setDate, isBefore, isAfter, parseISO } from "date-fns";
 import { AppLayout } from "@/components/AppLayout";
 import { MonthPicker } from "@/components/expenses/MonthPicker";
 import { AddExpenseDialog } from "@/components/expenses/AddExpenseDialog";
@@ -25,6 +25,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { LoanOverviewWidget } from "@/components/expenses/LoanOverviewWidget";
 import { List, CalendarDays, LayoutGrid, ChevronLeft, HandCoins } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { loadCycleConfig, CYCLE_CHANGE_EVENT } from "@/components/expenses/BudgetManager";
 
 type Tab = "transactions" | "calendar" | "overview" | "loans";
 
@@ -34,6 +35,28 @@ const TABS: { id: Tab; label: string; icon: React.ElementType }[] = [
   { id: "overview", label: "Overview", icon: LayoutGrid },
   { id: "loans", label: "Loans", icon: HandCoins },
 ];
+
+// ─── Cycle types ──────────────────────────────────────────────────────────────
+type CycleType = "calendar" | "payday";
+interface CycleConfig { type: CycleType; payday: number; }
+interface CycleRange { start: Date; end: Date; }
+
+function getCycleRange(config: CycleConfig, ref: Date): CycleRange {
+  if (config.type === "calendar") {
+    return { start: startOfMonth(ref), end: endOfMonth(ref) };
+  }
+  const day = config.payday;
+  let cycleStart: Date;
+  if (ref.getDate() >= day) {
+    cycleStart = setDate(new Date(ref.getFullYear(), ref.getMonth(), day), day);
+  } else {
+    const prev = subMonths(ref, 1);
+    cycleStart = setDate(new Date(prev.getFullYear(), prev.getMonth(), day), day);
+  }
+  const nextPayday = addMonths(cycleStart, 1);
+  const cycleEnd = new Date(nextPayday.getTime() - 86_400_000);
+  return { start: cycleStart, end: cycleEnd };
+}
 
 export default function Expenses() {
   const [month, setMonth] = useState(new Date());
@@ -45,6 +68,20 @@ export default function Expenses() {
   const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
   const [editingIncome, setEditingIncome] = useState<Income | null>(null);
   const [budgetDialogOpen, setBudgetDialogOpen] = useState(false);
+
+  // ── Reactive cycle config ─────────────────────────────────────────────────
+  // Initialise from localStorage, then re-read whenever BudgetManager fires
+  // the CYCLE_CHANGE_EVENT custom event (dispatched on every Apply).
+  const [cycleConfig, setCycleConfig] = useState<CycleConfig>(loadCycleConfig);
+
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent<CycleConfig>).detail;
+      setCycleConfig(detail ?? loadCycleConfig());
+    };
+    window.addEventListener(CYCLE_CHANGE_EVENT, handler);
+    return () => window.removeEventListener(CYCLE_CHANGE_EVENT, handler);
+  }, []);
 
   const { data: expenses, isLoading } = useExpenses(month);
   const { data: prevExpenses } = usePrevMonthExpenses(month);
@@ -60,6 +97,36 @@ export default function Expenses() {
   const allIncomes = incomes || [];
   const allPrevIncomes = prevIncomes || [];
   const allLoans = loans || [];
+
+  // ── Cycle-aware expense/income window for the Overview tab ───────────────
+  const cycleRange = useMemo(() => getCycleRange(cycleConfig, new Date()), [cycleConfig]);
+
+  const cycleExpenses = useMemo(() => {
+    if (cycleConfig.type === "calendar") return allExpenses;
+    // Merge current + previous month, dedupe by id, filter to cycle window
+    const seen = new Set<string>();
+    const combined: Expense[] = [];
+    for (const e of [...allExpenses, ...allPrev]) {
+      if (!seen.has(e.id)) { seen.add(e.id); combined.push(e); }
+    }
+    return combined.filter((e) => {
+      const d = parseISO(e.date);
+      return !isBefore(d, cycleRange.start) && !isAfter(d, cycleRange.end);
+    });
+  }, [cycleConfig.type, allExpenses, allPrev, cycleRange]);
+
+  const cycleIncomes = useMemo(() => {
+    if (cycleConfig.type === "calendar") return allIncomes;
+    const seen = new Set<string>();
+    const combined: Income[] = [];
+    for (const i of [...allIncomes, ...allPrevIncomes]) {
+      if (!seen.has(i.id)) { seen.add(i.id); combined.push(i); }
+    }
+    return combined.filter((i) => {
+      const d = parseISO(i.date);
+      return !isBefore(d, cycleRange.start) && !isAfter(d, cycleRange.end);
+    });
+  }, [cycleConfig.type, allIncomes, allPrevIncomes, cycleRange]);
 
   // Active (unpaid) loan counts for badge
   const activeLoans = allLoans.filter((l) => !l.is_paid).length;
@@ -106,7 +173,7 @@ export default function Expenses() {
           <div className="header-actions flex items-center gap-1.5 sm:gap-2 flex-nowrap min-w-0 max-w-full overflow-hidden">
             <BudgetManager
               budgets={allBudgets}
-              expenses={allExpenses}
+              expenses={cycleExpenses}
               month={month}
               open={budgetDialogOpen}
               onOpenChange={setBudgetDialogOpen}
@@ -144,13 +211,10 @@ export default function Expenses() {
             >
               <Icon className="h-3.5 w-3.5 shrink-0" />
               {label}
-              {/* Badge for active loans */}
               {id === "loans" && activeLoans > 0 && (
                 <span className={cn(
                   "text-[9px] font-black px-1.5 py-0.5 rounded-full tabular-nums",
-                  activeTab === "loans"
-                    ? "bg-muted text-foreground"
-                    : "bg-rose-500 text-white"
+                  activeTab === "loans" ? "bg-muted text-foreground" : "bg-rose-500 text-white"
                 )}>
                   {activeLoans}
                 </span>
@@ -164,16 +228,12 @@ export default function Expenses() {
         ══════════════════════════════════════════════════════════════ */}
         {activeTab === "transactions" && (
           <div className="space-y-4" style={{ animation: "expIn 0.28s ease both" }}>
-
-            {/* Inner type toggle */}
             <div className="flex gap-1 rounded-2xl bg-muted/50 border border-border/40 p-1">
               <button
                 onClick={() => setTxType("expenses")}
                 className={cn(
                   "flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-xl text-xs font-bold transition-all duration-200",
-                  txType === "expenses"
-                    ? "bg-card text-foreground shadow-sm"
-                    : "text-muted-foreground hover:text-foreground"
+                  txType === "expenses" ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
                 )}
               >
                 <span>💸</span>
@@ -284,20 +344,32 @@ export default function Expenses() {
         )}
 
         {/* ══════════════════════════════════════════════════════════════
-            TAB: OVERVIEW
+            TAB: OVERVIEW — fully cycle-aware
         ══════════════════════════════════════════════════════════════ */}
         {activeTab === "overview" && (
           <div className="space-y-4" style={{ animation: "expIn 0.28s ease both" }}>
+
+            {/* Payday cycle indicator */}
+            {cycleConfig.type === "payday" && (
+              <div className="flex items-center gap-2 rounded-xl border border-violet-500/20 bg-violet-500/[0.05] px-3.5 py-2.5">
+                <span className="text-[10px] font-black uppercase tracking-widest text-violet-500">
+                  💰 Payday Cycle
+                </span>
+                <span className="text-[10px] text-muted-foreground">
+                  {format(cycleRange.start, "MMM d")} – {format(cycleRange.end, "MMM d, yyyy")}
+                </span>
+              </div>
+            )}
+
             <ExpenseSummaryCards
-              expenses={allExpenses}
+              expenses={cycleExpenses}
               prevExpenses={allPrev}
               budgets={allBudgets}
-              incomes={allIncomes}
+              incomes={cycleIncomes}
               prevIncomes={allPrevIncomes}
               onBudgetClick={() => setBudgetDialogOpen(true)}
             />
 
-            {/* Loan snapshot — only shown when there are active loans */}
             {allLoans.some((l) => !l.is_paid) && (
               <LoanOverviewWidget
                 loans={allLoans}
@@ -308,13 +380,14 @@ export default function Expenses() {
             {allBudgets.filter((b) => b.category !== "Overall").length > 0 && (
               <BudgetManager
                 budgets={allBudgets}
-                expenses={allExpenses}
+                expenses={cycleExpenses}
                 month={month}
                 open={budgetDialogOpen}
                 onOpenChange={setBudgetDialogOpen}
               />
             )}
-            <ExpenseCharts expenses={allExpenses} month={month} />
+
+            <ExpenseCharts expenses={cycleExpenses} month={month} />
           </div>
         )}
 
@@ -334,7 +407,7 @@ export default function Expenses() {
         )}
       </div>
 
-      {/* DESKTOP FAB — only on transactions tab */}
+      {/* DESKTOP FAB */}
       {activeTab === "transactions" && !selectedDay && (
         <div
           className="hidden sm:block fixed bottom-8 right-8 z-50"
@@ -396,7 +469,6 @@ export default function Expenses() {
                     )}
                     strokeWidth={active ? 2.5 : 1.75}
                   />
-                  {/* Mobile badge */}
                   {id === "loans" && activeLoans > 0 && !active && (
                     <span className="absolute -top-1 -right-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-rose-500 text-[9px] font-black text-white">
                       {activeLoans > 9 ? "9+" : activeLoans}
@@ -415,7 +487,7 @@ export default function Expenses() {
         </nav>
       </div>
 
-      {/* Mobile expense FAB — transactions tab only */}
+      {/* Mobile expense FAB */}
       {activeTab === "transactions" && (
         <div
           className="sm:hidden fixed bottom-16 right-2 z-50"
