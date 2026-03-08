@@ -67,7 +67,7 @@ export function MonthCalendarView({ expenses, incomes, month, onMonthChange, onD
   return (
     <div className="rounded-2xl border border-border/60 bg-card shadow-sm overflow-hidden">
 
-      {/* ── Header with MonthPicker ── */}
+      {/* ── Header ── */}
       <div className="flex items-center justify-between px-5 py-4 border-b border-border/50">
         <div>
           <p className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground">
@@ -79,7 +79,6 @@ export function MonthCalendarView({ expenses, incomes, month, onMonthChange, onD
         </div>
 
         <div className="flex items-center gap-3">
-          {/* Heat map legend */}
           <div className="hidden sm:flex items-center gap-1.5">
             <span className="text-[10px] text-muted-foreground">Low</span>
             {[0.15, 0.35, 0.55, 0.75, 1].map((op, i) => (
@@ -91,8 +90,6 @@ export function MonthCalendarView({ expenses, incomes, month, onMonthChange, onD
             ))}
             <span className="text-[10px] text-muted-foreground">High</span>
           </div>
-
-          {/* Month picker */}
           <MonthPicker month={month} onChange={onMonthChange} />
         </div>
       </div>
@@ -143,46 +140,60 @@ export function MonthCalendarView({ expenses, incomes, month, onMonthChange, onD
                   animationDelay: `${(leadingBlanks + idx) * 12}ms`,
                   ...(data && !today
                     ? {
-                      backgroundColor: `${topColor}${Math.round(intensity * 28 + 8)
-                        .toString(16)
-                        .padStart(2, "0")}`,
-                    }
+                        backgroundColor: `${topColor}${Math.round(intensity * 28 + 8)
+                          .toString(16)
+                          .padStart(2, "0")}`,
+                      }
                     : {}),
                 }}
                 className={cn(
                   "group relative flex flex-col items-center rounded-xl transition-all duration-150",
                   "min-h-[52px] sm:min-h-[60px] pt-2 pb-1 px-0.5",
                   !future && !today && "hover:ring-1 hover:ring-border",
-                  today && "bg-foreground text-background ring-0",
                   future && "opacity-30 cursor-default",
                   !data && !future && !today && "hover:bg-muted/50",
                 )}
               >
-                <span
-                  className={cn(
-                    "text-[11px] tabular-nums font-bold leading-none",
-                    today
-                      ? "text-background"
-                      : isWeekend && !data
-                        ? "text-muted-foreground/50"
-                        : "text-foreground"
+                {/* ── Income: green line pinned to the very top of the cell ── */}
+                {incomeAmount && !future && (
+                  <div
+                    className="absolute top-0 left-1 right-1 h-[3px] rounded-full"
+                    style={{ backgroundColor: "hsl(142 71% 45%)" }}
+                    title={`Income: ${formatAmount(incomeAmount)}`}
+                  />
+                )}
+
+                {/* ── Today: red circle behind the date number ── */}
+                <span className="relative flex items-center justify-center w-6 h-6">
+                  {today && (
+                    <span className="absolute inset-0 rounded-full bg-red-500" />
                   )}
-                >
-                  {format(day, "d")}
+                  <span
+                    className={cn(
+                      "relative z-10 text-[11px] tabular-nums font-bold leading-none",
+                      today
+                        ? "text-white"
+                        : isWeekend && !data
+                          ? "text-muted-foreground/50"
+                          : "text-foreground"
+                    )}
+                  >
+                    {format(day, "d")}
+                  </span>
                 </span>
 
                 {data ? (
                   <>
                     <span
                       className={cn(
-                        "text-[9px] sm:text-[10px] font-black tabular-nums mt-1 leading-none",
-                        today ? "text-background/80" : "text-foreground/80"
+                        "text-[9px] sm:text-[10px] font-black tabular-nums mt-0.5 leading-none",
+                        today ? "text-red-500" : "text-foreground/80"
                       )}
                     >
                       {formatAmount(data.total)}
                     </span>
 
-                    {/* Stacked category color bar */}
+                    {/* Stacked expense category bar — bottom */}
                     <div className="flex w-full mt-1.5 rounded-full overflow-hidden h-[3px] gap-[1px]">
                       {sortedCats.map(([cat, val]) => {
                         const pct = (val / totalForBar) * 100;
@@ -192,7 +203,7 @@ export function MonthCalendarView({ expenses, incomes, month, onMonthChange, onD
                             className="h-full rounded-full"
                             style={{
                               width: `${pct}%`,
-                              backgroundColor: today ? "rgba(255,255,255,0.5)" : resolveColor(cat),
+                              backgroundColor: resolveColor(cat),
                             }}
                           />
                         );
@@ -200,26 +211,23 @@ export function MonthCalendarView({ expenses, incomes, month, onMonthChange, onD
                     </div>
                   </>
                 ) : !future ? (
-                  <div className={cn("mt-1.5 h-[3px] w-4 rounded-full", today ? "bg-background/20" : "bg-border/40")} />
+                  <div className="mt-1.5 h-[3px] w-4 rounded-full bg-border/40" />
                 ) : null}
-
-                {/* Income indicator - small green dot in top-right corner */}
-                {incomeAmount && !future && (
-                  <div 
-                    className={cn(
-                      "absolute top-1 right-1 h-1.5 w-1.5 rounded-full",
-                      today ? "bg-background/60" : "bg-emerald-500"
-                    )}
-                    title={`Income: ${formatAmount(incomeAmount)}`}
-                  />
-                )}
 
                 {/* Hover tooltip */}
                 {(data || incomeAmount) && !future && (
-                  <div className="pointer-events-none absolute -top-9 left-1/2 -translate-x-1/2 z-10 opacity-0 group-hover:opacity-100 transition-opacity duration-100">
+                  <div className="pointer-events-none absolute -top-10 left-1/2 -translate-x-1/2 z-20 opacity-0 group-hover:opacity-100 transition-opacity duration-100">
                     <div className="whitespace-nowrap rounded-lg border border-border/60 bg-popover px-2.5 py-1.5 shadow-lg">
-                      {data && <p className="text-[11px] font-bold text-foreground">{formatAmount(data.total)}</p>}
-                      {incomeAmount && <p className="text-[11px] font-bold text-emerald-600">+{formatAmount(incomeAmount)}</p>}
+                      {incomeAmount && (
+                        <p className="text-[11px] font-semibold" style={{ color: "hsl(142 71% 45%)" }}>
+                          ＋{formatAmount(incomeAmount)}
+                        </p>
+                      )}
+                      {data && (
+                        <p className="text-[11px] font-bold text-foreground">
+                          {formatAmount(data.total)}
+                        </p>
+                      )}
                       <p className="text-[10px] text-muted-foreground">{format(day, "MMM d")}</p>
                     </div>
                     <div className="mx-auto h-1.5 w-1.5 -mt-px rotate-45 border-b border-r border-border/60 bg-popover" />
@@ -228,6 +236,18 @@ export function MonthCalendarView({ expenses, incomes, month, onMonthChange, onD
               </button>
             );
           })}
+        </div>
+      </div>
+
+      {/* ── Legend ── */}
+      <div className="flex items-center gap-4 px-5 py-2.5 border-t border-border/40">
+        <div className="flex items-center gap-1.5">
+          <div className="h-[3px] w-4 rounded-full" style={{ backgroundColor: "hsl(142 71% 45%)" }} />
+          <span className="text-[10px] text-muted-foreground">Income</span>
+        </div>
+        <div className="flex items-center gap-1.5">
+          <div className="h-[3px] w-4 rounded-full bg-primary/60" />
+          <span className="text-[10px] text-muted-foreground">Expense</span>
         </div>
       </div>
 
