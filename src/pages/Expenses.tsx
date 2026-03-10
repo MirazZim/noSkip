@@ -25,7 +25,7 @@ import { useLoans } from "@/hooks/useLoans";
 import { IncomeList } from "@/components/expenses/IncomeList";
 import { Skeleton } from "@/components/ui/skeleton";
 import { LoanOverviewWidget } from "@/components/expenses/LoanOverviewWidget";
-import { List, CalendarDays, LayoutGrid, ChevronLeft, HandCoins } from "lucide-react";
+import { List, CalendarDays, LayoutGrid, ChevronLeft, ChevronRight, HandCoins } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { loadCycleConfig, CYCLE_CHANGE_EVENT } from "@/components/expenses/BudgetManager";
 
@@ -43,25 +43,42 @@ type CycleType = "calendar" | "payday";
 interface CycleConfig { type: CycleType; payday: number; }
 interface CycleRange { start: Date; end: Date; }
 
-function getCycleRange(config: CycleConfig, ref: Date): CycleRange {
+/**
+ * Returns the cycle window for a given config and integer offset.
+ * offset = 0  → current cycle
+ * offset = -1 → one cycle back
+ * offset = -2 → two cycles back, etc.
+ *
+ * Calendar mode: each offset unit = one calendar month.
+ * Payday mode:   each offset unit = one pay period (payday-to-payday).
+ */
+function getCycleRangeForOffset(config: CycleConfig, offset: number): CycleRange {
   if (config.type === "calendar") {
+    const ref = addMonths(new Date(), offset);
     return { start: startOfMonth(ref), end: endOfMonth(ref) };
   }
+
+  // Payday mode — anchor current cycle first, then apply offset
   const day = config.payday;
-  let cycleStart: Date;
-  if (ref.getDate() >= day) {
-    cycleStart = setDate(new Date(ref.getFullYear(), ref.getMonth(), day), day);
+  const today = new Date();
+
+  let currentStart: Date;
+  if (today.getDate() >= day) {
+    currentStart = setDate(new Date(today.getFullYear(), today.getMonth(), day), day);
   } else {
-    const prev = subMonths(ref, 1);
-    cycleStart = setDate(new Date(prev.getFullYear(), prev.getMonth(), day), day);
+    const prev = subMonths(today, 1);
+    currentStart = setDate(new Date(prev.getFullYear(), prev.getMonth(), day), day);
   }
-  const nextPayday = addMonths(cycleStart, 1);
-  const cycleEnd = new Date(nextPayday.getTime() - 86_400_000);
-  return { start: cycleStart, end: cycleEnd };
+
+  const targetStart = addMonths(currentStart, offset);
+  // End is one day before the *next* payday after targetStart
+  const targetEnd = new Date(addMonths(targetStart, 1).getTime() - 86_400_000);
+
+  return { start: targetStart, end: targetEnd };
 }
 
 export default function Expenses() {
-  const [month, setMonth] = useState(new Date());
+  const [month, setMonth] = useState(new Date());           // drives Calendar tab
   const [activeTab, setActiveTab] = useState<Tab>("transactions");
   const [addDialogDate, setAddDialogDate] = useState<string | undefined>();
   const [addIncomeDialogDate, setAddIncomeDialogDate] = useState<string | undefined>();
@@ -72,9 +89,10 @@ export default function Expenses() {
   const [editingLoan, setEditingLoan] = useState<Loan | null>(null);
   const [budgetDialogOpen, setBudgetDialogOpen] = useState(false);
 
+  // ── Cycle navigation offset (0 = current, -1 = previous, etc.) ───────────
+  const [cycleOffset, setCycleOffset] = useState(0);
+
   // ── Reactive cycle config ─────────────────────────────────────────────────
-  // Initialise from localStorage, then re-read whenever BudgetManager fires
-  // the CYCLE_CHANGE_EVENT custom event (dispatched on every Apply).
   const [cycleConfig, setCycleConfig] = useState<CycleConfig>(loadCycleConfig);
 
   useEffect(() => {
@@ -86,13 +104,18 @@ export default function Expenses() {
     return () => window.removeEventListener(CYCLE_CHANGE_EVENT, handler);
   }, []);
 
+  // Reset offset to current whenever the cycle type changes
+  useEffect(() => {
+    setCycleOffset(0);
+  }, [cycleConfig.type]);
+
+  // ── Calendar-tab data hooks (always current month) ────────────────────────
   const { data: expenses, isLoading } = useExpenses(month);
   const { data: prevExpenses } = usePrevMonthExpenses(month);
   const { data: budgets } = useBudgets(month);
   const { data: incomes } = useIncomes(month);
   const { data: prevIncomes } = usePrevMonthIncomes(month);
   const { data: loans } = useLoans();
-  const [txType, setTxType] = useState<"expenses" | "income">("expenses");
 
   const allExpenses = expenses || [];
   const allPrev = prevExpenses || [];
@@ -101,49 +124,67 @@ export default function Expenses() {
   const allPrevIncomes = prevIncomes || [];
   const allLoans = loans || [];
 
-  // ── Cycle-aware expense/income window for the Overview tab ───────────────
-  const cycleRange = useMemo(() => getCycleRange(cycleConfig, new Date()), [cycleConfig]);
+  // ── Cycle range for the selected offset ───────────────────────────────────
+  const cycleRange = useMemo(
+    () => getCycleRangeForOffset(cycleConfig, cycleOffset),
+    [cycleConfig, cycleOffset]
+  );
 
+  /**
+   * A payday cycle (e.g. Feb 10 – Mar 9) spans TWO calendar months.
+   * We must fetch both independently — React Query deduplicates when keys match,
+   * so there is zero extra cost when the cycle happens to fit one month.
+   */
+  const cycleMonth1 = useMemo(() => startOfMonth(cycleRange.start), [cycleRange]);
+  const cycleMonth2 = useMemo(() => startOfMonth(cycleRange.end), [cycleRange]);
+
+  const { data: cycleM1Expenses } = useExpenses(cycleMonth1);
+  const { data: cycleM2Expenses } = useExpenses(cycleMonth2);
+  const { data: cycleM1Incomes }  = useIncomes(cycleMonth1);
+  const { data: cycleM2Incomes }  = useIncomes(cycleMonth2);
+
+  // Merge both month buckets, deduplicate by id, then window to cycle dates
   const cycleExpenses = useMemo(() => {
-    if (cycleConfig.type === "calendar") return allExpenses;
-    // Merge current + previous month, dedupe by id, filter to cycle window
     const seen = new Set<string>();
-    const combined: Expense[] = [];
-    for (const e of [...allExpenses, ...allPrev]) {
-      if (!seen.has(e.id)) { seen.add(e.id); combined.push(e); }
-    }
-    return combined.filter((e) => {
+    return [...(cycleM1Expenses || []), ...(cycleM2Expenses || [])].filter((e) => {
+      if (seen.has(e.id)) return false;
+      seen.add(e.id);
       const d = parseISO(e.date);
       return !isBefore(d, cycleRange.start) && !isAfter(d, cycleRange.end);
     });
-  }, [cycleConfig.type, allExpenses, allPrev, cycleRange]);
+  }, [cycleM1Expenses, cycleM2Expenses, cycleRange]);
 
   const cycleIncomes = useMemo(() => {
-    if (cycleConfig.type === "calendar") return allIncomes;
     const seen = new Set<string>();
-    const combined: Income[] = [];
-    for (const i of [...allIncomes, ...allPrevIncomes]) {
-      if (!seen.has(i.id)) { seen.add(i.id); combined.push(i); }
-    }
-    return combined.filter((i) => {
+    return [...(cycleM1Incomes || []), ...(cycleM2Incomes || [])].filter((i) => {
+      if (seen.has(i.id)) return false;
+      seen.add(i.id);
       const d = parseISO(i.date);
       return !isBefore(d, cycleRange.start) && !isAfter(d, cycleRange.end);
     });
-  }, [cycleConfig.type, allIncomes, allPrevIncomes, cycleRange]);
+  }, [cycleM1Incomes, cycleM2Incomes, cycleRange]);
 
-  // Active (unpaid) loan counts for badge
+  // ── Derived UI helpers ────────────────────────────────────────────────────
+  const isCurrentCycle = cycleOffset === 0;
   const activeLoans = allLoans.filter((l) => !l.is_paid).length;
 
   const txExpenses = allExpenses.filter((e) => e.date === txDate);
-  const txIncomes = allIncomes.filter((i) => i.date === txDate);
+  const txIncomes  = allIncomes.filter((i) => i.date === txDate);
+  const [txType, setTxType] = useState<"expenses" | "income">("expenses");
 
-  const handleDayClick = (date: string) => setSelectedDay(date);
-  const handleAddFromDay = (date: string) => { setAddDialogDate(date); };
+  // Cycle label for the navigator
+  const cycleLabel =
+    cycleConfig.type === "payday"
+      ? `${format(cycleRange.start, "MMM d")} – ${format(cycleRange.end, "MMM d, yyyy")}`
+      : format(cycleRange.start, "MMMM yyyy");
+
+  const handleDayClick       = (date: string) => setSelectedDay(date);
+  const handleAddFromDay     = (date: string) => { setAddDialogDate(date); };
   const handleAddIncomeFromDay = (date: string) => { setAddIncomeDialogDate(date); };
-  const switchTab = (tab: Tab) => { setActiveTab(tab); setSelectedDay(null); };
-  const handleEditExpense = (expense: Expense) => setEditingExpense(expense);
-  const handleEditIncome = (income: Income) => setEditingIncome(income);
-  const handleEditLoan = (loan: Loan) => setEditingLoan(loan);
+  const switchTab            = (tab: Tab) => { setActiveTab(tab); setSelectedDay(null); };
+  const handleEditExpense    = (expense: Expense) => setEditingExpense(expense);
+  const handleEditIncome     = (income: Income)   => setEditingIncome(income);
+  const handleEditLoan       = (loan: Loan)        => setEditingLoan(loan);
 
   /* ── Skeleton ──────────────────────────────────────────────────────── */
   if (isLoading) return (
@@ -348,23 +389,62 @@ export default function Expenses() {
         )}
 
         {/* ══════════════════════════════════════════════════════════════
-            TAB: OVERVIEW — fully cycle-aware
+            TAB: OVERVIEW — cycle-aware with full history navigation
         ══════════════════════════════════════════════════════════════ */}
         {activeTab === "overview" && (
           <div className="space-y-4" style={{ animation: "expIn 0.28s ease both" }}>
 
-            {/* Payday cycle indicator */}
-            {cycleConfig.type === "payday" && (
-              <div className="flex items-center gap-2 rounded-xl border border-violet-500/20 bg-violet-500/[0.05] px-3.5 py-2.5">
-                <span className="text-[10px] font-black uppercase tracking-widest text-violet-500">
-                  💰 Payday Cycle
-                </span>
-                <span className="text-[10px] text-muted-foreground">
-                  {format(cycleRange.start, "MMM d")} – {format(cycleRange.end, "MMM d, yyyy")}
-                </span>
-              </div>
-            )}
+            {/* ── Cycle Navigator ─────────────────────────────────────── */}
+            <div className="flex items-center gap-2 rounded-2xl border border-border/60 bg-card px-2 py-2 shadow-sm">
 
+              {/* Previous cycle */}
+              <button
+                onClick={() => setCycleOffset((o) => o - 1)}
+                className="flex items-center justify-center h-8 w-8 shrink-0 rounded-xl hover:bg-muted transition-colors active:scale-90"
+                aria-label="Previous cycle"
+              >
+                <ChevronLeft className="h-4 w-4 text-muted-foreground" />
+              </button>
+
+              {/* Label area */}
+              <div className="flex-1 flex flex-col items-center gap-1 min-w-0">
+                <div className="flex items-center gap-1.5 flex-wrap justify-center">
+                  {cycleConfig.type === "payday" && (
+                    <span className="text-[9px] font-black uppercase tracking-wider text-violet-500 bg-violet-500/10 px-1.5 py-0.5 rounded-full shrink-0">
+                      💰 Payday
+                    </span>
+                  )}
+                  <span className="text-sm font-bold text-foreground truncate">{cycleLabel}</span>
+                  {!isCurrentCycle && (
+                    <span className="text-[9px] font-bold text-amber-500 bg-amber-500/10 px-1.5 py-0.5 rounded-full uppercase tracking-wider shrink-0">
+                      History
+                    </span>
+                  )}
+                </div>
+
+                {/* Jump back to current when viewing history */}
+                {!isCurrentCycle && (
+                  <button
+                    onClick={() => setCycleOffset(0)}
+                    className="text-[10px] font-bold text-primary hover:underline transition-all leading-none"
+                  >
+                    ↩ Back to current
+                  </button>
+                )}
+              </div>
+
+              {/* Next cycle — disabled when already on current */}
+              <button
+                onClick={() => setCycleOffset((o) => o + 1)}
+                disabled={isCurrentCycle}
+                className="flex items-center justify-center h-8 w-8 shrink-0 rounded-xl hover:bg-muted transition-colors active:scale-90 disabled:opacity-25 disabled:pointer-events-none"
+                aria-label="Next cycle"
+              >
+                <ChevronRight className="h-4 w-4 text-muted-foreground" />
+              </button>
+            </div>
+
+            {/* ── Summary cards, charts, etc. ─────────────────────────── */}
             <ExpenseSummaryCards
               expenses={cycleExpenses}
               prevExpenses={allPrev}
@@ -391,7 +471,8 @@ export default function Expenses() {
               />
             )}
 
-            <ExpenseCharts expenses={cycleExpenses} month={month} />
+            {/* Pass cycleMonth1 so the daily chart axis aligns with the cycle's start month */}
+            <ExpenseCharts expenses={cycleExpenses} month={cycleMonth1} />
           </div>
         )}
 
