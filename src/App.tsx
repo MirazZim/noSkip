@@ -15,6 +15,9 @@ import { AdminAuthProvider } from "@/contexts/AdminAuthContext";
 import { AdminProtectedRoute } from "@/components/AdminProtectedRoute";
 import AdminLogin from "./pages/admin/AdminLogin";
 import AdminDashboard from "./pages/admin/AdminDashboard";
+import AdminUsers from "./pages/admin/users/AdminUsers";
+import AdminAuditLogs from "./pages/admin/audit/AdminAuditLogs";
+import AdminFlags from "./pages/admin/flags/AdminFlags";
 
 const queryClient = new QueryClient();
 
@@ -54,19 +57,28 @@ const App = () => (
           <AdminAuthProvider>
             <AuthProvider>
               <Routes>
-                <Route path="/auth" element={<PublicRoute><Auth /></PublicRoute>} />
-                <Route path="/" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
+                {/* User routes */}
+                <Route path="/auth"     element={<PublicRoute><Auth /></PublicRoute>} />
+                <Route path="/"        element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
                 <Route path="/expenses" element={<ProtectedRoute><Expenses /></ProtectedRoute>} />
-                <Route path="/habits" element={<ProtectedRoute><Habits /></ProtectedRoute>} />
+                <Route path="/habits"   element={<ProtectedRoute><Habits /></ProtectedRoute>} />
                 <Route path="/settings" element={<ProtectedRoute><SettingsPage /></ProtectedRoute>} />
 
-                {/* admin routes — completely separate auth */}
+                {/* Admin routes — completely separate auth */}
                 <Route path="/admin/login" element={<AdminLogin />} />
                 <Route path="/admin" element={
-                  <AdminProtectedRoute>
-                    <AdminDashboard />
-                  </AdminProtectedRoute>
+                  <AdminProtectedRoute><AdminDashboard /></AdminProtectedRoute>
                 } />
+                <Route path="/admin/users" element={
+                  <AdminProtectedRoute><AdminUsers /></AdminProtectedRoute>
+                } />
+                <Route path="/admin/audit" element={
+                  <AdminProtectedRoute><AdminAuditLogs /></AdminProtectedRoute>
+                } />
+                <Route path="/admin/flags" element={
+                  <AdminProtectedRoute><AdminFlags /></AdminProtectedRoute>
+                } />
+
                 <Route path="*" element={<NotFound />} />
               </Routes>
             </AuthProvider>

@@ -1,3 +1,4 @@
+import { Link } from "react-router-dom";
 import { useAdminAuth } from "@/contexts/AdminAuthContext";
 import { Shield, LogOut, Users, ScrollText, Flag, Activity } from "lucide-react";
 
@@ -51,24 +52,28 @@ export default function AdminDashboard() {
                         icon={Users}
                         title="Users"
                         desc="View accounts and profiles"
+                        href="/admin/users"
                         available
                     />
                     <NavCard
                         icon={ScrollText}
                         title="Audit Logs"
                         desc="Immutable activity log"
+                        href="/admin/audit"
                         available
                     />
                     <NavCard
                         icon={Activity}
                         title="System"
                         desc="Health and stats"
+                        href="/admin/system"
                         available={isSuperAdmin}
                     />
                     <NavCard
                         icon={Flag}
                         title="Feature Flags"
                         desc="Control feature rollout"
+                        href="/admin/flags"
                         available={isSuperAdmin}
                     />
                 </div>
@@ -84,19 +89,20 @@ export default function AdminDashboard() {
 }
 
 function NavCard({
-    icon: Icon, title, desc, available,
+    icon: Icon, title, desc, href, available,
 }: {
     icon: React.ElementType;
     title: string;
     desc: string;
+    href: string;
     available: boolean;
 }) {
-    return (
+    const inner = (
         <div className={[
             "rounded-2xl border border-border bg-card p-5 transition-colors",
             available
                 ? "cursor-pointer hover:border-primary/50 hover:bg-card/80"
-                : "opacity-40 cursor-not-allowed",
+                : "opacity-40 cursor-not-allowed pointer-events-none",
         ].join(" ")}>
             <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-xl bg-muted">
                 <Icon className="h-5 w-5 text-muted-foreground" />
@@ -107,4 +113,7 @@ function NavCard({
             <p className="mt-1 text-xs text-muted-foreground">{desc}</p>
         </div>
     );
+
+    if (!available) return inner;
+    return <Link to={href}>{inner}</Link>;
 }
