@@ -11,7 +11,9 @@ interface Props {
   budgets: Budget[];
   incomes: Income[];
   prevIncomes: Income[];
+  savedThisCycle: number;
   onBudgetClick?: () => void;
+  onSavingsClick?: () => void; // opens the SavingsTracker modal
 }
 
 interface CardProps {
@@ -34,7 +36,6 @@ const ACCENT_MAP = {
 
 function SummaryCard({ label, value, sub, icon, accent, onClick }: CardProps) {
   const a = ACCENT_MAP[accent];
-  const isClickable = !!onClick;
   return (
     <div
       onClick={onClick}
@@ -42,7 +43,9 @@ function SummaryCard({ label, value, sub, icon, accent, onClick }: CardProps) {
         "relative flex flex-col gap-3 rounded-2xl bg-card border border-border/60 p-4 shadow-sm",
         "ring-1", a.ring,
         "transition-all duration-200",
-        isClickable ? "cursor-pointer hover:shadow-md hover:scale-[1.02] active:scale-[0.98]" : "hover:shadow-md"
+        onClick
+          ? "cursor-pointer hover:shadow-md hover:scale-[1.02] active:scale-[0.98]"
+          : "hover:shadow-md"
       )}
     >
       <div className="flex items-start justify-between">
@@ -66,33 +69,32 @@ function SummaryCard({ label, value, sub, icon, accent, onClick }: CardProps) {
   );
 }
 
-export function ExpenseSummaryCards({ expenses, prevExpenses, budgets, incomes, prevIncomes, onBudgetClick }: Props) {
+export function ExpenseSummaryCards({
+  expenses,
+  prevExpenses,
+  budgets,
+  incomes,
+  prevIncomes,
+  savedThisCycle,
+  onBudgetClick,
+  onSavingsClick,
+}: Props) {
   const { formatAmount } = useCurrency();
 
-  // ── Expenses ──────────────────────────────────────────────────────────────
   const totalSpend = expenses.reduce((s, e) => s + e.amount, 0);
   const prevSpend = prevExpenses.reduce((s, e) => s + e.amount, 0);
-  const spendChange = prevSpend
-    ? Math.round(((totalSpend - prevSpend) / prevSpend) * 100)
-    : 0;
+  const spendChange = prevSpend ? Math.round(((totalSpend - prevSpend) / prevSpend) * 100) : 0;
 
-  // ── Incomes ───────────────────────────────────────────────────────────────
   const totalIncome = incomes.reduce((s, i) => s + i.amount, 0);
   const prevIncome = prevIncomes.reduce((s, i) => s + i.amount, 0);
-  const incomeChange = prevIncome
-    ? Math.round(((totalIncome - prevIncome) / prevIncome) * 100)
-    : 0;
+  const incomeChange = prevIncome ? Math.round(((totalIncome - prevIncome) / prevIncome) * 100) : 0;
 
-  // ── Net balance ───────────────────────────────────────────────────────────
-  const netBalance = totalIncome - totalSpend;
+  // Net balance: Income − Expenses − Savings (savings is allocated money, not free cash)
+  const netBalance = totalIncome - totalSpend - savedThisCycle;
   const isPositive = netBalance >= 0;
 
-  // ── Savings rate ──────────────────────────────────────────────────────────
-  const savingsRate = totalIncome > 0
-    ? Math.round(((totalIncome - totalSpend) / totalIncome) * 100)
-    : null;
+  const savingsRate = totalIncome > 0 ? Math.round((savedThisCycle / totalIncome) * 100) : null;
 
-  // ── Weekly spend ──────────────────────────────────────────────────────────
   const now = new Date();
   const weekStart = startOfWeek(now, { weekStartsOn: 1 });
   const weekEnd = endOfWeek(now, { weekStartsOn: 1 });
@@ -100,18 +102,14 @@ export function ExpenseSummaryCards({ expenses, prevExpenses, budgets, incomes, 
     .filter((e) => isWithinInterval(parseISO(e.date), { start: weekStart, end: weekEnd }))
     .reduce((s, e) => s + e.amount, 0);
 
-  // ── Budget ────────────────────────────────────────────────────────────────
   const overallBudget = budgets.find((b) => b.category === "Overall");
-  const budgetProgress = overallBudget
-    ? Math.min((totalSpend / overallBudget.amount) * 100, 100)
-    : null;
+  const budgetProgress = overallBudget ? Math.min((totalSpend / overallBudget.amount) * 100, 100) : null;
   const budgetBarColor =
     budgetProgress === null ? "" :
       budgetProgress >= 90 ? "bg-rose-500" :
         budgetProgress >= 70 ? "bg-amber-500" :
           "bg-emerald-500";
 
-  // ── Peak day ──────────────────────────────────────────────────────────────
   const dayTotals: Record<string, number> = {};
   expenses.forEach((e) => { dayTotals[e.date] = (dayTotals[e.date] || 0) + e.amount; });
   const highestDay = Object.entries(dayTotals).sort((a, b) => b[1] - a[1])[0];
@@ -119,10 +117,9 @@ export function ExpenseSummaryCards({ expenses, prevExpenses, budgets, incomes, 
   return (
     <div className="space-y-3 sm:space-y-4">
 
-      {/* ── Row 1: The money picture — Income / Spend / Net ─────────── */}
+      {/* ── Row 1: Income / Spend / Net Balance ── */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
 
-        {/* Total Income */}
         <SummaryCard
           label="Total Income"
           accent="emerald"
@@ -130,17 +127,12 @@ export function ExpenseSummaryCards({ expenses, prevExpenses, budgets, incomes, 
           value={formatAmount(totalIncome)}
           sub={
             <span className="flex items-center gap-1">
-              {incomeChange > 0 ? (
-                <TrendingUp className="h-3 w-3 text-emerald-500" />
-              ) : incomeChange < 0 ? (
-                <TrendingDown className="h-3 w-3 text-rose-500" />
-              ) : (
-                <Minus className="h-3 w-3" />
-              )}
+              {incomeChange > 0 ? <TrendingUp className="h-3 w-3 text-emerald-500" /> :
+                incomeChange < 0 ? <TrendingDown className="h-3 w-3 text-rose-500" /> :
+                  <Minus className="h-3 w-3" />}
               <span className={cn(
                 incomeChange > 0 ? "text-emerald-500" :
-                  incomeChange < 0 ? "text-rose-500" :
-                    "text-muted-foreground"
+                  incomeChange < 0 ? "text-rose-500" : "text-muted-foreground"
               )}>
                 {Math.abs(incomeChange)}% vs last month
               </span>
@@ -148,7 +140,6 @@ export function ExpenseSummaryCards({ expenses, prevExpenses, budgets, incomes, 
           }
         />
 
-        {/* Total Spend */}
         <SummaryCard
           label="Total Spend"
           accent="rose"
@@ -156,17 +147,12 @@ export function ExpenseSummaryCards({ expenses, prevExpenses, budgets, incomes, 
           value={formatAmount(totalSpend)}
           sub={
             <span className="flex items-center gap-1">
-              {spendChange > 0 ? (
-                <TrendingUp className="h-3 w-3 text-rose-500" />
-              ) : spendChange < 0 ? (
-                <TrendingDown className="h-3 w-3 text-emerald-500" />
-              ) : (
-                <Minus className="h-3 w-3" />
-              )}
+              {spendChange > 0 ? <TrendingUp className="h-3 w-3 text-rose-500" /> :
+                spendChange < 0 ? <TrendingDown className="h-3 w-3 text-emerald-500" /> :
+                  <Minus className="h-3 w-3" />}
               <span className={cn(
                 spendChange > 0 ? "text-rose-500" :
-                  spendChange < 0 ? "text-emerald-500" :
-                    "text-muted-foreground"
+                  spendChange < 0 ? "text-emerald-500" : "text-muted-foreground"
               )}>
                 {Math.abs(spendChange)}% vs last month
               </span>
@@ -174,7 +160,6 @@ export function ExpenseSummaryCards({ expenses, prevExpenses, budgets, incomes, 
           }
         />
 
-        {/* Net Balance */}
         <SummaryCard
           label="Net Balance"
           accent={isPositive ? "sky" : "amber"}
@@ -187,43 +172,37 @@ export function ExpenseSummaryCards({ expenses, prevExpenses, budgets, incomes, 
           sub={
             totalIncome === 0
               ? "Log income to see balance"
-              : isPositive
-                ? "You're in the green this month"
-                : "Spending exceeds income"
+              : savedThisCycle > 0
+                ? `After spend & ${formatAmount(savedThisCycle)} saved`
+                : isPositive
+                  ? "You're in the green this cycle"
+                  : "Spending exceeds income"
           }
         />
       </div>
 
-      {/* ── Row 2: Savings Rate + Weekly + Peak Day + Budget ─────────── */}
+      {/* ── Row 2: Savings / Weekly / Peak Day / Budget ── */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
 
-        {/* Savings Rate */}
+        {/* Savings card — clickable, opens SavingsTracker modal */}
         <SummaryCard
-          label="Savings Rate"
+          label="Savings For This Cycle/Month"
           accent="indigo"
           icon={<PiggyBank className="h-4 w-4" />}
+          onClick={onSavingsClick}
           value={
-            savingsRate !== null ? (
-              <span className={cn(
-                savingsRate >= 20 ? "text-emerald-500" :
-                  savingsRate >= 0 ? "text-amber-500" :
-                    "text-rose-500"
-              )}>
-                {savingsRate}%
-              </span>
-            ) : (
-              <span className="text-base font-medium text-muted-foreground">—</span>
-            )
+            savedThisCycle > 0
+              ? <span className="text-indigo-500">{formatAmount(savedThisCycle)}</span>
+              : <span className="text-base font-medium text-muted-foreground">Not set</span>
           }
           sub={
-            savingsRate === null ? "Add income to calculate" :
-              savingsRate >= 20 ? "Great savings habit 🎉" :
-                savingsRate >= 0 ? "Try to reach 20%" :
-                  "Spending more than earning"
+            savingsRate === null ? "Tap to log savings" :
+              savingsRate >= 20 ? `${savingsRate}% of income 🎉` :
+                savingsRate > 0 ? `${savingsRate}% — aim for 20%` :
+                  "Tap to log savings"
           }
         />
 
-        {/* This Week */}
         <SummaryCard
           label="This Week"
           accent="violet"
@@ -232,7 +211,6 @@ export function ExpenseSummaryCards({ expenses, prevExpenses, budgets, incomes, 
           sub={`${expenses.length} transaction${expenses.length !== 1 ? "s" : ""}`}
         />
 
-        {/* Peak Day */}
         <SummaryCard
           label="Peak Day"
           accent="amber"
@@ -241,7 +219,6 @@ export function ExpenseSummaryCards({ expenses, prevExpenses, budgets, incomes, 
           sub={highestDay ? format(parseISO(highestDay[0]), "MMM d") : "No data yet"}
         />
 
-        {/* Budget */}
         <SummaryCard
           label="Budget"
           accent="rose"
@@ -266,13 +243,11 @@ export function ExpenseSummaryCards({ expenses, prevExpenses, budgets, incomes, 
                   <span
                     className={cn("h-full rounded-full block transition-all duration-500", budgetBarColor)}
                     style={{ width: `${budgetProgress}%` }}
-                    />
+                  />
                 </span>
                 <span>{Math.round(budgetProgress)}%</span>
               </span>
-            ) : (
-              "Click to set a budget"
-            )
+            ) : "Click to set a budget"
           }
         />
       </div>

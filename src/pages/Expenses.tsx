@@ -25,9 +25,11 @@ import { useLoans } from "@/hooks/useLoans";
 import { IncomeList } from "@/components/expenses/IncomeList";
 import { Skeleton } from "@/components/ui/skeleton";
 import { LoanOverviewWidget } from "@/components/expenses/LoanOverviewWidget";
-import { List, CalendarDays, LayoutGrid, ChevronLeft, ChevronRight, HandCoins } from "lucide-react";
+import { List, CalendarDays, LayoutGrid, ChevronLeft, ChevronRight, HandCoins, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { loadCycleConfig, CYCLE_CHANGE_EVENT } from "@/components/expenses/BudgetManager";
+import { SavingsTracker } from "@/components/expenses/SavingsTracker";
+import { useSavings } from "@/hooks/useSavings";
 
 type Tab = "transactions" | "calendar" | "overview" | "loans";
 
@@ -38,30 +40,17 @@ const TABS: { id: Tab; label: string; icon: React.ElementType }[] = [
   { id: "loans", label: "Loans", icon: HandCoins },
 ];
 
-// ─── Cycle types ──────────────────────────────────────────────────────────────
 type CycleType = "calendar" | "payday";
 interface CycleConfig { type: CycleType; payday: number; }
 interface CycleRange { start: Date; end: Date; }
 
-/**
- * Returns the cycle window for a given config and integer offset.
- * offset = 0  → current cycle
- * offset = -1 → one cycle back
- * offset = -2 → two cycles back, etc.
- *
- * Calendar mode: each offset unit = one calendar month.
- * Payday mode:   each offset unit = one pay period (payday-to-payday).
- */
 function getCycleRangeForOffset(config: CycleConfig, offset: number): CycleRange {
   if (config.type === "calendar") {
     const ref = addMonths(new Date(), offset);
     return { start: startOfMonth(ref), end: endOfMonth(ref) };
   }
-
-  // Payday mode — anchor current cycle first, then apply offset
   const day = config.payday;
   const today = new Date();
-
   let currentStart: Date;
   if (today.getDate() >= day) {
     currentStart = setDate(new Date(today.getFullYear(), today.getMonth(), day), day);
@@ -69,16 +58,13 @@ function getCycleRangeForOffset(config: CycleConfig, offset: number): CycleRange
     const prev = subMonths(today, 1);
     currentStart = setDate(new Date(prev.getFullYear(), prev.getMonth(), day), day);
   }
-
   const targetStart = addMonths(currentStart, offset);
-  // End is one day before the *next* payday after targetStart
   const targetEnd = new Date(addMonths(targetStart, 1).getTime() - 86_400_000);
-
   return { start: targetStart, end: targetEnd };
 }
 
 export default function Expenses() {
-  const [month, setMonth] = useState(new Date());           // drives Calendar tab
+  const [month, setMonth] = useState(new Date());
   const [activeTab, setActiveTab] = useState<Tab>("transactions");
   const [addDialogDate, setAddDialogDate] = useState<string | undefined>();
   const [addIncomeDialogDate, setAddIncomeDialogDate] = useState<string | undefined>();
@@ -88,11 +74,8 @@ export default function Expenses() {
   const [editingIncome, setEditingIncome] = useState<Income | null>(null);
   const [editingLoan, setEditingLoan] = useState<Loan | null>(null);
   const [budgetDialogOpen, setBudgetDialogOpen] = useState(false);
-
-  // ── Cycle navigation offset (0 = current, -1 = previous, etc.) ───────────
+  const [savingsModalOpen, setSavingsModalOpen] = useState(false); // ← NEW
   const [cycleOffset, setCycleOffset] = useState(0);
-
-  // ── Reactive cycle config ─────────────────────────────────────────────────
   const [cycleConfig, setCycleConfig] = useState<CycleConfig>(loadCycleConfig);
 
   useEffect(() => {
@@ -104,12 +87,16 @@ export default function Expenses() {
     return () => window.removeEventListener(CYCLE_CHANGE_EVENT, handler);
   }, []);
 
-  // Reset offset to current whenever the cycle type changes
-  useEffect(() => {
-    setCycleOffset(0);
-  }, [cycleConfig.type]);
+  useEffect(() => { setCycleOffset(0); }, [cycleConfig.type]);
 
-  // ── Calendar-tab data hooks (always current month) ────────────────────────
+  // Close savings modal on Escape
+  useEffect(() => {
+    if (!savingsModalOpen) return;
+    const handler = (e: KeyboardEvent) => { if (e.key === "Escape") setSavingsModalOpen(false); };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [savingsModalOpen]);
+
   const { data: expenses, isLoading } = useExpenses(month);
   const { data: prevExpenses } = usePrevMonthExpenses(month);
   const { data: budgets } = useBudgets(month);
@@ -124,26 +111,19 @@ export default function Expenses() {
   const allPrevIncomes = prevIncomes || [];
   const allLoans = loans || [];
 
-  // ── Cycle range for the selected offset ───────────────────────────────────
   const cycleRange = useMemo(
     () => getCycleRangeForOffset(cycleConfig, cycleOffset),
     [cycleConfig, cycleOffset]
   );
 
-  /**
-   * A payday cycle (e.g. Feb 10 – Mar 9) spans TWO calendar months.
-   * We must fetch both independently — React Query deduplicates when keys match,
-   * so there is zero extra cost when the cycle happens to fit one month.
-   */
   const cycleMonth1 = useMemo(() => startOfMonth(cycleRange.start), [cycleRange]);
   const cycleMonth2 = useMemo(() => startOfMonth(cycleRange.end), [cycleRange]);
 
   const { data: cycleM1Expenses } = useExpenses(cycleMonth1);
   const { data: cycleM2Expenses } = useExpenses(cycleMonth2);
-  const { data: cycleM1Incomes }  = useIncomes(cycleMonth1);
-  const { data: cycleM2Incomes }  = useIncomes(cycleMonth2);
+  const { data: cycleM1Incomes } = useIncomes(cycleMonth1);
+  const { data: cycleM2Incomes } = useIncomes(cycleMonth2);
 
-  // Merge both month buckets, deduplicate by id, then window to cycle dates
   const cycleExpenses = useMemo(() => {
     const seen = new Set<string>();
     return [...(cycleM1Expenses || []), ...(cycleM2Expenses || [])].filter((e) => {
@@ -164,29 +144,33 @@ export default function Expenses() {
     });
   }, [cycleM1Incomes, cycleM2Incomes, cycleRange]);
 
-  // ── Derived UI helpers ────────────────────────────────────────────────────
+  const { data: allSavings = [] } = useSavings();
+
+  const savedThisCycle = useMemo(() => {
+    const key = format(cycleRange.start, "yyyy-MM-dd");
+    const entry = allSavings.find((s) => s.cycle_start === key);
+    return entry?.amount ?? 0;
+  }, [allSavings, cycleRange.start]);
+
   const isCurrentCycle = cycleOffset === 0;
   const activeLoans = allLoans.filter((l) => !l.is_paid).length;
-
   const txExpenses = allExpenses.filter((e) => e.date === txDate);
-  const txIncomes  = allIncomes.filter((i) => i.date === txDate);
+  const txIncomes = allIncomes.filter((i) => i.date === txDate);
   const [txType, setTxType] = useState<"expenses" | "income">("expenses");
 
-  // Cycle label for the navigator
   const cycleLabel =
     cycleConfig.type === "payday"
       ? `${format(cycleRange.start, "MMM d")} – ${format(cycleRange.end, "MMM d, yyyy")}`
       : format(cycleRange.start, "MMMM yyyy");
 
-  const handleDayClick       = (date: string) => setSelectedDay(date);
-  const handleAddFromDay     = (date: string) => { setAddDialogDate(date); };
+  const handleDayClick = (date: string) => setSelectedDay(date);
+  const handleAddFromDay = (date: string) => { setAddDialogDate(date); };
   const handleAddIncomeFromDay = (date: string) => { setAddIncomeDialogDate(date); };
-  const switchTab            = (tab: Tab) => { setActiveTab(tab); setSelectedDay(null); };
-  const handleEditExpense    = (expense: Expense) => setEditingExpense(expense);
-  const handleEditIncome     = (income: Income)   => setEditingIncome(income);
-  const handleEditLoan       = (loan: Loan)        => setEditingLoan(loan);
+  const switchTab = (tab: Tab) => { setActiveTab(tab); setSelectedDay(null); };
+  const handleEditExpense = (expense: Expense) => setEditingExpense(expense);
+  const handleEditIncome = (income: Income) => setEditingIncome(income);
+  const handleEditLoan = (loan: Loan) => setEditingLoan(loan);
 
-  /* ── Skeleton ──────────────────────────────────────────────────────── */
   if (isLoading) return (
     <AppLayout>
       <div className="space-y-5 pb-28 sm:pb-8">
@@ -208,13 +192,12 @@ export default function Expenses() {
     <AppLayout>
       <div className="space-y-5 pb-32 sm:pb-24 w-full overflow-x-hidden" style={{ animation: "expIn 0.3s ease both" }}>
 
-        {/* ── Header ───────────────────────────────────────────────────── */}
+        {/* ── Header ── */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
           <div>
             <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Finance</p>
             <h1 className="text-2xl font-black font-display tracking-tight">Expenses</h1>
           </div>
-
           <div className="header-actions flex items-center gap-1.5 sm:gap-2 flex-nowrap min-w-0 max-w-full overflow-hidden">
             <BudgetManager
               budgets={allBudgets}
@@ -223,9 +206,7 @@ export default function Expenses() {
               open={budgetDialogOpen}
               onOpenChange={setBudgetDialogOpen}
             />
-
             <div className="hidden sm:block h-5 w-px bg-border/60 shrink-0" />
-
             <AddIncomeDialog
               defaultDate={activeTab === "transactions" ? addIncomeDialogDate : undefined}
               onDateUsed={() => setAddIncomeDialogDate(undefined)}
@@ -233,12 +214,12 @@ export default function Expenses() {
           </div>
         </div>
 
-        {/* ── Quote ────────────────────────────────────────────────────── */}
+        {/* ── Quote ── */}
         <div style={{ animation: "expIn 0.35s ease both", animationDelay: "30ms" }}>
           <MedievalQuote />
         </div>
 
-        {/* ── Desktop tab bar ───────────────────────────────────────────── */}
+        {/* ── Desktop tab bar ── */}
         <div
           className="hidden sm:flex gap-1 rounded-2xl bg-muted/60 border border-border/40 p-1"
           style={{ animation: "expIn 0.35s ease both", animationDelay: "50ms" }}
@@ -268,9 +249,7 @@ export default function Expenses() {
           ))}
         </div>
 
-        {/* ══════════════════════════════════════════════════════════════
-            TAB: TRANSACTIONS
-        ══════════════════════════════════════════════════════════════ */}
+        {/* ══ TAB: TRANSACTIONS ══ */}
         {activeTab === "transactions" && (
           <div className="space-y-4" style={{ animation: "expIn 0.28s ease both" }}>
             <div className="flex gap-1 rounded-2xl bg-muted/50 border border-border/40 p-1">
@@ -281,15 +260,12 @@ export default function Expenses() {
                   txType === "expenses" ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
                 )}
               >
-                <span>💸</span>
-                <span>Expenses</span>
+                <span>💸</span><span>Expenses</span>
                 {txExpenses.length > 0 && (
                   <span className={cn(
                     "text-[10px] tabular-nums px-1.5 py-0.5 rounded-full font-bold",
                     txType === "expenses" ? "bg-muted text-foreground" : "bg-muted/60 text-muted-foreground"
-                  )}>
-                    {txExpenses.length}
-                  </span>
+                  )}>{txExpenses.length}</span>
                 )}
               </button>
               <button
@@ -301,39 +277,29 @@ export default function Expenses() {
                     : "text-muted-foreground hover:text-foreground"
                 )}
               >
-                <span>💰</span>
-                <span>Income</span>
+                <span>💰</span><span>Income</span>
                 {txIncomes.length > 0 && (
                   <span className={cn(
                     "text-[10px] tabular-nums px-1.5 py-0.5 rounded-full font-bold",
                     txType === "income" ? "bg-white/20 text-white" : "bg-muted/60 text-muted-foreground"
-                  )}>
-                    {txIncomes.length}
-                  </span>
+                  )}>{txIncomes.length}</span>
                 )}
               </button>
             </div>
 
             {txType === "expenses" && (
-              txExpenses.length > 0 ? (
-                <ExpenseList expenses={txExpenses} />
-              ) : (
+              txExpenses.length > 0 ? <ExpenseList expenses={txExpenses} /> : (
                 <div className="flex flex-col items-center justify-center gap-3 rounded-3xl border border-dashed border-border/60 bg-card/30 py-16 text-center">
                   <div className="text-4xl">🧾</div>
                   <div className="space-y-1">
                     <p className="text-sm font-bold tracking-tight">No expenses today</p>
-                    <p className="text-xs text-muted-foreground">
-                      Nothing logged for {format(new Date(txDate + "T12:00:00"), "EEEE, MMM d")}
-                    </p>
+                    <p className="text-xs text-muted-foreground">Nothing logged for {format(new Date(txDate + "T12:00:00"), "EEEE, MMM d")}</p>
                   </div>
                 </div>
               )
             )}
-
             {txType === "income" && (
-              txIncomes.length > 0 ? (
-                <IncomeList incomes={txIncomes} />
-              ) : (
+              txIncomes.length > 0 ? <IncomeList incomes={txIncomes} /> : (
                 <div className="flex flex-col items-center justify-center gap-3 rounded-3xl border border-dashed border-border/60 bg-card/30 py-16 text-center">
                   <div className="text-4xl">💰</div>
                   <div className="space-y-1">
@@ -346,9 +312,7 @@ export default function Expenses() {
           </div>
         )}
 
-        {/* ══════════════════════════════════════════════════════════════
-            TAB: CALENDAR
-        ══════════════════════════════════════════════════════════════ */}
+        {/* ══ TAB: CALENDAR ══ */}
         {activeTab === "calendar" && !selectedDay && (
           <div style={{ animation: "expIn 0.28s ease both" }}>
             <MonthCalendarView
@@ -368,8 +332,7 @@ export default function Expenses() {
                 onClick={() => setSelectedDay(null)}
                 className="flex items-center gap-1.5 text-sm font-bold text-muted-foreground hover:text-foreground transition-colors rounded-xl px-3 py-1.5 bg-muted hover:bg-muted/80"
               >
-                <ChevronLeft className="h-4 w-4" />
-                Calendar
+                <ChevronLeft className="h-4 w-4" />Calendar
               </button>
               <p className="text-sm font-bold text-foreground">
                 {format(new Date(selectedDay + "T12:00:00"), "EEEE, MMMM d")}
@@ -388,16 +351,12 @@ export default function Expenses() {
           </div>
         )}
 
-        {/* ══════════════════════════════════════════════════════════════
-            TAB: OVERVIEW — cycle-aware with full history navigation
-        ══════════════════════════════════════════════════════════════ */}
+        {/* ══ TAB: OVERVIEW ══ */}
         {activeTab === "overview" && (
           <div className="space-y-4" style={{ animation: "expIn 0.28s ease both" }}>
 
-            {/* ── Cycle Navigator ─────────────────────────────────────── */}
+            {/* Cycle Navigator */}
             <div className="flex items-center gap-2 rounded-2xl border border-border/60 bg-card px-2 py-2 shadow-sm">
-
-              {/* Previous cycle */}
               <button
                 onClick={() => setCycleOffset((o) => o - 1)}
                 className="flex items-center justify-center h-8 w-8 shrink-0 rounded-xl hover:bg-muted transition-colors active:scale-90"
@@ -406,7 +365,6 @@ export default function Expenses() {
                 <ChevronLeft className="h-4 w-4 text-muted-foreground" />
               </button>
 
-              {/* Label area */}
               <div className="flex-1 flex flex-col items-center gap-1 min-w-0">
                 <div className="flex items-center gap-1.5 flex-wrap justify-center">
                   {cycleConfig.type === "payday" && (
@@ -421,8 +379,6 @@ export default function Expenses() {
                     </span>
                   )}
                 </div>
-
-                {/* Jump back to current when viewing history */}
                 {!isCurrentCycle && (
                   <button
                     onClick={() => setCycleOffset(0)}
@@ -433,7 +389,6 @@ export default function Expenses() {
                 )}
               </div>
 
-              {/* Next cycle — disabled when already on current */}
               <button
                 onClick={() => setCycleOffset((o) => o + 1)}
                 disabled={isCurrentCycle}
@@ -444,21 +399,20 @@ export default function Expenses() {
               </button>
             </div>
 
-            {/* ── Summary cards, charts, etc. ─────────────────────────── */}
+            {/* Summary cards — Savings card click opens the modal */}
             <ExpenseSummaryCards
               expenses={cycleExpenses}
               prevExpenses={allPrev}
               budgets={allBudgets}
               incomes={cycleIncomes}
               prevIncomes={allPrevIncomes}
+              savedThisCycle={savedThisCycle}
               onBudgetClick={() => setBudgetDialogOpen(true)}
+              onSavingsClick={() => setSavingsModalOpen(true)}
             />
 
             {allLoans.some((l) => !l.is_paid) && (
-              <LoanOverviewWidget
-                loans={allLoans}
-                onGoToLoans={() => switchTab("loans")}
-              />
+              <LoanOverviewWidget loans={allLoans} onGoToLoans={() => switchTab("loans")} />
             )}
 
             {allBudgets.filter((b) => b.category !== "Overall").length > 0 && (
@@ -471,14 +425,11 @@ export default function Expenses() {
               />
             )}
 
-            {/* Pass cycleMonth1 so the daily chart axis aligns with the cycle's start month */}
             <ExpenseCharts expenses={cycleExpenses} month={cycleMonth1} />
           </div>
         )}
 
-        {/* ══════════════════════════════════════════════════════════════
-            TAB: LOANS
-        ══════════════════════════════════════════════════════════════ */}
+        {/* ══ TAB: LOANS ══ */}
         {activeTab === "loans" && (
           <div className="space-y-4" style={{ animation: "expIn 0.28s ease both" }}>
             <div className="flex items-center justify-between">
@@ -492,27 +443,67 @@ export default function Expenses() {
         )}
       </div>
 
-      {/* DESKTOP FAB */}
+      {/* ══ SAVINGS MODAL ══════════════════════════════════════════════════════
+          Opens when user clicks the Savings card in Overview.
+          Backdrop click or × button closes it.
+      ══════════════════════════════════════════════════════════════════════ */}
+      {savingsModalOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-end sm:items-center justify-center"
+          style={{ animation: "fadeIn 0.18s ease both" }}
+        >
+          {/* Backdrop */}
+          <div
+            className="absolute inset-0 bg-black/50 backdrop-blur-sm"
+            onClick={() => setSavingsModalOpen(false)}
+          />
+
+          {/* Sheet */}
+          <div
+            className="relative z-10 w-full sm:max-w-lg max-h-[92dvh] overflow-y-auto rounded-t-3xl sm:rounded-3xl bg-background border border-border/60 shadow-2xl"
+            style={{ animation: "sheetUp 0.22s cubic-bezier(0.34,1.56,0.64,1) both" }}
+          >
+            {/* Handle + header */}
+            <div className="sticky top-0 z-10 flex items-center justify-between px-5 pt-4 pb-3 bg-background/95 backdrop-blur-sm border-b border-border/40">
+              <div className="sm:hidden mx-auto w-10 h-1 rounded-full bg-muted-foreground/30 absolute top-2 left-1/2 -translate-x-1/2" />
+              <p className="text-sm font-black uppercase tracking-widest text-foreground pt-1">💰 Savings Tracker</p>
+              <button
+                onClick={() => setSavingsModalOpen(false)}
+                className="flex items-center justify-center h-7 w-7 rounded-xl bg-muted hover:bg-muted/70 transition-colors"
+                aria-label="Close"
+              >
+                <X className="h-3.5 w-3.5 text-muted-foreground" />
+              </button>
+            </div>
+
+            {/* Content */}
+            <div className="p-4">
+              <SavingsTracker
+                cycleExpenses={cycleExpenses}
+                cycleIncomes={cycleIncomes}
+                cycleStart={cycleRange.start}
+                cycleEnd={cycleRange.end}
+              />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Desktop FAB */}
       {activeTab === "transactions" && !selectedDay && (
         <div
-          className="hidden sm:block fixed bottom-8 right-8 z-50"
+          className="hidden sm:block fixed bottom-8 right-8 z-40"
           style={{ animation: "fabIn 0.4s cubic-bezier(0.34,1.56,0.64,1) both", animationDelay: "200ms" }}
         >
           <AddExpenseDialog />
         </div>
       )}
 
-      {/* Dialogs for calendar tab */}
+      {/* Calendar tab dialogs */}
       {activeTab === "calendar" && selectedDay && (
         <>
-          <AddExpenseDialog
-            defaultDate={addDialogDate}
-            onDateUsed={() => setAddDialogDate(undefined)}
-          />
-          <AddIncomeDialog
-            defaultDate={addIncomeDialogDate}
-            onDateUsed={() => setAddIncomeDialogDate(undefined)}
-          />
+          <AddExpenseDialog defaultDate={addDialogDate} onDateUsed={() => setAddDialogDate(undefined)} />
+          <AddIncomeDialog defaultDate={addIncomeDialogDate} onDateUsed={() => setAddIncomeDialogDate(undefined)} />
           <EditExpenseDialog
             expense={editingExpense}
             open={!!editingExpense}
@@ -526,16 +517,15 @@ export default function Expenses() {
         </>
       )}
 
-      {/* Edit loan dialog */}
       <EditLoanDialog
         loan={editingLoan}
         open={!!editingLoan}
         onOpenChange={(open) => !open && setEditingLoan(null)}
       />
 
-      {/* ── Mobile bottom nav ───────────────────────────────────────── */}
+      {/* Mobile bottom nav */}
       <div
-        className="sm:hidden fixed bottom-0 left-0 right-0 z-50 flex flex-col"
+        className="sm:hidden fixed bottom-0 left-0 right-0 z-40 flex flex-col"
         style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
       >
         <nav className="flex items-stretch bg-card/95 backdrop-blur-md border-t border-border/60">
@@ -555,10 +545,7 @@ export default function Expenses() {
                 )}
                 <div className="relative">
                   <Icon
-                    className={cn(
-                      "h-[22px] w-[22px] transition-all duration-200",
-                      active ? "text-foreground" : "text-muted-foreground"
-                    )}
+                    className={cn("h-[22px] w-[22px] transition-all duration-200", active ? "text-foreground" : "text-muted-foreground")}
                     strokeWidth={active ? 2.5 : 1.75}
                   />
                   {id === "loans" && activeLoans > 0 && !active && (
@@ -582,7 +569,7 @@ export default function Expenses() {
       {/* Mobile expense FAB */}
       {activeTab === "transactions" && (
         <div
-          className="sm:hidden fixed bottom-16 right-2 z-50"
+          className="sm:hidden fixed bottom-16 right-2 z-40"
           style={{ animation: "fabIn 0.4s cubic-bezier(0.34,1.56,0.64,1) both", animationDelay: "200ms" }}
         >
           <AddExpenseDialog />
@@ -590,39 +577,39 @@ export default function Expenses() {
       )}
 
       <style>{`
-  @keyframes expIn {
-    from { opacity: 0; transform: translateY(10px); }
-    to   { opacity: 1; transform: translateY(0); }
-  }
-  @keyframes pillIn {
-    from { transform: translateX(-50%) scaleX(0); opacity: 0; }
-    to   { transform: translateX(-50%) scaleX(1); opacity: 1; }
-  }
-  @keyframes fabIn {
-    from { opacity: 0; transform: scale(0.8) translateY(8px); }
-    to   { opacity: 1; transform: scale(1) translateY(0); }
-  }
-
-  html, body {
-    overflow-x: hidden;
-    max-width: 100vw;
-  }
-
-  @media (max-width: 639px) {
-    .header-actions button,
-    .header-actions [role="button"] {
-      height: 32px !important;
-      padding-left: 10px !important;
-      padding-right: 10px !important;
-      font-size: 11px !important;
-      border-radius: 12px !important;
-    }
-    .header-actions svg {
-      width: 13px !important;
-      height: 13px !important;
-    }
-  }
-`}</style>
+        @keyframes expIn {
+          from { opacity: 0; transform: translateY(10px); }
+          to   { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes pillIn {
+          from { transform: translateX(-50%) scaleX(0); opacity: 0; }
+          to   { transform: translateX(-50%) scaleX(1); opacity: 1; }
+        }
+        @keyframes fabIn {
+          from { opacity: 0; transform: scale(0.8) translateY(8px); }
+          to   { opacity: 1; transform: scale(1) translateY(0); }
+        }
+        @keyframes fadeIn {
+          from { opacity: 0; }
+          to   { opacity: 1; }
+        }
+        @keyframes sheetUp {
+          from { opacity: 0; transform: translateY(24px) scale(0.98); }
+          to   { opacity: 1; transform: translateY(0) scale(1); }
+        }
+        html, body { overflow-x: hidden; max-width: 100vw; }
+        @media (max-width: 639px) {
+          .header-actions button,
+          .header-actions [role="button"] {
+            height: 32px !important;
+            padding-left: 10px !important;
+            padding-right: 10px !important;
+            font-size: 11px !important;
+            border-radius: 12px !important;
+          }
+          .header-actions svg { width: 13px !important; height: 13px !important; }
+        }
+      `}</style>
     </AppLayout>
   );
 }
