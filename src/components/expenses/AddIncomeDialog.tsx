@@ -36,6 +36,16 @@ type FormValues = z.infer<typeof incomeSchema>;
 
 const emerald = "hsl(142, 72%, 45%)";
 
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+/** Format a numeric string with thousand-separator commas, preserving a trailing decimal point/zeros. */
+function formatWithCommas(raw: string): string {
+    if (!raw) return "";
+    const [intPart, decPart] = raw.split(".");
+    const formatted = intPart.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+    return decPart !== undefined ? `${formatted}.${decPart}` : formatted;
+}
+
 // ─── Source Selector ──────────────────────────────────────────────────────────
 
 function SourceSelector({ value, onChange }: { value: string; onChange: (val: string) => void }) {
@@ -134,10 +144,11 @@ export function AddIncomeDialog({
 }: AddIncomeDialogProps) {
     const [internalOpen, setInternalOpen] = useState(false);
     const [confirmDelete, setConfirmDelete] = useState(false);
+    // Separate display state for comma-formatted amount string
+    const [displayAmount, setDisplayAmount] = useState("");
 
     const isEditMode = !!income;
 
-    // Use controlled state when in edit mode, internal when in add mode
     const open = isEditMode ? (controlledOpen ?? false) : internalOpen;
     const setOpen = isEditMode
         ? (v: boolean) => controlledOnOpenChange?.(v)
@@ -158,7 +169,7 @@ export function AddIncomeDialog({
         : null;
     const activeColor = accentColor ?? emerald;
 
-    // Populate form when editing
+    // Populate form when editing — also sync displayAmount
     useEffect(() => {
         if (income && open) {
             form.reset({
@@ -167,18 +178,34 @@ export function AddIncomeDialog({
                 date: new Date(income.date + "T00:00:00"),
                 note: income.note ?? "",
             });
+            // Pre-fill display with comma-formatted existing amount
+            setDisplayAmount(formatWithCommas(String(income.amount)));
             setConfirmDelete(false);
         }
     }, [income, open, form]);
 
-    // defaultDate trigger (add mode) - auto-open when date is provided
+    // defaultDate trigger (add mode)
     useEffect(() => {
         if (defaultDate && !isEditMode) {
             form.setValue("date", new Date(defaultDate + "T00:00:00"));
-            setInternalOpen(true); // Auto-open the dialog
+            setInternalOpen(true);
             onDateUsed?.();
         }
     }, [defaultDate, form, onDateUsed, isEditMode]);
+
+    const handleAmountChange = (
+        e: React.ChangeEvent<HTMLInputElement>,
+        fieldOnChange: (...event: unknown[]) => void
+    ) => {
+        const raw = e.target.value;
+        const stripped = raw.replace(/,/g, "");
+
+        // Allow only valid partial numeric input: digits, optional single dot, up to 2 decimal places
+        if (stripped !== "" && !/^\d*\.?\d{0,2}$/.test(stripped)) return;
+
+        setDisplayAmount(formatWithCommas(stripped));
+        fieldOnChange(stripped === "" ? undefined : stripped);
+    };
 
     const onSubmit = async (values: FormValues) => {
         try {
@@ -200,6 +227,7 @@ export function AddIncomeDialog({
                 });
                 toast.success("Income added");
                 form.reset({ amount: undefined, source: "", date: new Date(), note: "" });
+                setDisplayAmount("");
             }
             setOpen(false);
         } catch {
@@ -271,13 +299,22 @@ export function AddIncomeDialog({
                                             $
                                         </span>
                                         <Input
-                                            type="number"
-                                            step="0.01"
+                                            // type="text" + inputMode="decimal" allows comma display while keeping numeric keyboard on mobile
+                                            type="text"
                                             inputMode="decimal"
                                             placeholder="0.00"
-                                            className="pl-8 h-12 text-2xl font-bold rounded-xl border-border/60 focus-visible:ring-1 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                                            style={{ "--tw-ring-color": activeColor, borderColor: `${activeColor}40` } as React.CSSProperties}
-                                            {...field}
+                                            value={displayAmount}
+                                            onChange={(e) => handleAmountChange(e, field.onChange)}
+                                            onBlur={field.onBlur}
+                                            name={field.name}
+                                            ref={field.ref}
+                                            className="pl-8 h-12 font-bold rounded-xl border-border/60 focus-visible:ring-1 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                                            // font-size 24px > 16px threshold — prevents iOS auto-zoom
+                                            style={{
+                                                fontSize: "24px",
+                                                "--tw-ring-color": activeColor,
+                                                borderColor: `${activeColor}40`,
+                                            } as React.CSSProperties}
                                         />
                                     </div>
                                 </FormControl>
@@ -357,8 +394,10 @@ export function AddIncomeDialog({
                                     <FormControl>
                                         <Textarea
                                             placeholder="Optional…"
-                                            className="resize-none rounded-xl border-border/60 text-sm h-11 min-h-[44px] py-3 leading-tight"
+                                            className="resize-none rounded-xl border-border/60 h-11 min-h-[44px] py-3 leading-tight"
                                             rows={1}
+                                            // font-size >= 16px prevents iOS auto-zoom on focus
+                                            style={{ fontSize: "16px" }}
                                             {...field}
                                         />
                                     </FormControl>
@@ -371,7 +410,6 @@ export function AddIncomeDialog({
                     {/* ── Edit mode: Delete + Save ── */}
                     {isEditMode ? (
                         <div className="flex gap-2 pt-1">
-                            {/* Delete button — first click arms, second confirms */}
                             <button
                                 type="button"
                                 onClick={handleDelete}
@@ -393,7 +431,6 @@ export function AddIncomeDialog({
                                 )}
                             </button>
 
-                            {/* Cancel */}
                             <Button
                                 type="button"
                                 variant="outline"
@@ -404,7 +441,6 @@ export function AddIncomeDialog({
                                 Cancel
                             </Button>
 
-                            {/* Save */}
                             <Button
                                 type="submit"
                                 className="flex-1 h-11 rounded-xl text-sm font-semibold tracking-wide text-white transition-all duration-150 hover:opacity-90 active:scale-[0.98]"
@@ -450,7 +486,6 @@ export function AddIncomeDialog({
         </DialogContent>
     );
 
-    // Edit mode: controlled dialog, no trigger
     if (isEditMode) {
         return (
             <Dialog open={open} onOpenChange={setOpen}>
@@ -459,7 +494,6 @@ export function AddIncomeDialog({
         );
     }
 
-    // Add mode: dialog with trigger button
     return (
         <Dialog open={open} onOpenChange={setOpen}>
             <DialogTrigger asChild>

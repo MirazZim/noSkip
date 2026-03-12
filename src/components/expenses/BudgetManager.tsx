@@ -83,9 +83,18 @@ export function loadCycleConfig(): CycleConfig {
 function saveConfig(c: CycleConfig) {
   try {
     localStorage.setItem(CYCLE_STORAGE_KEY, JSON.stringify(c));
-    // Notify same-tab listeners (e.g. Expenses.tsx) that the cycle changed
     window.dispatchEvent(new CustomEvent(CYCLE_CHANGE_EVENT, { detail: c }));
   } catch { }
+}
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+/** Format a raw numeric string with thousand-separator commas, preserving trailing decimal. */
+function formatWithCommas(raw: string): string {
+  if (!raw) return "";
+  const [intPart, decPart] = raw.split(".");
+  const formatted = intPart.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+  return decPart !== undefined ? `${formatted}.${decPart}` : formatted;
 }
 
 /* ═══════════════════════════════════════════════════════════════════════
@@ -97,7 +106,10 @@ export function BudgetManager({ budgets, expenses, month, open: controlledOpen, 
   const setOpen = controlledOnOpenChange || setInternalOpen;
   const [tab, setTab] = useState<"budget" | "cycle">("budget");
   const [category, setCategory] = useState("Overall");
+  // Raw numeric string (no commas) — used for parseFloat on save
   const [amount, setAmount] = useState("");
+  // Comma-formatted string — what the user sees
+  const [displayAmount, setDisplayAmount] = useState("");
   const [config, setConfig] = useState<CycleConfig>(loadCycleConfig);
   const [draft, setDraft] = useState<CycleConfig>(loadCycleConfig);
 
@@ -109,7 +121,6 @@ export function BudgetManager({ budgets, expenses, month, open: controlledOpen, 
 
   const cycle = useMemo(() => getCycleRange(config, new Date()), [config]);
 
-  // Expenses scoped to the active cycle window
   const cycleExpenses = useMemo(() =>
     expenses.filter((e) => {
       const d = parseISO(e.date);
@@ -120,6 +131,15 @@ export function BudgetManager({ budgets, expenses, month, open: controlledOpen, 
 
   const categoryBudgets = budgets.filter((b) => b.category !== "Overall");
 
+  const handleAmountChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const raw = e.target.value;
+    const stripped = raw.replace(/,/g, "");
+    // Allow only digits and a single decimal point with max 2 decimal places
+    if (stripped !== "" && !/^\d*\.?\d{0,2}$/.test(stripped)) return;
+    setAmount(stripped);
+    setDisplayAmount(formatWithCommas(stripped));
+  };
+
   const handleSave = async () => {
     const num = parseFloat(amount);
     if (!num || num <= 0) return;
@@ -127,6 +147,7 @@ export function BudgetManager({ budgets, expenses, month, open: controlledOpen, 
       await upsert.mutateAsync({ amount: num, category, month });
       toast.success("Budget saved");
       setAmount("");
+      setDisplayAmount("");
     } catch { toast.error("Failed to save budget"); }
   };
 
@@ -165,7 +186,6 @@ export function BudgetManager({ budgets, expenses, month, open: controlledOpen, 
                 <p className="text-base font-black tracking-tight">Category Budgets</p>
               </div>
               <div className="flex flex-col items-end gap-1">
-                {/* Cycle mode badge */}
                 <span className={cn(
                   "text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full",
                   config.type === "payday"
@@ -324,10 +344,17 @@ export function BudgetManager({ budgets, expenses, month, open: controlledOpen, 
                 </label>
                 <div className="relative">
                   <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-muted-foreground font-bold text-base">$</span>
-                  <Input type="number" placeholder="0.00" value={amount}
-                    onChange={(e) => setAmount(e.target.value)}
+                  <Input
+                    type="text"
+                    inputMode="decimal"
+                    placeholder="0.00"
+                    value={displayAmount}
+                    onChange={handleAmountChange}
                     onKeyDown={(e) => e.key === "Enter" && handleSave()}
-                    className="pl-8 h-12 text-xl font-black rounded-xl border-border/60 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" />
+                    className="pl-8 h-12 font-black rounded-xl border-border/60 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                    // font-size >= 16px prevents iOS auto-zoom; matches original text-xl visually
+                    style={{ fontSize: "20px" }}
+                  />
                 </div>
               </div>
 

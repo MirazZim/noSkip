@@ -45,11 +45,26 @@ const DIRECTIONS: {
     },
   ];
 
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+/** Format a raw numeric string with thousand-separator commas, preserving trailing decimal. */
+function formatWithCommas(raw: string): string {
+  if (!raw) return "";
+  const [intPart, decPart] = raw.split(".");
+  const formatted = intPart.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+  return decPart !== undefined ? `${formatted}.${decPart}` : formatted;
+}
+
+// ─── Component ────────────────────────────────────────────────────────────────
+
 export function AddLoanDialog() {
   const [open, setOpen] = useState(false);
   const [direction, setDirection] = useState<LoanDirection>("lent");
   const [personName, setPersonName] = useState("");
+  // Raw numeric string (no commas) — used for parseFloat on submit
   const [amount, setAmount] = useState("");
+  // Comma-formatted string — what the user actually sees
+  const [displayAmount, setDisplayAmount] = useState("");
   const [loanDate, setLoanDate] = useState(format(new Date(), "yyyy-MM-dd"));
   const [dueDate, setDueDate] = useState("");
   const [note, setNote] = useState("");
@@ -63,22 +78,26 @@ export function AddLoanDialog() {
     setDirection("lent");
     setPersonName("");
     setAmount("");
+    setDisplayAmount("");
     setLoanDate(format(new Date(), "yyyy-MM-dd"));
     setDueDate("");
     setNote("");
   };
 
-  // Only allow digits and a single decimal point
   const handleAmountChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const val = e.target.value;
-    // Strip anything that isn't a digit or decimal point
-    const clean = val.replace(/[^0-9.]/g, "");
+    // Strip commas so we work with the raw numeric string
+    const stripped = val.replace(/,/g, "");
+    // Allow only digits and a single decimal point
+    const clean = stripped.replace(/[^0-9.]/g, "");
     // Prevent more than one decimal point
     const parts = clean.split(".");
     if (parts.length > 2) return;
     // Max 2 decimal places
     if (parts[1] && parts[1].length > 2) return;
-    setAmount(clean);
+
+    setAmount(clean);                        // raw value for parseFloat
+    setDisplayAmount(formatWithCommas(clean)); // formatted value for display
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -159,27 +178,32 @@ export function AddLoanDialog() {
               onChange={(e) => setPersonName(e.target.value)}
               required
               autoComplete="off"
-              className="rounded-xl h-9 text-sm"
+              className="rounded-xl h-9"
+              // font-size >= 16px prevents iOS auto-zoom on focus
+              style={{ fontSize: "16px" }}
             />
           </div>
 
-          {/* Amount — numbers only, no keyboard type="number" quirks */}
+          {/* Amount */}
           <div className="space-y-1">
             <Label className="text-xs font-bold">
               How much?{" "}
               <span className="text-muted-foreground font-normal">({symbol})</span>
             </Label>
             <Input
-              inputMode="decimal"   // shows numeric keyboard on mobile
+              type="text"
+              inputMode="decimal"
               placeholder="0.00"
-              value={amount}
+              value={displayAmount}
               onChange={handleAmountChange}
               required
-              className="rounded-xl h-9 text-sm font-bold"
+              className="rounded-xl h-9 font-bold"
+              // font-size >= 16px prevents iOS auto-zoom; visually kept large for currency feel
+              style={{ fontSize: "16px" }}
             />
           </div>
 
-          {/* Dates — side by side to save space */}
+          {/* Dates — side by side */}
           <div className="grid grid-cols-2 gap-2">
             <div className="space-y-1">
               <Label className="text-xs font-bold">When?</Label>
@@ -188,7 +212,8 @@ export function AddLoanDialog() {
                 value={loanDate}
                 max={format(new Date(), "yyyy-MM-dd")}
                 onChange={(e) => setLoanDate(e.target.value)}
-                className="rounded-xl h-9 text-xs"
+                className="rounded-xl h-9"
+                style={{ fontSize: "16px" }}
               />
             </div>
             <div className="space-y-1">
@@ -201,7 +226,8 @@ export function AddLoanDialog() {
                 value={dueDate}
                 min={format(new Date(), "yyyy-MM-dd")}
                 onChange={(e) => setDueDate(e.target.value)}
-                className="rounded-xl h-9 text-xs"
+                className="rounded-xl h-9"
+                style={{ fontSize: "16px" }}
               />
             </div>
           </div>
@@ -216,7 +242,8 @@ export function AddLoanDialog() {
               placeholder="e.g. Lunch, Birthday gift, Rent..."
               value={note}
               onChange={(e) => setNote(e.target.value)}
-              className="rounded-xl h-9 text-sm"
+              className="rounded-xl h-9"
+              style={{ fontSize: "16px" }}
             />
           </div>
 

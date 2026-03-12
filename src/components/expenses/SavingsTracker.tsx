@@ -34,6 +34,17 @@ interface Props {
 }
 
 
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+/** Format a raw numeric string with thousand-separator commas, preserving trailing decimal. */
+function formatWithCommas(raw: string): string {
+  if (!raw) return "";
+  const [intPart, decPart] = raw.split(".");
+  const formatted = intPart.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+  return decPart !== undefined ? `${formatted}.${decPart}` : formatted;
+}
+
+
 // ─── iOS-style swipeable row (mobile only) ─────────────────────────────────
 interface SwipeItemProps {
   children: React.ReactNode;
@@ -199,7 +210,10 @@ export function SavingsTracker({ cycleExpenses, cycleIncomes, cycleStart, cycleE
 
   const [chartOffset, setChartOffset] = useState(0);
   const [dialogOpen, setDialogOpen] = useState(false);
+  // Raw numeric string (no commas) — used for parseFloat on save
   const [amount, setAmount] = useState("");
+  // Comma-formatted string — what the user sees
+  const [displayAmount, setDisplayAmount] = useState("");
   const [note, setNote] = useState("");
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [editingCycleStart, setEditingCycleStart] = useState<Date>(cycleStart);
@@ -224,7 +238,7 @@ export function SavingsTracker({ cycleExpenses, cycleIncomes, cycleStart, cycleE
     return c;
   }, [allSavings]);
 
-  // ── Chart data (no cumulative — replaced with trend + metadata) ────────────
+  // ── Chart data ────────────────────────────────────────────────────────────
   const chartData = useMemo(() => {
     const cycles: CycleRange[] = [];
     for (let i = -11; i <= 0; i++) cycles.push(getCycleRangeAtOffset(cycleConfig, chartOffset + i));
@@ -248,7 +262,6 @@ export function SavingsTracker({ cycleExpenses, cycleIncomes, cycleStart, cycleE
       };
     });
 
-    // 3-period moving average (includes zeros — honestly reflects habit)
     return raw.map((d, i, arr) => {
       const window = arr.slice(Math.max(0, i - 2), i + 1);
       const trend = Math.round(window.reduce((s, x) => s + x.recorded, 0) / window.length);
@@ -256,7 +269,6 @@ export function SavingsTracker({ cycleExpenses, cycleIncomes, cycleStart, cycleE
     });
   }, [allSavings, cycleConfig, chartOffset, cycleStart]);
 
-  // Chart-level stats (used in header + tooltip)
   const chartAvg = useMemo(() => {
     const nonZero = chartData.filter((d) => d.hasSaved);
     if (!nonZero.length) return 0;
@@ -269,15 +281,33 @@ export function SavingsTracker({ cycleExpenses, cycleIncomes, cycleStart, cycleE
   const narrative = getNarrative(savingsRate, recorded, formatAmount);
   const progressPct = Math.min(((savingsRate ?? 0) / 20) * 100, 100);
 
+  // Helper: sync both amount states together
+  const setAmountAndDisplay = useCallback((raw: string) => {
+    setAmount(raw);
+    setDisplayAmount(formatWithCommas(raw));
+  }, []);
+
   const openForCycle = useCallback((start: Date) => {
     setEditingCycleStart(start);
     const key = format(start, "yyyy-MM-dd");
     const ex = allSavings.find((e) => e.cycle_start === key);
-    setAmount(ex ? String(ex.amount) : "");
+    // Pre-fill with comma-formatted existing value, or clear
+    const rawVal = ex ? String(ex.amount) : "";
+    setAmount(rawVal);
+    setDisplayAmount(formatWithCommas(rawVal));
     setNote(ex?.note ?? "");
     setConfirmDelete(false);
     setDialogOpen(true);
   }, [allSavings]);
+
+  const handleAmountChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const raw = e.target.value;
+    const stripped = raw.replace(/,/g, "");
+    // Allow only valid partial numeric input
+    if (stripped !== "" && !/^\d*\.?\d{0,2}$/.test(stripped)) return;
+    setAmount(stripped);
+    setDisplayAmount(formatWithCommas(stripped));
+  };
 
   const handleSave = async () => {
     const num = parseFloat(amount);
@@ -443,7 +473,6 @@ export function SavingsTracker({ cycleExpenses, cycleIncomes, cycleStart, cycleE
       {/* ── CHART ────────────────────────────────────────────────────────── */}
       <div className="px-4 pt-4 pb-4">
 
-        {/* Header row */}
         <div className="flex items-center justify-between mb-3">
           <div>
             <p className="text-[11px] font-black uppercase tracking-widest text-muted-foreground">
@@ -457,7 +486,6 @@ export function SavingsTracker({ cycleExpenses, cycleIncomes, cycleStart, cycleE
             )}
           </div>
 
-          {/* Navigation */}
           <div className="flex items-center gap-0.5 bg-muted/40 rounded-xl p-0.5">
             <button
               onClick={() => setChartOffset((o) => o - 1)}
@@ -489,22 +517,16 @@ export function SavingsTracker({ cycleExpenses, cycleIncomes, cycleStart, cycleE
 
         {allSavings.length > 0 ? (
           <>
-            {/* Average context badge */}
             {chartAvg > 0 && (
               <div className="flex items-center gap-1.5 mb-3">
                 <div className="flex items-center gap-1.5 bg-amber-500/8 border border-amber-500/18
                                 rounded-full px-2.5 py-1">
-                  <span className="text-[9px] font-black text-amber-500/80 uppercase tracking-wider">
-                    avg
-                  </span>
-                  <span className="text-[9px] font-black text-amber-400">
-                    {formatAmount(chartAvg)} / cycle
-                  </span>
+                  <span className="text-[9px] font-black text-amber-500/80 uppercase tracking-wider">avg</span>
+                  <span className="text-[9px] font-black text-amber-400">{formatAmount(chartAvg)} / cycle</span>
                 </div>
               </div>
             )}
 
-            {/* Chart */}
             <div
               className="rounded-2xl overflow-hidden"
               style={{
@@ -520,12 +542,10 @@ export function SavingsTracker({ cycleExpenses, cycleIncomes, cycleStart, cycleE
                     barCategoryGap="28%"
                   >
                     <defs>
-                      {/* Normal bar gradient */}
                       <linearGradient id="barGrad" x1="0" y1="0" x2="0" y2="1">
                         <stop offset="0%" stopColor="hsl(142,68%,46%)" stopOpacity={1} />
                         <stop offset="100%" stopColor="hsl(142,55%,34%)" stopOpacity={1} />
                       </linearGradient>
-                      {/* Current-cycle bar — brighter */}
                       <linearGradient id="barGradCurrent" x1="0" y1="0" x2="0" y2="1">
                         <stop offset="0%" stopColor="hsl(142,90%,62%)" stopOpacity={1} />
                         <stop offset="100%" stopColor="hsl(142,72%,44%)" stopOpacity={1} />
@@ -539,7 +559,6 @@ export function SavingsTracker({ cycleExpenses, cycleIncomes, cycleStart, cycleE
                       strokeDasharray="2 8"
                     />
 
-                    {/* Average reference line */}
                     {chartAvg > 0 && (
                       <ReferenceLine
                         y={chartAvg}
@@ -567,7 +586,6 @@ export function SavingsTracker({ cycleExpenses, cycleIncomes, cycleStart, cycleE
                       )}
                     />
 
-                    {/* Bars — one per cycle */}
                     <Bar
                       dataKey="recorded"
                       radius={[5, 5, 2, 2]}
@@ -593,7 +611,6 @@ export function SavingsTracker({ cycleExpenses, cycleIncomes, cycleStart, cycleE
                       ))}
                     </Bar>
 
-                    {/* Trend line — 3-period MA, soft and secondary */}
                     <Line
                       type="natural"
                       dataKey="trend"
@@ -609,12 +626,9 @@ export function SavingsTracker({ cycleExpenses, cycleIncomes, cycleStart, cycleE
               </div>
             </div>
 
-            {/* Consistency dots row */}
             <div className="flex items-center justify-between mt-3 px-0.5">
               <div className="flex items-center gap-2">
-                <span className="text-[9px] font-black text-muted-foreground/40 uppercase tracking-wider shrink-0">
-                  Habit
-                </span>
+                <span className="text-[9px] font-black text-muted-foreground/40 uppercase tracking-wider shrink-0">Habit</span>
                 <div className="flex items-center gap-[4.5px]">
                   {chartData.map((d, i) => (
                     <div
@@ -632,7 +646,6 @@ export function SavingsTracker({ cycleExpenses, cycleIncomes, cycleStart, cycleE
                   ))}
                 </div>
               </div>
-
               <span className={cn(
                 "text-[10px] font-black tabular-nums",
                 cyclesSaved >= 10 ? "text-emerald-500" : cyclesSaved >= 6 ? "text-sky-500" : "text-muted-foreground/50"
@@ -641,7 +654,6 @@ export function SavingsTracker({ cycleExpenses, cycleIncomes, cycleStart, cycleE
               </span>
             </div>
 
-            {/* Legend */}
             <div className="flex items-center gap-3 mt-2.5 px-0.5">
               <div className="flex items-center gap-1.5">
                 <div className="h-3 w-3 rounded-[3px] bg-emerald-500/75 shrink-0" />
@@ -785,10 +797,15 @@ export function SavingsTracker({ cycleExpenses, cycleIncomes, cycleStart, cycleE
               <div className="relative">
                 <span className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground font-bold text-xl pointer-events-none">৳</span>
                 <Input
-                  type="number" step="1" inputMode="decimal" placeholder="0"
-                  value={amount} onChange={(e) => setAmount(e.target.value)}
+                  type="text"
+                  inputMode="decimal"
+                  placeholder="0"
+                  value={displayAmount}
+                  onChange={handleAmountChange}
                   onKeyDown={(e) => e.key === "Enter" && handleSave()}
-                  className="pl-9 h-14 text-3xl font-black rounded-2xl border-2 border-border/50 focus-visible:border-emerald-500 focus-visible:ring-0 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                  className="pl-9 h-14 font-black rounded-2xl border-2 border-border/50 focus-visible:border-emerald-500 focus-visible:ring-0 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                  // font-size >= 16px prevents iOS auto-zoom; matches original text-3xl visually
+                  style={{ fontSize: "30px" }}
                   autoFocus
                 />
               </div>
@@ -797,7 +814,8 @@ export function SavingsTracker({ cycleExpenses, cycleIncomes, cycleStart, cycleE
                   <span className="text-[10px] text-muted-foreground">Quick fill:</span>
                   {[100, 75, 50, 25].map((pct) => (
                     <button key={pct} type="button"
-                      onClick={() => setAmount(String(Math.round((surplus * pct) / 100)))}
+                      // Sync both states when a quick-fill % is tapped
+                      onClick={() => setAmountAndDisplay(String(Math.round((surplus * pct) / 100)))}
                       className="text-[10px] font-black px-2.5 py-1 rounded-xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/20 transition-colors active:scale-95"
                     >{pct}%</button>
                   ))}
@@ -809,9 +827,13 @@ export function SavingsTracker({ cycleExpenses, cycleIncomes, cycleStart, cycleE
               <label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">
                 What's this for? <span className="normal-case font-normal text-muted-foreground/50">(optional)</span>
               </label>
-              <Input placeholder="e.g. Emergency fund, vacation, laptop…"
-                value={note} onChange={(e) => setNote(e.target.value)}
+              <Input
+                placeholder="e.g. Emergency fund, vacation, laptop…"
+                value={note}
+                onChange={(e) => setNote(e.target.value)}
                 className="h-11 rounded-2xl border-border/50 text-sm focus-visible:ring-1 focus-visible:ring-emerald-500"
+                // font-size >= 16px prevents iOS auto-zoom
+                style={{ fontSize: "16px" }}
               />
             </div>
 
