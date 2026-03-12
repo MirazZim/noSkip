@@ -74,7 +74,7 @@ export default function Expenses() {
   const [editingIncome, setEditingIncome] = useState<Income | null>(null);
   const [editingLoan, setEditingLoan] = useState<Loan | null>(null);
   const [budgetDialogOpen, setBudgetDialogOpen] = useState(false);
-  const [savingsModalOpen, setSavingsModalOpen] = useState(false); // ← NEW
+  const [savingsModalOpen, setSavingsModalOpen] = useState(false);
   const [cycleOffset, setCycleOffset] = useState(0);
   const [cycleConfig, setCycleConfig] = useState<CycleConfig>(loadCycleConfig);
 
@@ -89,7 +89,6 @@ export default function Expenses() {
 
   useEffect(() => { setCycleOffset(0); }, [cycleConfig.type]);
 
-  // Close savings modal on Escape
   useEffect(() => {
     if (!savingsModalOpen) return;
     const handler = (e: KeyboardEvent) => { if (e.key === "Escape") setSavingsModalOpen(false); };
@@ -399,7 +398,6 @@ export default function Expenses() {
               </button>
             </div>
 
-            {/* Summary cards — Savings card click opens the modal */}
             <ExpenseSummaryCards
               expenses={cycleExpenses}
               prevExpenses={allPrev}
@@ -443,27 +441,20 @@ export default function Expenses() {
         )}
       </div>
 
-      {/* ══ SAVINGS MODAL ══════════════════════════════════════════════════════
-          Opens when user clicks the Savings card in Overview.
-          Backdrop click or × button closes it.
-      ══════════════════════════════════════════════════════════════════════ */}
+      {/* ══ SAVINGS MODAL ══ */}
       {savingsModalOpen && (
         <div
           className="fixed inset-0 z-50 flex items-end sm:items-center justify-center"
           style={{ animation: "fadeIn 0.18s ease both" }}
         >
-          {/* Backdrop */}
           <div
             className="absolute inset-0 bg-black/50 backdrop-blur-sm"
             onClick={() => setSavingsModalOpen(false)}
           />
-
-          {/* Sheet */}
           <div
             className="relative z-10 w-full sm:max-w-lg max-h-[92dvh] overflow-y-auto rounded-t-3xl sm:rounded-3xl bg-background border border-border/60 shadow-2xl"
             style={{ animation: "sheetUp 0.22s cubic-bezier(0.34,1.56,0.64,1) both" }}
           >
-            {/* Handle + header */}
             <div className="sticky top-0 z-10 flex items-center justify-between px-5 pt-4 pb-3 bg-background/95 backdrop-blur-sm border-b border-border/40">
               <div className="sm:hidden mx-auto w-10 h-1 rounded-full bg-muted-foreground/30 absolute top-2 left-1/2 -translate-x-1/2" />
               <p className="text-sm font-black uppercase tracking-widest text-foreground pt-1">💰 Savings Tracker</p>
@@ -475,8 +466,6 @@ export default function Expenses() {
                 <X className="h-3.5 w-3.5 text-muted-foreground" />
               </button>
             </div>
-
-            {/* Content */}
             <div className="p-4">
               <SavingsTracker
                 cycleExpenses={cycleExpenses}
@@ -489,7 +478,7 @@ export default function Expenses() {
         </div>
       )}
 
-      {/* Desktop FAB */}
+      {/* Desktop FAB — transactions tab only */}
       {activeTab === "transactions" && !selectedDay && (
         <div
           className="hidden sm:block fixed bottom-8 right-8 z-40"
@@ -499,11 +488,28 @@ export default function Expenses() {
         </div>
       )}
 
-      {/* Calendar tab dialogs */}
+      {/*
+        Calendar tab dialogs — rendered with `hidden` so their built-in trigger
+        buttons (the FAB and the "+ Income" button) are invisible. The dialogs
+        themselves still open programmatically via the defaultDate useEffect,
+        so adding from DayDetailView works perfectly without duplicate buttons.
+      */}
+      {activeTab === "calendar" && selectedDay && (
+        <div className="hidden">
+          <AddExpenseDialog
+            defaultDate={addDialogDate}
+            onDateUsed={() => setAddDialogDate(undefined)}
+          />
+          <AddIncomeDialog
+            defaultDate={addIncomeDialogDate}
+            onDateUsed={() => setAddIncomeDialogDate(undefined)}
+          />
+        </div>
+      )}
+
+      {/* Calendar tab edit dialogs — no trigger buttons, always safe to render */}
       {activeTab === "calendar" && selectedDay && (
         <>
-          <AddExpenseDialog defaultDate={addDialogDate} onDateUsed={() => setAddDialogDate(undefined)} />
-          <AddIncomeDialog defaultDate={addIncomeDialogDate} onDateUsed={() => setAddIncomeDialogDate(undefined)} />
           <EditExpenseDialog
             expense={editingExpense}
             open={!!editingExpense}
@@ -566,7 +572,7 @@ export default function Expenses() {
         </nav>
       </div>
 
-      {/* Mobile expense FAB */}
+      {/* Mobile expense FAB — transactions tab only, never in calendar day view */}
       {activeTab === "transactions" && (
         <div
           className="sm:hidden fixed bottom-16 right-2 z-40"

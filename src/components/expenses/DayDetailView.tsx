@@ -1,5 +1,5 @@
-import { format } from "date-fns";
-import { ArrowLeft, Plus, Pencil, Trash2 } from "lucide-react";
+import { format, isToday, isYesterday, parseISO } from "date-fns";
+import { Plus, Pencil, Trash2, TrendingUp, TrendingDown, Minus } from "lucide-react";
 import { Expense, CATEGORY_COLORS, type ExpenseCategory } from "@/hooks/useExpenses";
 import { Income, INCOME_SOURCE_COLORS, type IncomeSource } from "@/hooks/useIncomes";
 import { useCurrency } from "@/hooks/useCurrency";
@@ -21,6 +21,29 @@ interface DayDetailViewProps {
 }
 
 type TabType = "expenses" | "income";
+
+// ── Snapshot insight generator ────────────────────────────────────────────────
+function getDayInsight(
+  spent: number,
+  earned: number,
+  txCount: number,
+  date: string
+): { emoji: string; text: string } {
+  const dateObj = parseISO(date);
+  if (txCount === 0) {
+    if (isToday(dateObj)) return { emoji: "✨", text: "Nothing logged yet today" };
+    return { emoji: "😴", text: "Quiet day — no activity" };
+  }
+  const net = earned - spent;
+  if (earned > 0 && spent === 0) return { emoji: "🏆", text: "Income only — zero spending" };
+  if (spent > 0 && earned === 0) {
+    if (txCount === 1) return { emoji: "💸", text: "Single expense day" };
+    return { emoji: "💸", text: `${txCount} expenses logged` };
+  }
+  if (net > 0) return { emoji: "📈", text: `Earned more than spent — +${Math.round((net / earned) * 100)}% surplus` };
+  if (net === 0) return { emoji: "⚖️", text: "Perfectly balanced day" };
+  return { emoji: "📉", text: `Spent ${Math.abs(net).toLocaleString()} more than earned` };
+}
 
 // ── iOS-style Swipeable Row ────────────────────────────────────────────────────
 interface SwipeableRowProps {
@@ -64,7 +87,6 @@ function SwipeableRow({ onEdit, onDelete, children, showEdit = true }: Swipeable
     e.preventDefault();
 
     const raw = currentOffset.current + dx;
-    // Only allow swiping left (negative), clamp at ACTION_WIDTH
     const clamped = Math.min(0, Math.max(-ACTION_WIDTH, raw));
     setOffset(clamped);
   };
@@ -92,27 +114,17 @@ function SwipeableRow({ onEdit, onDelete, children, showEdit = true }: Swipeable
     setOffset(0);
   }, []);
 
-  const handleDelete = () => {
-    close();
-    setTimeout(onDelete, 250);
-  };
-
-  const handleEdit = () => {
-    close();
-    setTimeout(() => onEdit?.(), 250);
-  };
+  const handleDelete = () => { close(); setTimeout(onDelete, 250); };
+  const handleEdit = () => { close(); setTimeout(() => onEdit?.(), 250); };
 
   return (
-    <div 
+    <div
       className="relative overflow-hidden select-none group"
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
     >
-      {/* Action buttons — revealed behind the row (mobile swipe) */}
-      <div
-        className="absolute inset-y-0 right-0 flex items-stretch sm:hidden"
-        style={{ width: ACTION_WIDTH }}
-      >
+      {/* Swipe actions (mobile) */}
+      <div className="absolute inset-y-0 right-0 flex items-stretch sm:hidden" style={{ width: ACTION_WIDTH }}>
         {showEdit && onEdit && (
           <button
             onPointerDown={(e) => e.stopPropagation()}
@@ -133,7 +145,7 @@ function SwipeableRow({ onEdit, onDelete, children, showEdit = true }: Swipeable
         </button>
       </div>
 
-      {/* Draggable content layer */}
+      {/* Draggable layer */}
       <div
         onTouchStart={onTouchStart}
         onTouchMove={onTouchMove}
@@ -146,7 +158,7 @@ function SwipeableRow({ onEdit, onDelete, children, showEdit = true }: Swipeable
         className="relative bg-card"
       >
         {children}
-        
+
         {/* Desktop hover actions */}
         <div className={cn(
           "hidden sm:flex absolute right-3 top-1/2 -translate-y-1/2 gap-1.5 transition-all duration-200",
@@ -154,24 +166,16 @@ function SwipeableRow({ onEdit, onDelete, children, showEdit = true }: Swipeable
         )}>
           {showEdit && onEdit && (
             <button
-              onClick={(e) => {
-                e.stopPropagation();
-                handleEdit();
-              }}
+              onClick={(e) => { e.stopPropagation(); handleEdit(); }}
               className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-blue-500 hover:bg-blue-600 text-white shadow-sm transition-colors"
-              title="Edit"
             >
               <Pencil className="h-3.5 w-3.5" />
               <span className="text-xs font-semibold">Edit</span>
             </button>
           )}
           <button
-            onClick={(e) => {
-              e.stopPropagation();
-              handleDelete();
-            }}
+            onClick={(e) => { e.stopPropagation(); handleDelete(); }}
             className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-red-500 hover:bg-red-600 text-white shadow-sm transition-colors"
-            title="Delete"
           >
             <Trash2 className="h-3.5 w-3.5" />
             <span className="text-xs font-semibold">Delete</span>
@@ -202,7 +206,10 @@ export function DayDetailView({
   const dayIncomes = incomes.filter((i) => i.date === date);
   const expenseTotal = dayExpenses.reduce((s, e) => s + e.amount, 0);
   const incomeTotal = dayIncomes.reduce((s, i) => s + i.amount, 0);
-  const displayDate = format(new Date(date + "T00:00:00"), "EEEE, MMMM d, yyyy");
+  const net = incomeTotal - expenseTotal;
+  const totalTx = dayExpenses.length + dayIncomes.length;
+
+  const insight = getDayInsight(expenseTotal, incomeTotal, totalTx, date);
 
   const categoryBreakdown = dayExpenses.reduce<Record<string, number>>((acc, e) => {
     acc[e.category] = (acc[e.category] || 0) + e.amount;
@@ -215,40 +222,69 @@ export function DayDetailView({
   }, {});
 
   const handleDeleteExpense = async (id: string) => {
-    try {
-      await deleteExpense.mutateAsync(id);
-      toast.success("Expense deleted");
-    } catch {
-      toast.error("Failed to delete");
-    }
+    try { await deleteExpense.mutateAsync(id); toast.success("Expense deleted"); }
+    catch { toast.error("Failed to delete"); }
   };
 
   const handleDeleteIncome = async (id: string) => {
-    try {
-      await deleteIncome.mutateAsync(id);
-      toast.success("Income deleted");
-    } catch {
-      toast.error("Failed to delete");
-    }
+    try { await deleteIncome.mutateAsync(id); toast.success("Income deleted"); }
+    catch { toast.error("Failed to delete"); }
   };
 
-  return (
-    <div className="space-y-5">
+  // Net color logic
+  const netPositive = net > 0;
+  const netZero = net === 0;
+  const netColor = netPositive ? "text-emerald-500" : netZero ? "text-muted-foreground" : "text-rose-500";
+  const netBg = netPositive ? "bg-emerald-500/10 border-emerald-500/20" : netZero ? "bg-muted/40 border-border/40" : "bg-rose-500/10 border-rose-500/20";
+  const NetIcon = netPositive ? TrendingUp : netZero ? Minus : TrendingDown;
 
-      {/* ── Header ── */}
-      <div className="flex items-center gap-3">
-        <button
-          onClick={onBack}
-          className="flex items-center justify-center h-9 w-9 rounded-xl border border-border/60 bg-card hover:bg-muted/60 transition-colors shrink-0 shadow-sm"
-        >
-          <ArrowLeft className="h-4 w-4 text-muted-foreground" />
-        </button>
-        <div className="flex-1 min-w-0">
-          <h2 className="text-base font-semibold text-foreground leading-tight truncate">{displayDate}</h2>
-          <p className="text-xs text-muted-foreground mt-0.5">
-            {dayExpenses.length + dayIncomes.length} transaction
-            {dayExpenses.length + dayIncomes.length !== 1 ? "s" : ""}
-          </p>
+  return (
+    <div className="space-y-4">
+
+      {/* ── Daily Snapshot Card (replaces the redundant date header) ── */}
+      <div className={cn(
+        "rounded-2xl border p-4 transition-all duration-300",
+        netBg
+      )}>
+        <div className="flex items-center justify-between gap-3">
+          {/* Left: net + insight */}
+          <div className="min-w-0">
+            <div className="flex items-center gap-1.5 mb-1">
+              <NetIcon className={cn("h-3.5 w-3.5 shrink-0", netColor)} />
+              <span className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">
+                {netPositive ? "Net gain" : netZero ? "Breakeven" : "Net spent"}
+              </span>
+            </div>
+            <p className={cn("text-2xl font-black tabular-nums leading-none tracking-tight", netColor)}>
+              {net === 0 ? "—" : `${netPositive ? "+" : ""}${formatAmount(Math.abs(net))}`}
+            </p>
+            <p className="text-[11px] text-muted-foreground mt-1.5 font-medium">
+              {insight.emoji} {insight.text}
+            </p>
+          </div>
+
+          {/* Right: mini stat pills */}
+          <div className="flex flex-col gap-1.5 shrink-0">
+            {expenseTotal > 0 && (
+              <div className="flex items-center gap-1.5 rounded-xl bg-rose-500/10 border border-rose-500/20 px-2.5 py-1.5">
+                <span className="text-[9px] font-black uppercase tracking-wider text-rose-500/70">Out</span>
+                <span className="text-xs font-black tabular-nums text-rose-500">{formatAmount(expenseTotal)}</span>
+              </div>
+            )}
+            {incomeTotal > 0 && (
+              <div className="flex items-center gap-1.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-1.5">
+                <span className="text-[9px] font-black uppercase tracking-wider text-emerald-500/70">In</span>
+                <span className="text-xs font-black tabular-nums text-emerald-500">+{formatAmount(incomeTotal)}</span>
+              </div>
+            )}
+            {totalTx > 0 && (
+              <div className="flex items-center justify-center rounded-xl bg-muted/60 px-2.5 py-1">
+                <span className="text-[10px] font-bold text-muted-foreground tabular-nums">
+                  {totalTx} tx
+                </span>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
@@ -335,7 +371,8 @@ export function DayDetailView({
           {dayExpenses.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-14 rounded-2xl border border-dashed border-border/60 bg-muted/20">
               <div className="text-3xl mb-2.5 opacity-60">💸</div>
-              <p className="text-sm text-muted-foreground">No expenses on this day</p>
+              <p className="text-sm font-bold text-muted-foreground">No expenses on this day</p>
+              <p className="text-xs text-muted-foreground/60 mt-1">Tap Add Expense to log one</p>
             </div>
           ) : (
             <div className="rounded-2xl border border-border/50 bg-card overflow-hidden shadow-sm divide-y divide-border/40">
@@ -403,7 +440,8 @@ export function DayDetailView({
           {dayIncomes.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-14 rounded-2xl border border-dashed border-emerald-200/60 dark:border-emerald-900/40 bg-emerald-50/20 dark:bg-emerald-950/10">
               <div className="text-3xl mb-2.5 opacity-60">💰</div>
-              <p className="text-sm text-muted-foreground">No income on this day</p>
+              <p className="text-sm font-bold text-muted-foreground">No income on this day</p>
+              <p className="text-xs text-muted-foreground/60 mt-1">Tap Add Income to log some</p>
             </div>
           ) : (
             <div className="rounded-2xl border border-border/50 bg-card overflow-hidden shadow-sm divide-y divide-border/40">
