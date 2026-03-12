@@ -102,6 +102,10 @@ export default function Habits() {
     return () => { document.body.style.overflow = ""; };
   }, [sheetOpen]);
 
+  // Row body tap → selects habit + opens sheet on mobile.
+  // The check button inside HabitListItem MUST call e.stopPropagation()
+  // so it never reaches this handler — keeping mark-done and open-detail
+  // as two fully independent actions with no interference.
   const handleSelect = (id: string) => {
     setSelectedId(id);
     if (window.matchMedia("(max-width: 1023px)").matches) {
@@ -115,20 +119,20 @@ export default function Habits() {
         @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap');
         .hp-root { font-family: 'DM Sans', var(--font-sans, sans-serif); }
 
-        /* Header */
+        /* ── Header ── */
         .hp-header { display: flex; flex-direction: column; gap: 16px; margin-bottom: 24px; }
         .hp-title-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
         .hp-title { font-size: 28px; font-weight: 700; letter-spacing: -0.035em; color: hsl(var(--foreground)); line-height: 1.1; }
         .hp-subtitle { font-size: 13px; color: hsl(var(--muted-foreground)); margin-top: 3px; }
 
-        /* Progress */
+        /* ── Progress ── */
         .hp-progress-strip { display: flex; align-items: center; gap: 14px; }
         .hp-progress-track { flex: 1; height: 5px; border-radius: 99px; background: hsl(var(--border)); overflow: hidden; }
         .hp-progress-fill { height: 100%; border-radius: 99px; background: hsl(var(--primary)); transition: width 0.6s cubic-bezier(0.34, 1.2, 0.64, 1); }
         .hp-progress-label { font-size: 12px; font-weight: 600; color: hsl(var(--muted-foreground)); white-space: nowrap; flex-shrink: 0; }
         .hp-progress-label strong { color: hsl(var(--foreground)); }
 
-        /* Body */
+        /* ── Body ── */
         .hp-body { display: flex; gap: 24px; align-items: flex-start; }
         .hp-list-col { flex: 1; min-width: 0; }
         .hp-list { display: flex; flex-direction: column; gap: 2px; }
@@ -138,7 +142,7 @@ export default function Habits() {
           to   { opacity: 1; transform: translateY(0); }
         }
 
-        /* Empty */
+        /* ── Empty state ── */
         .hp-empty {
           display: flex; flex-direction: column; align-items: center; justify-content: center;
           padding: 64px 24px; border-radius: 18px; border: 1.5px dashed hsl(var(--border));
@@ -147,15 +151,27 @@ export default function Habits() {
         .hp-empty-emoji { font-size: 40px; line-height: 1; }
         .hp-empty-text { font-size: 14px; color: hsl(var(--muted-foreground)); max-width: 220px; line-height: 1.5; }
 
-        /* Skeletons */
+        /* ── Skeletons ── */
         .hp-skeleton-list { display: flex; flex-direction: column; gap: 4px; }
 
-        /* Desktop sidebar */
+        /* ── Desktop sidebar ── */
         .hp-detail-col { width: 540px; flex-shrink: 0; display: none; position: sticky; top: 80px; }
         @media (min-width: 1024px) { .hp-detail-col { display: block; } }
         .hp-detail-card { border-radius: 18px; border: 1px solid hsl(var(--border)); background: hsl(var(--card)); overflow: hidden; }
 
-        /* Mobile sheet overlay */
+        /*
+          ── FIX 1: Mobile bottom spacing ─────────────────────────────────────
+          Prevents the last habit card from being hidden behind the bottom
+          navigation bar. 96px covers the tallest nav; safe-area-inset-bottom
+          adds the iPhone home-indicator gap on top.
+        */
+        @media (max-width: 1023px) {
+          .hp-list-col {
+            padding-bottom: calc(96px + env(safe-area-inset-bottom, 16px));
+          }
+        }
+
+        /* ── Mobile sheet overlay ── */
         .hp-overlay {
           position: fixed; inset: 0; z-index: 40;
           background: rgba(0,0,0,0.5);
@@ -165,7 +181,7 @@ export default function Habits() {
         }
         @keyframes hpOverlayIn { from { opacity: 0; } to { opacity: 1; } }
 
-        /* Mobile bottom sheet */
+        /* ── Mobile bottom sheet ── */
         .hp-sheet {
           position: fixed; left: 0; right: 0; bottom: 0; z-index: 50;
           background: hsl(var(--background));
@@ -176,6 +192,7 @@ export default function Habits() {
           -webkit-overflow-scrolling: touch;
           box-shadow: 0 -12px 60px rgba(0,0,0,0.25);
           animation: hpSheetIn 0.34s cubic-bezier(0.32, 1, 0.46, 1) forwards;
+          padding-bottom: env(safe-area-inset-bottom, 0px);
         }
         @media (min-width: 1024px) { .hp-sheet, .hp-overlay { display: none !important; } }
         @keyframes hpSheetIn {
@@ -189,7 +206,6 @@ export default function Habits() {
 
         /* ── Shared detail styles ── */
         .hd-inner { display: flex; flex-direction: column; }
-
         .hd-hero {
           display: flex; align-items: center; gap: 14px;
           padding: 18px 20px 16px;
@@ -207,7 +223,6 @@ export default function Habits() {
           overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
         }
         .hd-since { font-size: 12px; color: hsl(var(--muted-foreground)); margin-top: 2px; }
-
         .hd-close {
           width: 32px; height: 32px; border-radius: 50%;
           border: none; background: hsl(var(--muted));
@@ -216,7 +231,6 @@ export default function Habits() {
           cursor: pointer; flex-shrink: 0; transition: background 0.15s, color 0.15s;
         }
         .hd-close:hover { background: hsl(var(--border)); color: hsl(var(--foreground)); }
-
         .hd-stats { display: flex; border-bottom: 1px solid hsl(var(--border)); }
         .hd-stat {
           flex: 1; display: flex; flex-direction: column;
@@ -225,7 +239,6 @@ export default function Habits() {
         .hd-stat + .hd-stat { border-left: 1px solid hsl(var(--border)); }
         .hd-stat-value { font-size: 22px; font-weight: 700; letter-spacing: -0.04em; color: hsl(var(--foreground)); line-height: 1; }
         .hd-stat-label { font-size: 10px; font-weight: 600; color: hsl(var(--muted-foreground)); text-transform: uppercase; letter-spacing: 0.07em; }
-
         .hd-section { padding: 16px 20px; border-bottom: 1px solid hsl(var(--border)); }
         .hd-section:last-child { border-bottom: none; padding-bottom: max(20px, env(safe-area-inset-bottom)); }
         .hd-section-title { font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.09em; color: hsl(var(--muted-foreground)); margin-bottom: 12px; }

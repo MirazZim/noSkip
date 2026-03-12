@@ -62,13 +62,29 @@ function SevenDayRow({ completions, habitId }: { completions: HabitCompletion[];
 }
 
 // ── Circular check ─────────────────────────────────────────────────────────────
-function CircleCheck({ done, pending, onToggle }: { done: boolean; pending: boolean; onToggle: (e: React.MouseEvent) => void }) {
+function CircleCheck({
+  done,
+  pending,
+  onToggle,
+}: {
+  done: boolean;
+  pending: boolean;
+  onToggle: (e: React.MouseEvent) => void;
+}) {
   return (
     <button
       className={cn("hi-circle-check", done && "hi-circle-check--done")}
       onClick={onToggle}
       disabled={pending}
       aria-label={done ? "Mark undone" : "Mark done"}
+      /*
+        FIX 1 — Stop touch events from bubbling to the parent .hi-item div.
+        Without this, every tap on the check button also fires onTouchStart /
+        onTouchEnd on the parent, toggling isActiveSwipe and removing the
+        hi-item--snap class mid-animation — which breaks the pop effect on mobile.
+      */
+      onTouchStart={(e) => e.stopPropagation()}
+      onTouchEnd={(e) => e.stopPropagation()}
     >
       <span className="hi-circle-check-icon"><CheckIcon size={15} /></span>
     </button>
@@ -88,7 +104,7 @@ function ContextMenu({ onEdit, onDelete, onClose }: { onEdit: () => void; onDele
 // ── Constants ──────────────────────────────────────────────────────────────────
 const SWIPE_START_THRESHOLD = 10;
 const SWIPE_OPEN_AT = 50;
-const SWIPE_OPEN_WIDTH = 124; // just enough for two small pill buttons
+const SWIPE_OPEN_WIDTH = 124;
 
 export function HabitListItem({ habit, completions, isSelected, onSelect }: Props) {
   const toggle = useToggleHabitCompletion();
@@ -170,11 +186,10 @@ export function HabitListItem({ habit, completions, isSelected, onSelect }: Prop
         .hi-wrap {
           position: relative;
           border-radius: 14px;
-          /* overflow hidden clips the swipe buttons */
           overflow: hidden;
         }
 
-        /* ── Swipe actions: two small floating pills ── */
+        /* ── Swipe actions ── */
         .hi-swipe-actions {
           position: absolute;
           right: 10px;
@@ -186,88 +201,57 @@ export function HabitListItem({ habit, completions, isSelected, onSelect }: Prop
           z-index: 0;
           pointer-events: none;
         }
-        .hi-swipe-actions.hi-swipe-visible {
-          pointer-events: auto;
-        }
+        .hi-swipe-actions.hi-swipe-visible { pointer-events: auto; }
         .hi-swipe-btn {
-          display: flex;
-          flex-direction: column;
-          align-items: center;
-          justify-content: center;
-          gap: 3px;
-          width: 50px;
-          height: 50px;
-          border-radius: 12px;
-          border: none;
-          cursor: pointer;
-          font-size: 9.5px;
-          font-weight: 700;
-          font-family: inherit;
-          letter-spacing: 0.04em;
-          text-transform: uppercase;
+          display: flex; flex-direction: column; align-items: center;
+          justify-content: center; gap: 3px;
+          width: 50px; height: 50px; border-radius: 12px;
+          border: none; cursor: pointer;
+          font-size: 9.5px; font-weight: 700; font-family: inherit;
+          letter-spacing: 0.04em; text-transform: uppercase;
           transition: transform 0.15s, filter 0.15s, opacity 0.2s;
           opacity: 0;
+          /* FIX 2 — remove iOS tap flash on swipe pill buttons */
+          -webkit-tap-highlight-color: transparent;
+          touch-action: manipulation;
         }
-        .hi-swipe-actions.hi-swipe-visible .hi-swipe-btn {
-          opacity: 1;
-        }
+        .hi-swipe-actions.hi-swipe-visible .hi-swipe-btn { opacity: 1; }
         .hi-swipe-btn:active { transform: scale(0.92); filter: brightness(0.85); }
-        .hi-swipe-btn--edit {
-          background: hsl(var(--primary));
-          color: hsl(var(--primary-foreground));
-        }
-        .hi-swipe-btn--delete {
-          background: hsl(var(--destructive));
-          color: #fff;
-        }
+        .hi-swipe-btn--edit { background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); }
+        .hi-swipe-btn--delete { background: hsl(var(--destructive)); color: #fff; }
 
-        /* Only show on touch devices */
         @media (hover: hover) and (pointer: fine) {
           .hi-swipe-actions { display: none; }
         }
 
         /* ── Main item row ── */
         .hi-item {
-          position: relative;
-          z-index: 1;
-          display: flex;
-          align-items: center;
-          gap: 14px;
+          position: relative; z-index: 1;
+          display: flex; align-items: center; gap: 14px;
           padding: 16px 18px;
           cursor: pointer;
-          /* Solid background — never transparent */
           background: hsl(var(--background));
           border-radius: 14px;
           touch-action: pan-y;
           will-change: transform;
         }
-        .hi-item--snap {
-          transition: transform 0.28s cubic-bezier(0.25, 1, 0.5, 1);
-        }
+        .hi-item--snap { transition: transform 0.28s cubic-bezier(0.25, 1, 0.5, 1); }
         .hi-item:hover { background: hsl(var(--muted)); }
-        /* Selected: keep solid, just add the accent bar */
         .hi-item--selected { background: hsl(var(--muted)); }
         .hi-item--selected::before {
           content: '';
-          position: absolute;
-          left: 0; top: 16%; bottom: 16%;
-          width: 3px;
-          border-radius: 0 3px 3px 0;
+          position: absolute; left: 0; top: 16%; bottom: 16%;
+          width: 3px; border-radius: 0 3px 3px 0;
           background: hsl(var(--primary));
         }
 
         .hi-emoji-wrap {
           width: 44px; height: 44px; flex-shrink: 0;
-          border-radius: 12px;
-          background: hsl(var(--muted));
+          border-radius: 12px; background: hsl(var(--muted));
           display: flex; align-items: center; justify-content: center;
-          font-size: 22px; line-height: 1;
-          transition: filter 0.3s;
+          font-size: 22px; line-height: 1; transition: filter 0.3s;
         }
-        /* selected state: slightly different emoji bg so it doesn't blend */
-        .hi-item--selected .hi-emoji-wrap {
-          background: hsl(var(--border));
-        }
+        .hi-item--selected .hi-emoji-wrap { background: hsl(var(--border)); }
 
         .hi-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 8px; }
         .hi-name-row { display: flex; align-items: baseline; gap: 8px; }
@@ -291,10 +275,7 @@ export function HabitListItem({ habit, completions, isSelected, onSelect }: Prop
           background: hsl(var(--border));
           transition: background 0.2s, transform 0.2s;
         }
-        .hi-7day-pip--done {
-          background: hsl(var(--primary));
-          transform: scaleY(1.4); transform-origin: bottom;
-        }
+        .hi-7day-pip--done { background: hsl(var(--primary)); transform: scaleY(1.4); transform-origin: bottom; }
         .hi-7day-pip--today { background: hsl(var(--primary) / 0.3); }
         .hi-7day-label {
           font-size: 8.5px; font-weight: 500;
@@ -313,6 +294,9 @@ export function HabitListItem({ habit, completions, isSelected, onSelect }: Prop
           background: transparent; color: hsl(var(--muted-foreground));
           font-size: 11px; font-family: inherit; cursor: pointer;
           white-space: nowrap; transition: all 0.15s;
+          /* FIX 2 — remove iOS tap flash on retro button */
+          -webkit-tap-highlight-color: transparent;
+          touch-action: manipulation;
         }
         .hi-btn-retro:hover { border-color: hsl(var(--primary) / 0.5); color: hsl(var(--primary)); }
         .hi-btn-retro:disabled { opacity: 0.4; cursor: default; }
@@ -328,6 +312,22 @@ export function HabitListItem({ habit, completions, isSelected, onSelect }: Prop
         .hi-dots-wrap { display: none; position: relative; }
         @media (hover: hover) and (pointer: fine) { .hi-dots-wrap { display: block; } }
 
+        /*
+          ── FIX 2: Circle check button — full mobile parity ──────────────────
+
+          The three mobile-breaking defaults removed:
+            1. -webkit-tap-highlight-color: the grey iOS overlay that fires instead
+               of the CSS :active state, making the tap feel different on mobile.
+            2. touch-action: manipulation — disables the 300ms double-tap-zoom
+               delay on Android so the response feels instant like desktop click.
+            3. user-select: none — prevents accidental text selection on long press.
+
+          FIX 3: :active is restored via a JS-driven class (.hi-circle-check--pressing)
+          because iOS does NOT reliably fire CSS :active on buttons that are children
+          of a touch-event-consuming parent (the .hi-item div with onTouchStart).
+          The JS class is toggled by onTouchStart/onTouchEnd on the button itself,
+          which also call stopPropagation so they never reach the parent swipe system.
+        */
         .hi-circle-check {
           width: 38px; height: 38px; border-radius: 50%;
           border: 2px solid hsl(var(--border));
@@ -335,12 +335,23 @@ export function HabitListItem({ habit, completions, isSelected, onSelect }: Prop
           transition: border-color 0.2s, background 0.25s, box-shadow 0.25s, transform 0.15s;
           display: flex; align-items: center; justify-content: center;
           flex-shrink: 0; padding: 0;
+          /* Remove iOS tap flash */
+          -webkit-tap-highlight-color: transparent;
+          /* Instant response, no double-tap delay */
+          touch-action: manipulation;
+          /* No text-selection on long press */
+          user-select: none;
+          -webkit-user-select: none;
         }
         .hi-circle-check:hover {
           border-color: hsl(var(--primary) / 0.6);
           background: hsl(var(--primary) / 0.06);
         }
+        /* Desktop :active */
         .hi-circle-check:active { transform: scale(0.88); }
+        /* Mobile press — JS-driven, identical to desktop :active */
+        .hi-circle-check--pressing { transform: scale(0.88); }
+
         .hi-circle-check:disabled { opacity: 0.4; cursor: default; }
         .hi-circle-check--done {
           border-color: hsl(var(--primary));
@@ -349,13 +360,15 @@ export function HabitListItem({ habit, completions, isSelected, onSelect }: Prop
           animation: hiCheckPop 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
         }
         @keyframes hiCheckPop {
-          0% { transform: scale(0.7); }
-          60% { transform: scale(1.12); }
+          0%   { transform: scale(0.7); }
+          60%  { transform: scale(1.12); }
           100% { transform: scale(1); }
         }
         .hi-circle-check-icon {
           color: hsl(var(--muted-foreground) / 0.4);
           display: flex; align-items: center; transition: color 0.2s;
+          /* Prevent the SVG from being a touch target, so the button gets the event cleanly */
+          pointer-events: none;
         }
         .hi-circle-check--done .hi-circle-check-icon {
           color: hsl(var(--primary-foreground));
@@ -363,7 +376,7 @@ export function HabitListItem({ habit, completions, isSelected, onSelect }: Prop
         }
         @keyframes hiCheckIconIn {
           from { opacity: 0; transform: scale(0.5) rotate(-10deg); }
-          to { opacity: 1; transform: scale(1) rotate(0deg); }
+          to   { opacity: 1; transform: scale(1) rotate(0deg); }
         }
         .hi-circle-check:not(.hi-circle-check--done):hover .hi-circle-check-icon {
           color: hsl(var(--primary) / 0.7);
@@ -378,7 +391,7 @@ export function HabitListItem({ habit, completions, isSelected, onSelect }: Prop
         }
         @keyframes hiMenuIn {
           from { opacity: 0; transform: translateY(-6px) scale(0.97); }
-          to { opacity: 1; transform: translateY(0) scale(1); }
+          to   { opacity: 1; transform: translateY(0) scale(1); }
         }
         .hi-menu-item {
           display: flex; align-items: center; gap: 9px;
@@ -392,19 +405,29 @@ export function HabitListItem({ habit, completions, isSelected, onSelect }: Prop
       `}</style>
 
       <div className="hi-wrap">
-        {/* Small pill buttons revealed on swipe — sit behind the row */}
+        {/* Swipe action pills */}
         <div className={cn("hi-swipe-actions", isSwipeOpen && "hi-swipe-visible")}>
-          <button className="hi-swipe-btn hi-swipe-btn--edit" onClick={() => { setEditOpen(true); closeSwipe(); }}>
+          <button
+            className="hi-swipe-btn hi-swipe-btn--edit"
+            onTouchStart={(e) => e.stopPropagation()}
+            onTouchEnd={(e) => e.stopPropagation()}
+            onClick={() => { setEditOpen(true); closeSwipe(); }}
+          >
             <PencilIcon />
             Edit
           </button>
-          <button className="hi-swipe-btn hi-swipe-btn--delete" onClick={() => { handleDelete(); closeSwipe(); }}>
+          <button
+            className="hi-swipe-btn hi-swipe-btn--delete"
+            onTouchStart={(e) => e.stopPropagation()}
+            onTouchEnd={(e) => e.stopPropagation()}
+            onClick={() => { handleDelete(); closeSwipe(); }}
+          >
             <TrashIcon />
             Delete
           </button>
         </div>
 
-        {/* Main row — always z-index: 1, always fully opaque background */}
+        {/* Main row */}
         <div
           className={cn("hi-item", isSelected && "hi-item--selected", !isActiveSwipe && "hi-item--snap")}
           style={{ transform: `translateX(${swipeX}px)` }}
@@ -435,7 +458,13 @@ export function HabitListItem({ habit, completions, isSelected, onSelect }: Prop
           <div className="hi-right">
             <div className="hi-top-right">
               {canRetroYesterday && (
-                <button className="hi-btn-retro" onClick={(e) => handleToggle(yesterday, e)} disabled={toggle.isPending}>
+                <button
+                  className="hi-btn-retro"
+                  onTouchStart={(e) => e.stopPropagation()}
+                  onTouchEnd={(e) => e.stopPropagation()}
+                  onClick={(e) => handleToggle(yesterday, e)}
+                  disabled={toggle.isPending}
+                >
                   <CalendarIcon /> yday
                 </button>
               )}
@@ -455,12 +484,60 @@ export function HabitListItem({ habit, completions, isSelected, onSelect }: Prop
                 )}
               </div>
             </div>
-            <CircleCheck done={isDoneToday} pending={toggle.isPending} onToggle={(e) => handleToggle(today, e)} />
+
+            {/*
+              CircleCheck with JS-driven press state.
+              onTouchStart/onTouchEnd here stopPropagation so the parent
+              .hi-item swipe system never sees these touches.
+            */}
+            <CheckButton
+              done={isDoneToday}
+              pending={toggle.isPending}
+              onToggle={(e) => handleToggle(today, e)}
+            />
           </div>
         </div>
       </div>
 
       <EditHabitDialog habit={habit} open={editOpen} onOpenChange={setEditOpen} />
     </>
+  );
+}
+
+// ── CheckButton — JS-driven press state for mobile/desktop parity ─────────────
+// Extracted so it can own its own useState without re-rendering the full item.
+function CheckButton({
+  done,
+  pending,
+  onToggle,
+}: {
+  done: boolean;
+  pending: boolean;
+  onToggle: (e: React.MouseEvent) => void;
+}) {
+  const [pressing, setPressing] = useState(false);
+
+  return (
+    <button
+      className={cn(
+        "hi-circle-check",
+        done && "hi-circle-check--done",
+        pressing && !done && "hi-circle-check--pressing",
+      )}
+      onClick={onToggle}
+      disabled={pending}
+      aria-label={done ? "Mark undone" : "Mark done"}
+      /*
+        FIX 1 — stopPropagation on touch events so they never reach the
+        parent .hi-item div's swipe gesture handlers. Without this, every
+        check-button tap fires onTouchStart on .hi-item, sets isActiveSwipe=true,
+        removes hi-item--snap, and breaks the pop animation mid-flight.
+      */
+      onTouchStart={(e) => { e.stopPropagation(); setPressing(true); }}
+      onTouchEnd={(e) => { e.stopPropagation(); setPressing(false); }}
+      onTouchCancel={() => setPressing(false)}
+    >
+      <span className="hi-circle-check-icon"><CheckIcon size={15} /></span>
+    </button>
   );
 }
