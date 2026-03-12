@@ -40,6 +40,16 @@ const expenseSchema = z.object({
 
 type FormValues = z.infer<typeof expenseSchema>;
 
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+/** Format a numeric string with thousand-separator commas, preserving a trailing decimal point/zeros. */
+function formatWithCommas(raw: string): string {
+  if (!raw) return "";
+  const [intPart, decPart] = raw.split(".");
+  const formatted = intPart.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+  return decPart !== undefined ? `${formatted}.${decPart}` : formatted;
+}
+
 // ─── Create Category Panel ────────────────────────────────────────────────────
 
 interface CreateCategoryPanelProps {
@@ -109,6 +119,8 @@ function CreateCategoryPanel({ onCreated, onCancel, existingNames }: CreateCateg
             placeholder="e.g. Smoking, Gym, Coffee…"
             maxLength={24}
             className="h-10 rounded-xl border-border/60 pr-10 text-sm"
+            // Prevent iOS zoom on focus
+            style={{ fontSize: "16px" }}
           />
           <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] text-muted-foreground/50 tabular-nums select-none">
             {name.length}/24
@@ -201,10 +213,7 @@ function CategorySelector({
   const [creating, setCreating] = useState(false);
   const deleteCategory = useDeleteCustomCategory();
 
-  // ✅ FIXED - Direct lookup with fallback
   const selectedColor = value ? getCategoryColor(value, customCategories) : null;
-
-
 
   const handleCreated = (cat: CustomCategory) => {
     onCategoryCreated(cat);
@@ -257,11 +266,6 @@ function CategorySelector({
         </button>
       </PopoverTrigger>
 
-      {/*
-        overflow-hidden on PopoverContent stops Radix from stretching it
-        beyond the viewport, which would make the inner div never actually
-        overflow and therefore never show a scrollbar.
-      */}
       <PopoverContent
         className="w-[--radix-popover-trigger-width] p-2 rounded-2xl shadow-xl border-border/60 overflow-hidden"
         align="start"
@@ -269,12 +273,6 @@ function CategorySelector({
         avoidCollisions={false}
         sideOffset={6}
       >
-        {/*
-          Single scrollable wrapper for both list and create panel.
-          - maxHeight uses the Radix CSS var so it never clips off-screen on any device.
-          - onWheel / onTouchMove stopPropagation prevent the Dialog's body
-            scroll-lock from stealing scroll events before they reach this div.
-        */}
         <div
           className="overflow-y-auto"
           style={{ maxHeight: "min(320px, var(--radix-popover-available-height, 320px))" }}
@@ -289,10 +287,8 @@ function CategorySelector({
             />
           ) : (
             <div className="flex flex-col gap-0.5">
-              {/* Built-in categories */}
               {EXPENSE_CATEGORIES.map((cat) => {
                 const color = getCategoryColor(cat, customCategories) ?? "#64748b";
-
                 const isSelected = value === cat;
                 return (
                   <button
@@ -314,7 +310,6 @@ function CategorySelector({
                 );
               })}
 
-              {/* Custom categories */}
               {customCategories.length > 0 && (
                 <>
                   <div className="mx-3 my-1.5 h-px bg-border/50" />
@@ -361,7 +356,6 @@ function CategorySelector({
                 </>
               )}
 
-              {/* Create new */}
               <div className="mx-3 my-1.5 h-px bg-border/50" />
               <button
                 type="button"
@@ -388,6 +382,8 @@ interface AddExpenseDialogProps {
 
 export function AddExpenseDialog({ defaultDate, onDateUsed }: AddExpenseDialogProps) {
   const [open, setOpen] = useState(false);
+  // Separate display state for comma-formatted amount string
+  const [displayAmount, setDisplayAmount] = useState("");
   const addExpense = useAddExpense();
 
   const { data: customCategories = [], isLoading: categoriesLoading } = useCustomCategories();
@@ -398,7 +394,6 @@ export function AddExpenseDialog({ defaultDate, onDateUsed }: AddExpenseDialogPr
   });
 
   const watchedCategory = form.watch("category");
-
   const accentColor = watchedCategory ? getCategoryColor(watchedCategory, customCategories) : null;
 
   const allCategoryNames = [
@@ -414,6 +409,25 @@ export function AddExpenseDialog({ defaultDate, onDateUsed }: AddExpenseDialogPr
     }
   }, [defaultDate, form, onDateUsed]);
 
+  const handleAmountChange = (
+    e: React.ChangeEvent<HTMLInputElement>,
+    fieldOnChange: (...event: unknown[]) => void
+  ) => {
+    const raw = e.target.value;
+
+    // Strip all commas to get the raw numeric string
+    const stripped = raw.replace(/,/g, "");
+
+    // Allow only valid partial numeric input: digits, optional single dot, optional decimals
+    if (stripped !== "" && !/^\d*\.?\d{0,2}$/.test(stripped)) return;
+
+    // Update the display value with comma formatting
+    setDisplayAmount(formatWithCommas(stripped));
+
+    // Pass the raw numeric value to react-hook-form (zod coerces it)
+    fieldOnChange(stripped === "" ? undefined : stripped);
+  };
+
   const onSubmit = async (values: FormValues) => {
     try {
       await addExpense.mutateAsync({
@@ -424,6 +438,7 @@ export function AddExpenseDialog({ defaultDate, onDateUsed }: AddExpenseDialogPr
       });
       toast.success("Expense added");
       form.reset({ amount: undefined, category: "", date: new Date(), note: "" });
+      setDisplayAmount("");
       setOpen(false);
     } catch {
       toast.error("Failed to add expense");
@@ -488,17 +503,23 @@ export function AddExpenseDialog({ defaultDate, onDateUsed }: AddExpenseDialogPr
                         $
                       </span>
                       <Input
-                        type="number"
-                        step="0.01"
+                        // Use text + inputMode so we can display commas while keeping numeric keyboard on mobile
+                        type="text"
                         inputMode="decimal"
                         placeholder="0.00"
+                        value={displayAmount}
+                        onChange={(e) => handleAmountChange(e, field.onChange)}
+                        onBlur={field.onBlur}
+                        name={field.name}
+                        ref={field.ref}
                         className="pl-8 h-12 text-2xl font-bold rounded-xl border-border/60 focus-visible:ring-1 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                        style={
-                          accentColor
+                        // font-size 16px prevents iOS auto-zoom on focus
+                        style={{
+                          fontSize: "24px",
+                          ...(accentColor
                             ? { "--tw-ring-color": accentColor, borderColor: `${accentColor}40` } as React.CSSProperties
-                            : {}
-                        }
-                        {...field}
+                            : {}),
+                        }}
                       />
                     </div>
                   </FormControl>
@@ -591,8 +612,10 @@ export function AddExpenseDialog({ defaultDate, onDateUsed }: AddExpenseDialogPr
                     <FormControl>
                       <Textarea
                         placeholder="Optional…"
-                        className="resize-none rounded-xl border-border/60 text-sm h-11 min-h-[44px] py-3 leading-tight"
+                        className="resize-none rounded-xl border-border/60 h-11 min-h-[44px] py-3 leading-tight"
                         rows={1}
+                        // font-size >= 16px prevents iOS auto-zoom on focus
+                        style={{ fontSize: "16px" }}
                         {...field}
                       />
                     </FormControl>

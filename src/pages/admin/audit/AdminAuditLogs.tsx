@@ -730,8 +730,8 @@ export default function AdminAuditLogs() {
                         return (
                           <button key={p} onClick={() => setPage(p)}
                             className={`h-7 w-7 text-[11px] font-bold rounded-lg transition-all ${p === page
-                                ? "bg-violet-600 text-white shadow-lg shadow-violet-500/25"
-                                : "text-slate-400 hover:text-white hover:bg-slate-700/60"
+                              ? "bg-violet-600 text-white shadow-lg shadow-violet-500/25"
+                              : "text-slate-400 hover:text-white hover:bg-slate-700/60"
                               }`}
                           >{p}</button>
                         );
