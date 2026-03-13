@@ -7,7 +7,10 @@ export function AppLayout({ children }: { children: ReactNode }) {
     <SidebarProvider>
       <div className="min-h-screen flex w-full">
         <AppSidebar />
-        <main className="flex-1 flex flex-col">
+
+        {/* ← make main the scroll container with fixed height */}
+        <main className="flex-1 flex flex-col min-w-0 h-screen overflow-y-auto">
+
           <header
             className="sticky top-0 z-50 h-14 flex items-center border-b border-border/40 px-4 lg:px-6"
             style={{
@@ -18,9 +21,11 @@ export function AppLayout({ children }: { children: ReactNode }) {
           >
             <SidebarTrigger />
           </header>
+
           <div className="flex-1 p-4 lg:p-6">
             {children}
           </div>
+
         </main>
       </div>
     </SidebarProvider>
