@@ -36,6 +36,7 @@ import { cn } from "@/lib/utils";
 import { loadCycleConfig, CYCLE_CHANGE_EVENT } from "@/components/expenses/BudgetManager";
 import { SavingsTracker } from "@/components/expenses/SavingsTracker";
 import { useSavings } from "@/hooks/useSavings";
+import { useCurrency } from "@/hooks/useCurrency";
 
 // ── Semantic meaning-carriers — never theme colors ───────────────────────────
 const S = {
@@ -96,6 +97,8 @@ export default function Expenses() {
   const [savingsModalOpen, setSavingsModalOpen] = useState(false);
   const [cycleOffset, setCycleOffset] = useState(0);
   const [cycleConfig, setCycleConfig] = useState<CycleConfig>(loadCycleConfig);
+  // add this line alongside your other hooks, near the top of the Expenses() function
+  const { formatAmount } = useCurrency();
 
   useEffect(() => {
     const handler = (e: Event) => {
@@ -370,8 +373,7 @@ export default function Expenses() {
                     className="text-[11px] font-black leading-none"
                     style={{ color: "hsl(var(--foreground))", fontFamily: "'DM Mono', monospace" }}
                   >
-                    {/* We show total this cycle */}
-                    {new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(cycleTotal)}
+                    {formatAmount(cycleTotal)}
                   </span>
                   <span style={{ fontSize: 8, color: "hsl(var(--muted-foreground))", fontWeight: 600, letterSpacing: "0.05em" }}>
                     CYCLE SPEND
