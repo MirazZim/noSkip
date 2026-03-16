@@ -1,12 +1,32 @@
 import { useState, useEffect } from "react";
 import { format } from "date-fns";
+import {
+  DndContext,
+  DragEndEvent,
+  PointerSensor,
+  TouchSensor,
+  closestCenter,
+  useSensor,
+  useSensors,
+} from "@dnd-kit/core";
+import {
+  SortableContext,
+  verticalListSortingStrategy,
+  arrayMove,
+} from "@dnd-kit/sortable";
+import { restrictToVerticalAxis } from "@dnd-kit/modifiers";
 import { AppLayout } from "@/components/AppLayout";
 import { AddHabitDialog } from "@/components/habits/AddHabitDialog";
 import { HabitListItem } from "@/components/habits/HabitListItem";
 import { HabitDetailPanel } from "@/components/habits/HabitDetailPanel";
 import { HabitQuote } from "@/components/habits/HabitQuote";
 import { StreakGrid } from "@/components/habits/StreakGrid";
-import { useHabits, useHabitCompletions, calculateStreak } from "@/hooks/useHabits";
+import {
+  useHabits,
+  useHabitCompletions,
+  useReorderHabits,
+  calculateStreak,
+} from "@/hooks/useHabits";
 import { useHabitReminders } from "@/hooks/useHabitReminders";
 import { Skeleton } from "@/components/ui/skeleton";
 
@@ -83,6 +103,7 @@ export default function Habits() {
   const { data: completions, isLoading: completionsLoading } = useHabitCompletions();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
+  const reorderHabits = useReorderHabits();
 
   useHabitReminders(habits, completions);
 
@@ -102,15 +123,41 @@ export default function Habits() {
     return () => { document.body.style.overflow = ""; };
   }, [sheetOpen]);
 
-  // Row body tap → selects habit + opens sheet on mobile.
-  // The check button inside HabitListItem MUST call e.stopPropagation()
-  // so it never reaches this handler — keeping mark-done and open-detail
-  // as two fully independent actions with no interference.
   const handleSelect = (id: string) => {
     setSelectedId(id);
     if (window.matchMedia("(max-width: 1023px)").matches) {
       setSheetOpen(true);
     }
+  };
+
+  /**
+   * PointerSensor — desktop mouse.
+   * distance: 8 prevents accidental drags on single clicks.
+   *
+   * TouchSensor — mobile finger.
+   * delay: 150ms + tolerance: 5px cleanly separates a deliberate
+   * vertical drag from a tap or the horizontal swipe gesture.
+   */
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: { distance: 8 },
+    }),
+    useSensor(TouchSensor, {
+      activationConstraint: { delay: 150, tolerance: 5 },
+    })
+  );
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+
+    const oldIndex = activeHabits.findIndex((h) => h.id === active.id);
+    const newIndex = activeHabits.findIndex((h) => h.id === over.id);
+    if (oldIndex === -1 || newIndex === -1) return;
+
+    // arrayMove produces new array — never mutates the original
+    const reordered = arrayMove(activeHabits, oldIndex, newIndex);
+    reorderHabits.mutate({ orderedHabits: reordered });
   };
 
   return (
@@ -159,12 +206,7 @@ export default function Habits() {
         @media (min-width: 1024px) { .hp-detail-col { display: block; } }
         .hp-detail-card { border-radius: 18px; border: 1px solid hsl(var(--border)); background: hsl(var(--card)); overflow: hidden; }
 
-        /*
-          ── FIX 1: Mobile bottom spacing ─────────────────────────────────────
-          Prevents the last habit card from being hidden behind the bottom
-          navigation bar. 96px covers the tallest nav; safe-area-inset-bottom
-          adds the iPhone home-indicator gap on top.
-        */
+        /* ── Mobile bottom spacing ── */
         @media (max-width: 1023px) {
           .hp-list-col {
             padding-bottom: calc(96px + env(safe-area-inset-bottom, 16px));
@@ -285,20 +327,36 @@ export default function Habits() {
           </div>
         ) : (
           <div className="hp-body">
-            {/* Habit list */}
+            {/* Habit list — wrapped in DnD context */}
             <div className="hp-list-col">
-              <div className="hp-list">
-                {activeHabits.map((habit, i) => (
-                  <div key={habit.id} className="hp-item-wrap" style={{ animationDelay: `${i * 55}ms` }}>
-                    <HabitListItem
-                      habit={habit}
-                      completions={completions || []}
-                      isSelected={habit.id === selectedHabit?.id}
-                      onSelect={() => handleSelect(habit.id)}
-                    />
+              <DndContext
+                sensors={sensors}
+                collisionDetection={closestCenter}
+                onDragEnd={handleDragEnd}
+                modifiers={[restrictToVerticalAxis]}
+              >
+                <SortableContext
+                  items={activeHabits.map((h) => h.id)}
+                  strategy={verticalListSortingStrategy}
+                >
+                  <div className="hp-list">
+                    {activeHabits.map((habit, i) => (
+                      <div
+                        key={habit.id}
+                        className="hp-item-wrap"
+                        style={{ animationDelay: `${i * 55}ms` }}
+                      >
+                        <HabitListItem
+                          habit={habit}
+                          completions={completions || []}
+                          isSelected={habit.id === selectedHabit?.id}
+                          onSelect={() => handleSelect(habit.id)}
+                        />
+                      </div>
+                    ))}
                   </div>
-                ))}
-              </div>
+                </SortableContext>
+              </DndContext>
             </div>
 
             {/* Desktop sidebar */}
