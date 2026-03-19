@@ -142,6 +142,10 @@ const SWIPE_OPEN_AT = 50;
 const SWIPE_OPEN_WIDTH = 124;
 
 // ── CheckButton ────────────────────────────────────────────────────────────────
+// onToggle is a plain () => void — no event needed.
+// We handle stopPropagation internally and fire on touchEnd (not onClick)
+// so mobile gets instant 0ms feedback instead of waiting for the
+// synthesized click which arrives ~300ms later or gets swallowed entirely.
 function CheckButton({
   done,
   pending,
@@ -149,13 +153,41 @@ function CheckButton({
 }: {
   done: boolean;
   pending: boolean;
-  onToggle: (e: React.MouseEvent) => void;
+  onToggle: () => void;
 }) {
   const [pressing, setPressing] = useState(false);
+  // Track whether the touch was a tap (not a scroll/drag) before firing
+  const touchMoved = useRef(false);
+
+  const handleTouchStart = (e: React.TouchEvent) => {
+    e.stopPropagation();
+    touchMoved.current = false;
+    setPressing(true);
+  };
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    // If finger moved more than 6px it's a scroll, not a tap
+    touchMoved.current = true;
+  };
+
+  const handleTouchEnd = (e: React.TouchEvent) => {
+    e.stopPropagation();
+    // Prevent the 300ms ghost click from also firing onToggle
+    e.preventDefault();
+    setPressing(false);
+    if (!touchMoved.current && !pending) {
+      onToggle(); // fires instantly — no waiting for synthesized click
+    }
+    touchMoved.current = false;
+  };
+
+  const handleTouchCancel = () => {
+    setPressing(false);
+    touchMoved.current = false;
+  };
 
   return (
     <>
-      {/* Keyframes cannot be expressed in Tailwind without config edits — kept minimal */}
       <style>{`
         .habit-check-pop { animation: checkPop 0.35s cubic-bezier(0.34,1.56,0.64,1); }
         .habit-icon-in   { animation: iconIn  0.22s ease 0.08s both; }
@@ -174,7 +206,6 @@ function CheckButton({
         className={cn(
           "w-9 h-9 rounded-full border-2 border-border bg-transparent cursor-pointer",
           "flex items-center justify-center shrink-0 p-0 select-none isolate",
-          "[transform:translateZ(0)] [-webkit-transform:translateZ(0)]",
           "transition-[border-color,background-color,box-shadow] duration-200",
           "[-webkit-tap-highlight-color:transparent] touch-manipulation",
           "hover:border-primary/50 hover:bg-primary/[0.06]",
@@ -183,12 +214,14 @@ function CheckButton({
           done && "border-primary bg-primary shadow-[0_0_0_5px_hsl(var(--primary)/0.12)] habit-check-pop",
           "disabled:opacity-35 disabled:cursor-default"
         )}
-        onClick={onToggle}
+        // Desktop: onClick works perfectly fine, keep it
+        onClick={(e) => { e.stopPropagation(); if (!pending) onToggle(); }}
         disabled={pending}
         aria-label={done ? "Mark undone" : "Mark done"}
-        onTouchStart={(e) => { e.stopPropagation(); setPressing(true); }}
-        onTouchEnd={(e) => { e.stopPropagation(); setPressing(false); }}
-        onTouchCancel={() => setPressing(false)}
+        onTouchStart={handleTouchStart}
+        onTouchMove={handleTouchMove}
+        onTouchEnd={handleTouchEnd}
+        onTouchCancel={handleTouchCancel}
       >
         <span
           className={cn(
@@ -230,10 +263,9 @@ export function HabitListItem({ habit, completions, isSelected, onSelect }: Prop
     useSortable({ id: habit.id });
 
   // ── Optimistic done state ──────────────────────────────────────────────────
-  // Flips instantly on tap so the UI never waits for the server round-trip.
-  // The useEffect syncs back ONLY when no mutation is in-flight — this prevents
-  // React Query's intermediate re-fetch (where isDoneToday briefly flips back
-  // to false) from rolling back the optimistic state before the server confirms.
+  // Flips instantly on tap. The useEffect syncs back ONLY when the mutation
+  // is no longer in-flight — prevents React Query's intermediate re-fetch
+  // (where isDoneToday briefly reads false) from rolling back the optimistic state.
   const [optimisticDone, setOptimisticDone] = useState(isDoneToday);
 
   useEffect(() => {
@@ -243,13 +275,21 @@ export function HabitListItem({ habit, completions, isSelected, onSelect }: Prop
   }, [isDoneToday, toggle.isPending]);
 
   // ── Handlers ──────────────────────────────────────────────────────────────
-  const handleToggle = async (date: string, e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (date === today) setOptimisticDone((prev) => !prev); // instant feedback
+  const handleToggleToday = async () => {
+    setOptimisticDone((prev) => !prev); // instant — no event, no delay
     try {
-      await toggle.mutateAsync({ habitId: habit.id, date });
+      await toggle.mutateAsync({ habitId: habit.id, date: today });
     } catch {
-      if (date === today) setOptimisticDone(isDoneToday); // rollback on error
+      setOptimisticDone(isDoneToday); // rollback on error
+      toast.error("Failed to update");
+    }
+  };
+
+  const handleToggleYesterday = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    try {
+      await toggle.mutateAsync({ habitId: habit.id, date: yesterday });
+    } catch {
       toast.error("Failed to update");
     }
   };
@@ -300,7 +340,6 @@ export function HabitListItem({ habit, completions, isSelected, onSelect }: Prop
 
   return (
     <>
-      {/* ── Outer wrapper: dnd-kit owns transform/transition here ── */}
       <div
         ref={setNodeRef}
         style={{ transform: CSS.Transform.toString(transform), transition }}
@@ -311,7 +350,7 @@ export function HabitListItem({ habit, completions, isSelected, onSelect }: Prop
           isDragging && "z-[999] shadow-[0_24px_56px_hsl(var(--foreground)/0.15),0_6px_16px_hsl(var(--foreground)/0.08)]"
         )}
       >
-        {/* ── Swipe action buttons — visible on touch devices only ── */}
+        {/* ── Swipe action buttons — touch devices only ── */}
         <div
           className={cn(
             "absolute right-[10px] top-1/2 -translate-y-1/2 z-0 flex items-center gap-[7px]",
@@ -369,7 +408,6 @@ export function HabitListItem({ habit, completions, isSelected, onSelect }: Prop
           onTouchMove={onTouchMove}
           onTouchEnd={onTouchEnd}
         >
-          {/* Selected left accent bar */}
           {isSelected && (
             <div className="absolute left-0 top-[20%] bottom-[20%] w-[3px] rounded-r-[3px] bg-primary" />
           )}
@@ -408,8 +446,6 @@ export function HabitListItem({ habit, completions, isSelected, onSelect }: Prop
 
           {/* ── Body ── */}
           <div className="flex-1 min-w-0 flex flex-col gap-[9px]">
-
-            {/* Name + badge row */}
             <div className="flex items-baseline gap-2 min-w-0">
               <span
                 className={cn(
@@ -436,7 +472,6 @@ export function HabitListItem({ habit, completions, isSelected, onSelect }: Prop
               </span>
             </div>
 
-            {/* 7-day pip track */}
             <SevenDayRow completions={completions} habitId={habit.id} />
           </div>
 
@@ -444,7 +479,7 @@ export function HabitListItem({ habit, completions, isSelected, onSelect }: Prop
           <div className="flex flex-col items-end gap-[9px] shrink-0">
             <div className="flex items-center gap-[5px]">
 
-              {/* Retro-yesterday — always uses real server truth */}
+              {/* Retro-yesterday — real server truth, no optimistic needed */}
               {canRetroYesterday && (
                 <button
                   className={cn(
@@ -459,7 +494,7 @@ export function HabitListItem({ habit, completions, isSelected, onSelect }: Prop
                   )}
                   onTouchStart={(e) => e.stopPropagation()}
                   onTouchEnd={(e) => e.stopPropagation()}
-                  onClick={(e) => handleToggle(yesterday, e)}
+                  onClick={handleToggleYesterday}
                   disabled={toggle.isPending}
                 >
                   <CalendarIcon /> yday
@@ -490,11 +525,11 @@ export function HabitListItem({ habit, completions, isSelected, onSelect }: Prop
               </div>
             </div>
 
-            {/* Check button — driven by optimisticDone, never waits for server */}
+            {/* Check button — fires on touchEnd (mobile) or onClick (desktop) */}
             <CheckButton
               done={optimisticDone}
               pending={toggle.isPending}
-              onToggle={(e) => handleToggle(today, e)}
+              onToggle={handleToggleToday}
             />
           </div>
         </div>
