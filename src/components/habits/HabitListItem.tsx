@@ -259,7 +259,7 @@ function DopamineCard({
         style={{
           background: "rgba(0,0,0,0.4)",
           backdropFilter: "blur(8px) saturate(120%)",
-WebkitBackdropFilter: "blur(8px) saturate(120%)",
+          WebkitBackdropFilter: "blur(8px) saturate(120%)",
         }}
         onClick={dismiss}
       />
