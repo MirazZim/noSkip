@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { format, subDays, isAfter, parseISO } from "date-fns";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
@@ -173,8 +173,9 @@ function CheckButton({
       <button
         className={cn(
           "w-9 h-9 rounded-full border-2 border-border bg-transparent cursor-pointer",
-          "flex items-center justify-center shrink-0 p-0 select-none",
-          "transition-[border-color,background-color,box-shadow,transform] duration-200",
+          "flex items-center justify-center shrink-0 p-0 select-none isolate",
+          "[transform:translateZ(0)] [-webkit-transform:translateZ(0)]",
+          "transition-[border-color,background-color,box-shadow] duration-200",
           "[-webkit-tap-highlight-color:transparent] touch-manipulation",
           "hover:border-primary/50 hover:bg-primary/[0.06]",
           "active:scale-[0.86]",
@@ -216,22 +217,41 @@ export function HabitListItem({ habit, completions, isSelected, onSelect }: Prop
   const touchStartY = useRef(0);
   const swipeIntent = useRef<"none" | "swipe" | "scroll">("none");
 
-  const today = format(new Date(), "yyyy-MM-dd");
+  const today     = format(new Date(), "yyyy-MM-dd");
   const yesterday = format(subDays(new Date(), 1), "yyyy-MM-dd");
 
-  const isDoneToday     = completions.some((c) => c.habit_id === habit.id && c.date === today);
-  const isDoneYesterday = completions.some((c) => c.habit_id === habit.id && c.date === yesterday);
+  const isDoneToday       = completions.some((c) => c.habit_id === habit.id && c.date === today);
+  const isDoneYesterday   = completions.some((c) => c.habit_id === habit.id && c.date === yesterday);
   const canRetroYesterday = !isDoneYesterday && !isAfter(parseISO(habit.start_date), parseISO(yesterday));
-  const streak    = calculateStreak(completions, habit.id, habit.start_date);
-  const totalDone = completions.filter((c) => c.habit_id === habit.id).length;
+  const streak            = calculateStreak(completions, habit.id, habit.start_date);
+  const totalDone         = completions.filter((c) => c.habit_id === habit.id).length;
 
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id: habit.id });
 
+  // ── Optimistic done state ──────────────────────────────────────────────────
+  // Flips instantly on tap so the UI never waits for the server round-trip.
+  // The useEffect syncs back ONLY when no mutation is in-flight — this prevents
+  // React Query's intermediate re-fetch (where isDoneToday briefly flips back
+  // to false) from rolling back the optimistic state before the server confirms.
+  const [optimisticDone, setOptimisticDone] = useState(isDoneToday);
+
+  useEffect(() => {
+    if (!toggle.isPending) {
+      setOptimisticDone(isDoneToday);
+    }
+  }, [isDoneToday, toggle.isPending]);
+
+  // ── Handlers ──────────────────────────────────────────────────────────────
   const handleToggle = async (date: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    try { await toggle.mutateAsync({ habitId: habit.id, date }); }
-    catch { toast.error("Failed to update"); }
+    if (date === today) setOptimisticDone((prev) => !prev); // instant feedback
+    try {
+      await toggle.mutateAsync({ habitId: habit.id, date });
+    } catch {
+      if (date === today) setOptimisticDone(isDoneToday); // rollback on error
+      toast.error("Failed to update");
+    }
   };
 
   const handleDelete = async () => {
@@ -259,8 +279,8 @@ export function HabitListItem({ habit, completions, isSelected, onSelect }: Prop
     }
     if (swipeIntent.current === "scroll") return;
     e.preventDefault();
-    const base = isSwipeOpen ? -SWIPE_OPEN_WIDTH : 0;
-    const raw  = base + dx;
+    const base    = isSwipeOpen ? -SWIPE_OPEN_WIDTH : 0;
+    const raw     = base + dx;
     const clamped = Math.min(0, Math.max(-SWIPE_OPEN_WIDTH - 10, raw));
     setSwipeX(clamped);
   };
@@ -335,14 +355,10 @@ export function HabitListItem({ habit, completions, isSelected, onSelect }: Prop
         {/* ── Main card row ── */}
         <div
           className={cn(
-            // layout
             "relative z-[1] flex items-center gap-[13px] px-4 py-[15px] pl-3 cursor-pointer",
-            // visual
             "bg-card rounded-[18px] border border-border/60",
-            // motion
-            "touch-pan-y will-change-transform",
+            "touch-pan-y",
             !isActiveSwipe && "transition-transform duration-[280ms] ease-[cubic-bezier(0.25,1,0.5,1)]",
-            // interaction states
             "hover:bg-muted/60 hover:border-border",
             isSelected && "bg-primary/[0.04] border-primary/25",
             isDragging && "opacity-[0.97]"
@@ -358,14 +374,13 @@ export function HabitListItem({ habit, completions, isSelected, onSelect }: Prop
             <div className="absolute left-0 top-[20%] bottom-[20%] w-[3px] rounded-r-[3px] bg-primary" />
           )}
 
-          {/* ── Drag handle — listeners ONLY here so swipe stays unaffected ── */}
+          {/* ── Drag handle ── */}
           <div
             className={cn(
               "flex items-center justify-center w-[22px] h-9 shrink-0 rounded-md",
               "text-muted-foreground/35 cursor-grab select-none touch-none",
               "[-webkit-tap-highlight-color:transparent] [-webkit-user-select:none]",
-              "transition-colors duration-150",
-              "hover:text-muted-foreground/70",
+              "transition-colors duration-150 hover:text-muted-foreground/70",
               "active:cursor-grabbing",
               isDragging && "cursor-grabbing text-primary"
             )}
@@ -386,7 +401,7 @@ export function HabitListItem({ habit, completions, isSelected, onSelect }: Prop
               "hover:scale-105",
               isSelected && "bg-primary/[0.08] border-primary/15"
             )}
-            style={{ filter: isDoneToday ? "none" : "grayscale(0.25) opacity(0.8)" }}
+            style={{ filter: optimisticDone ? "none" : "grayscale(0.25) opacity(0.8)" }}
           >
             {habit.emoji}
           </div>
@@ -399,12 +414,10 @@ export function HabitListItem({ habit, completions, isSelected, onSelect }: Prop
               <span
                 className={cn(
                   "font-semibold text-[14px] tracking-[-0.025em] text-foreground leading-[1.3]",
-                  // mobile: max 2 lines
                   "overflow-hidden [display:-webkit-box] [-webkit-line-clamp:2] [-webkit-box-orient:vertical]",
-                  // sm+: single line with ellipsis
                   "sm:whitespace-nowrap sm:[display:block] sm:overflow-hidden sm:text-ellipsis",
                   "transition-[opacity,color] duration-200",
-                  isDoneToday && "opacity-30 line-through decoration-muted-foreground/40 decoration-[1.5px]"
+                  optimisticDone && "opacity-30 line-through decoration-muted-foreground/40 decoration-[1.5px]"
                 )}
               >
                 {habit.name}
@@ -431,7 +444,7 @@ export function HabitListItem({ habit, completions, isSelected, onSelect }: Prop
           <div className="flex flex-col items-end gap-[9px] shrink-0">
             <div className="flex items-center gap-[5px]">
 
-              {/* Retro-yesterday */}
+              {/* Retro-yesterday — always uses real server truth */}
               {canRetroYesterday && (
                 <button
                   className={cn(
@@ -477,9 +490,9 @@ export function HabitListItem({ habit, completions, isSelected, onSelect }: Prop
               </div>
             </div>
 
-            {/* Check / complete button */}
+            {/* Check button — driven by optimisticDone, never waits for server */}
             <CheckButton
-              done={isDoneToday}
+              done={optimisticDone}
               pending={toggle.isPending}
               onToggle={(e) => handleToggle(today, e)}
             />
