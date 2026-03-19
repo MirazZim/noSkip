@@ -257,9 +257,9 @@ function DopamineCard({
       <div
         className="dc-bg fixed inset-0 z-[9998]"
         style={{
-          background: "rgba(0,0,0,0.6)",
-          backdropFilter: "blur(20px) saturate(140%)",
-          WebkitBackdropFilter: "blur(20px) saturate(140%)",
+          background: "rgba(0,0,0,0.4)",
+          backdropFilter: "blur(8px) saturate(120%)",
+WebkitBackdropFilter: "blur(8px) saturate(120%)",
         }}
         onClick={dismiss}
       />
