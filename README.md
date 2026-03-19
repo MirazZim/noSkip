@@ -7,7 +7,7 @@ By logging spending and habits side by side, NoSkip helps you see how your finan
 > 🔗 **Live site:** https://no-skip-main.vercel.app/
 
 ---
-hello
+hello lala
 ## Features
 
 - **Unified dashboard**
