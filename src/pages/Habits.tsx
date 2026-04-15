@@ -21,6 +21,7 @@ import { HabitListItem } from "@/components/habits/HabitListItem";
 import { HabitDetailPanel } from "@/components/habits/HabitDetailPanel";
 import { HabitQuote } from "@/components/habits/HabitQuote";
 import { StreakGrid } from "@/components/habits/StreakGrid";
+import { HabitAnalytics } from "@/components/habits/HabitAnalytics";
 import {
   useHabits,
   useHabitCompletions,
@@ -29,6 +30,7 @@ import {
 } from "@/hooks/useHabits";
 import { useHabitReminders } from "@/hooks/useHabitReminders";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 const XIcon = () => (
   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
@@ -103,6 +105,7 @@ export default function Habits() {
   const { data: completions, isLoading: completionsLoading } = useHabitCompletions();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState("habits");
   const reorderHabits = useReorderHabits();
 
   useHabitReminders(habits, completions);
@@ -313,62 +316,76 @@ export default function Habits() {
           <HabitQuote />
         </div>
 
-        {/* Body */}
-        {isLoading ? (
-          <div className="hp-skeleton-list">
-            {[...Array(4)].map((_, i) => (
-              <Skeleton key={i} className="h-20 rounded-xl" style={{ animationDelay: `${i * 80}ms` }} />
-            ))}
-          </div>
-        ) : activeHabits.length === 0 ? (
-          <div className="hp-empty">
-            <span className="hp-empty-emoji">🎯</span>
-            <p className="hp-empty-text">No habits yet. Create one to start building streaks!</p>
-          </div>
-        ) : (
-          <div className="hp-body">
-            {/* Habit list — wrapped in DnD context */}
-            <div className="hp-list-col">
-              <DndContext
-                sensors={sensors}
-                collisionDetection={closestCenter}
-                onDragEnd={handleDragEnd}
-                modifiers={[restrictToVerticalAxis]}
-              >
-                <SortableContext
-                  items={activeHabits.map((h) => h.id)}
-                  strategy={verticalListSortingStrategy}
-                >
-                  <div className="hp-list">
-                    {activeHabits.map((habit, i) => (
-                      <div
-                        key={habit.id}
-                        className="hp-item-wrap"
-                        style={{ animationDelay: `${i * 55}ms` }}
-                      >
-                        <HabitListItem
-                          habit={habit}
-                          completions={completions || []}
-                          isSelected={habit.id === selectedHabit?.id}
-                          onSelect={() => handleSelect(habit.id)}
-                        />
-                      </div>
-                    ))}
-                  </div>
-                </SortableContext>
-              </DndContext>
-            </div>
+        {/* Tabs */}
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+          <TabsList className="grid w-full max-w-md grid-cols-2 mb-6">
+            <TabsTrigger value="habits">Habits</TabsTrigger>
+            <TabsTrigger value="analytics">Analytics</TabsTrigger>
+          </TabsList>
 
-            {/* Desktop sidebar */}
-            {selectedHabit && (
-              <div className="hp-detail-col">
-                <div className="hp-detail-card">
-                  <HabitDetail habit={selectedHabit} completions={completions || []} />
+          <TabsContent value="habits" className="mt-0">
+            {/* Body */}
+            {isLoading ? (
+              <div className="hp-skeleton-list">
+                {[...Array(4)].map((_, i) => (
+                  <Skeleton key={i} className="h-20 rounded-xl" style={{ animationDelay: `${i * 80}ms` }} />
+                ))}
+              </div>
+            ) : activeHabits.length === 0 ? (
+              <div className="hp-empty">
+                <span className="hp-empty-emoji">🎯</span>
+                <p className="hp-empty-text">No habits yet. Create one to start building streaks!</p>
+              </div>
+            ) : (
+              <div className="hp-body">
+                {/* Habit list — wrapped in DnD context */}
+                <div className="hp-list-col">
+                  <DndContext
+                    sensors={sensors}
+                    collisionDetection={closestCenter}
+                    onDragEnd={handleDragEnd}
+                    modifiers={[restrictToVerticalAxis]}
+                  >
+                    <SortableContext
+                      items={activeHabits.map((h) => h.id)}
+                      strategy={verticalListSortingStrategy}
+                    >
+                      <div className="hp-list">
+                        {activeHabits.map((habit, i) => (
+                          <div
+                            key={habit.id}
+                            className="hp-item-wrap"
+                            style={{ animationDelay: `${i * 55}ms` }}
+                          >
+                            <HabitListItem
+                              habit={habit}
+                              completions={completions || []}
+                              isSelected={habit.id === selectedHabit?.id}
+                              onSelect={() => handleSelect(habit.id)}
+                            />
+                          </div>
+                        ))}
+                      </div>
+                    </SortableContext>
+                  </DndContext>
                 </div>
+
+                {/* Desktop sidebar */}
+                {selectedHabit && (
+                  <div className="hp-detail-col">
+                    <div className="hp-detail-card">
+                      <HabitDetail habit={selectedHabit} completions={completions || []} />
+                    </div>
+                  </div>
+                )}
               </div>
             )}
-          </div>
-        )}
+          </TabsContent>
+
+          <TabsContent value="analytics" className="mt-0">
+            <HabitAnalytics habits={habits || []} completions={completions || []} />
+          </TabsContent>
+        </Tabs>
 
         {/* Mobile bottom sheet */}
         {sheetOpen && selectedHabit && (
