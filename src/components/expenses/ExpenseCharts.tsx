@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import {
   PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis,
   Tooltip, ResponsiveContainer, CartesianGrid,
@@ -9,12 +9,14 @@ import {
 } from "date-fns";
 import { Expense, CATEGORY_COLORS, type ExpenseCategory } from "@/hooks/useExpenses";
 import { useCurrency } from "@/hooks/useCurrency";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { ChevronRight } from "lucide-react";
 
 interface Props {
   expenses: Expense[];
   month: Date;
 }
-//hello
+
 /* ─── Custom bar tooltip ─────────────────────────────────────────────── */
 function DailyTooltip({ active, payload, label, formatAmount }: any) {
   if (!active || !payload?.length) return null;
@@ -39,8 +41,131 @@ function RoundedBar(props: any) {
   );
 }
 
+/* ─── Category Breakdown Dialog ──────────────────────────────────────── */
+function CategoryBreakdownDialog({
+  open,
+  onOpenChange,
+  categoryData,
+  total,
+  formatAmount,
+}: {
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  categoryData: { name: string; value: number }[];
+  total: number;
+  formatAmount: (n: number) => string;
+}) {
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-[420px] p-0 gap-0 overflow-hidden rounded-3xl border-border/40 shadow-2xl max-h-[85dvh] flex flex-col">
+        {/* Accent strip */}
+        <div className="h-[3px] w-full bg-gradient-to-r from-violet-500 via-primary to-cyan-500 shrink-0" />
+
+        <DialogHeader className="px-5 pt-5 pb-3 shrink-0">
+          <DialogTitle className="text-lg font-black tracking-tight leading-none">
+            Category Breakdown
+          </DialogTitle>
+          <p className="text-xs text-muted-foreground mt-1">
+            {categoryData.length} categories · {formatAmount(total)} total
+          </p>
+        </DialogHeader>
+
+        {/* Donut + list */}
+        <div className="overflow-y-auto px-5 pb-5 flex flex-col gap-4">
+          {/* Donut chart centered */}
+          <div className="flex justify-center">
+            <div className="w-[140px] h-[140px] relative">
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie
+                    data={categoryData}
+                    cx="50%"
+                    cy="50%"
+                    innerRadius={44}
+                    outerRadius={66}
+                    dataKey="value"
+                    strokeWidth={3}
+                    stroke="hsl(var(--card))"
+                    paddingAngle={2}
+                  >
+                    {categoryData.map((entry) => (
+                      <Cell
+                        key={entry.name}
+                        fill={CATEGORY_COLORS[entry.name as ExpenseCategory] || CATEGORY_COLORS.Other}
+                      />
+                    ))}
+                  </Pie>
+                </PieChart>
+              </ResponsiveContainer>
+              <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+                <span className="text-[10px] text-muted-foreground leading-none">total</span>
+                <span className="text-sm font-black tabular-nums leading-tight">{formatAmount(total)}</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Full list */}
+          <div className="flex flex-col gap-2">
+            {categoryData.map((cat, i) => {
+              const color = CATEGORY_COLORS[cat.name as ExpenseCategory] || CATEGORY_COLORS.Other;
+              const pct = total ? (cat.value / total) * 100 : 0;
+              return (
+                <div
+                  key={cat.name}
+                  className="flex flex-col gap-1"
+                  style={{ animation: "fadeSlideIn 0.25s ease both", animationDelay: `${i * 35}ms` }}
+                >
+                  <div className="flex items-center justify-between text-sm">
+                    <div className="flex items-center gap-2">
+                      <span
+                        className="h-2.5 w-2.5 rounded-full shrink-0"
+                        style={{ backgroundColor: color }}
+                      />
+                      <span className="font-semibold text-foreground">{cat.name}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-muted-foreground tabular-nums">
+                        {pct.toFixed(1)}%
+                      </span>
+                      <span className="font-bold tabular-nums" style={{ color }}>
+                        {formatAmount(cat.value)}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="h-[5px] w-full rounded-full bg-muted overflow-hidden">
+                    <div
+                      className="h-full rounded-full"
+                      style={{
+                        width: `${pct}%`,
+                        backgroundColor: color,
+                        animation: `growWidth 0.6s ease both`,
+                        animationDelay: `${i * 35 + 80}ms`,
+                      }}
+                    />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        <style>{`
+          @keyframes fadeSlideIn {
+            from { opacity: 0; transform: translateX(-6px); }
+            to   { opacity: 1; transform: translateX(0); }
+          }
+          @keyframes growWidth {
+            from { width: 0%; }
+          }
+        `}</style>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 export function ExpenseCharts({ expenses, month }: Props) {
   const { formatAmount } = useCurrency();
+  const [breakdownOpen, setBreakdownOpen] = useState(false);
 
   const categoryData = useMemo(() => {
     const totals: Record<string, number> = {};
@@ -73,153 +198,178 @@ export function ExpenseCharts({ expenses, month }: Props) {
   );
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+    <>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
 
-      {/* ── Category breakdown ───────────────────────────────────────── */}
-      <div className="rounded-2xl border border-border/60 bg-card shadow-sm overflow-hidden">
-        {/* panel header */}
-        <div className="px-5 pt-4 pb-3 border-b border-border/40 flex items-center justify-between">
-          <div>
-            <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Breakdown</p>
-            <p className="text-base font-black tracking-tight leading-tight">By Category</p>
-          </div>
-          {topCategory && (
-            <div className="text-right">
-              <p className="text-[10px] text-muted-foreground uppercase tracking-widest">Top spend</p>
-              <p className="text-sm font-bold" style={{ color: CATEGORY_COLORS[topCategory.name as ExpenseCategory] || CATEGORY_COLORS.Other }}>
-                {topCategory.name} · {topPct}%
-              </p>
+        {/* ── Category breakdown ───────────────────────────────────────── */}
+        <div
+          className="rounded-2xl border border-border/60 bg-card shadow-sm overflow-hidden cursor-pointer hover:border-border transition-colors group"
+          onClick={() => categoryData.length > 0 && setBreakdownOpen(true)}
+        >
+          {/* panel header */}
+          <div className="px-5 pt-4 pb-3 border-b border-border/40 flex items-center justify-between">
+            <div>
+              <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Breakdown</p>
+              <p className="text-base font-black tracking-tight leading-tight">By Category</p>
             </div>
-          )}
-        </div>
+            <div className="flex items-center gap-2">
+              {topCategory && (
+                <div className="text-right">
+                  <p className="text-[10px] text-muted-foreground uppercase tracking-widest">Top spend</p>
+                  <p className="text-sm font-bold" style={{ color: CATEGORY_COLORS[topCategory.name as ExpenseCategory] || CATEGORY_COLORS.Other }}>
+                    {topCategory.name} · {topPct}%
+                  </p>
+                </div>
+              )}
+              {categoryData.length > 0 && (
+                <ChevronRight className="h-4 w-4 text-muted-foreground/40 group-hover:text-muted-foreground transition-colors shrink-0" />
+              )}
+            </div>
+          </div>
 
-        {categoryData.length > 0 ? (
-          <div className="flex gap-2 p-4">
-            {/* Donut */}
-            <div className="w-[120px] h-[120px] shrink-0 relative">
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie
-                    data={categoryData}
-                    cx="50%"
-                    cy="50%"
-                    innerRadius={36}
-                    outerRadius={56}
-                    dataKey="value"
-                    strokeWidth={3}
-                    stroke="hsl(var(--card))"
-                    paddingAngle={2}
-                  >
-                    {categoryData.map((entry) => (
-                      <Cell
-                        key={entry.name}
-                        fill={CATEGORY_COLORS[entry.name as ExpenseCategory] || CATEGORY_COLORS.Other}
-                      />
-                    ))}
-                  </Pie>
-                </PieChart>
-              </ResponsiveContainer>
-              {/* Center label */}
-              <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-                <span className="text-[10px] text-muted-foreground leading-none">total</span>
-                <span className="text-xs font-black tabular-nums leading-tight">{formatAmount(total)}</span>
+          {categoryData.length > 0 ? (
+            <div className="flex gap-2 p-4">
+              {/* Donut */}
+              <div className="w-[120px] h-[120px] shrink-0 relative">
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie
+                      data={categoryData}
+                      cx="50%"
+                      cy="50%"
+                      innerRadius={36}
+                      outerRadius={56}
+                      dataKey="value"
+                      strokeWidth={3}
+                      stroke="hsl(var(--card))"
+                      paddingAngle={2}
+                    >
+                      {categoryData.map((entry) => (
+                        <Cell
+                          key={entry.name}
+                          fill={CATEGORY_COLORS[entry.name as ExpenseCategory] || CATEGORY_COLORS.Other}
+                        />
+                      ))}
+                    </Pie>
+                  </PieChart>
+                </ResponsiveContainer>
+                {/* Center label */}
+                <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+                  <span className="text-[10px] text-muted-foreground leading-none">total</span>
+                  <span className="text-xs font-black tabular-nums leading-tight">{formatAmount(total)}</span>
+                </div>
+              </div>
+
+              {/* Category rows — preview top 5 */}
+              <div className="flex-1 flex flex-col justify-center gap-2 min-w-0">
+                {categoryData.slice(0, 5).map((cat, i) => {
+                  const color = CATEGORY_COLORS[cat.name as ExpenseCategory] || CATEGORY_COLORS.Other;
+                  const pct = total ? (cat.value / total) * 100 : 0;
+                  return (
+                    <div
+                      key={cat.name}
+                      className="group/row flex flex-col gap-0.5"
+                      style={{ animation: "fadeSlideIn 0.3s ease both", animationDelay: `${i * 60}ms` }}
+                    >
+                      <div className="flex items-center justify-between text-[11px]">
+                        <span className="font-semibold text-foreground truncate">{cat.name}</span>
+                        <span className="tabular-nums font-bold shrink-0 ml-2" style={{ color }}>
+                          {formatAmount(cat.value)}
+                        </span>
+                      </div>
+                      <div className="h-[5px] w-full rounded-full bg-muted overflow-hidden">
+                        <div
+                          className="h-full rounded-full"
+                          style={{
+                            width: `${pct}%`,
+                            backgroundColor: color,
+                            animation: `growWidth 0.6s ease both`,
+                            animationDelay: `${i * 60 + 100}ms`,
+                          }}
+                        />
+                      </div>
+                    </div>
+                  );
+                })}
+
+                {/* "X more" hint */}
+                {categoryData.length > 5 && (
+                  <p className="text-[10px] text-muted-foreground/60 font-semibold mt-0.5">
+                    +{categoryData.length - 5} more · tap to see all
+                  </p>
+                )}
               </div>
             </div>
-
-            {/* Category rows with fill bars */}
-            <div className="flex-1 flex flex-col justify-center gap-2 min-w-0">
-              {categoryData.slice(0, 5).map((cat, i) => {
-                const color = CATEGORY_COLORS[cat.name as ExpenseCategory] || CATEGORY_COLORS.Other;
-                const pct = total ? (cat.value / total) * 100 : 0;
-                return (
-                  <div
-                    key={cat.name}
-                    className="group flex flex-col gap-0.5"
-                    style={{ animation: "fadeSlideIn 0.3s ease both", animationDelay: `${i * 60}ms` }}
-                  >
-                    <div className="flex items-center justify-between text-[11px]">
-                      <span className="font-semibold text-foreground truncate">{cat.name}</span>
-                      <span className="tabular-nums font-bold shrink-0 ml-2" style={{ color }}>
-                        {formatAmount(cat.value)}
-                      </span>
-                    </div>
-                    {/* Progress bar */}
-                    <div className="h-[5px] w-full rounded-full bg-muted overflow-hidden">
-                      <div
-                        className="h-full rounded-full"
-                        style={{
-                          width: `${pct}%`,
-                          backgroundColor: color,
-                          animation: `growWidth 0.6s ease both`,
-                          animationDelay: `${i * 60 + 100}ms`,
-                        }}
-                      />
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        ) : empty}
-      </div>
-
-      {/* ── Daily spending ───────────────────────────────────────────── */}
-      <div className="rounded-2xl border border-border/60 bg-card shadow-sm overflow-hidden">
-        <div className="px-5 pt-4 pb-3 border-b border-border/40 flex items-center justify-between">
-          <div>
-            <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Activity</p>
-            <p className="text-base font-black tracking-tight leading-tight">Daily Spending</p>
-          </div>
-          <div className="text-right">
-            <p className="text-[10px] text-muted-foreground uppercase tracking-widest">{format(month, "MMM yyyy")}</p>
-            <p className="text-sm font-bold text-foreground">{formatAmount(total)}</p>
-          </div>
+          ) : empty}
         </div>
 
-        {dailyData.some((d) => d.amount > 0) ? (
-          <div className="p-4 h-[172px]">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={dailyData} barCategoryGap="30%">
-                <defs>
-                  <linearGradient id="barGrad" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="hsl(var(--primary))" stopOpacity={0.9} />
-                    <stop offset="100%" stopColor="hsl(var(--primary))" stopOpacity={0.3} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid vertical={false} stroke="hsl(var(--border))" strokeOpacity={0.4} strokeDasharray="3 3" />
-                <XAxis
-                  dataKey="day"
-                  axisLine={false}
-                  tickLine={false}
-                  tick={{ fontSize: 9, fill: "hsl(var(--muted-foreground))", fontWeight: 600 }}
-                  interval="preserveStartEnd"
-                />
-                <YAxis hide />
-                <Tooltip
-                  cursor={{ fill: "hsl(var(--muted))", radius: 6 }}
-                  content={(props) => <DailyTooltip {...props} formatAmount={formatAmount} />}
-                />
-                <Bar
-                  dataKey="amount"
-                  fill="url(#barGrad)"
-                  shape={<RoundedBar />}
-                  activeBar={<RoundedBar fill="hsl(var(--primary))" />}
-                />
-              </BarChart>
-            </ResponsiveContainer>
+        {/* ── Daily spending ───────────────────────────────────────────── */}
+        <div className="rounded-2xl border border-border/60 bg-card shadow-sm overflow-hidden">
+          <div className="px-5 pt-4 pb-3 border-b border-border/40 flex items-center justify-between">
+            <div>
+              <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Activity</p>
+              <p className="text-base font-black tracking-tight leading-tight">Daily Spending</p>
+            </div>
+            <div className="text-right">
+              <p className="text-[10px] text-muted-foreground uppercase tracking-widest">{format(month, "MMM yyyy")}</p>
+              <p className="text-sm font-bold text-foreground">{formatAmount(total)}</p>
+            </div>
           </div>
-        ) : empty}
+
+          {dailyData.some((d) => d.amount > 0) ? (
+            <div className="p-4 h-[172px]">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={dailyData} barCategoryGap="30%">
+                  <defs>
+                    <linearGradient id="barGrad" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="hsl(var(--primary))" stopOpacity={0.9} />
+                      <stop offset="100%" stopColor="hsl(var(--primary))" stopOpacity={0.3} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid vertical={false} stroke="hsl(var(--border))" strokeOpacity={0.4} strokeDasharray="3 3" />
+                  <XAxis
+                    dataKey="day"
+                    axisLine={false}
+                    tickLine={false}
+                    tick={{ fontSize: 9, fill: "hsl(var(--muted-foreground))", fontWeight: 600 }}
+                    interval="preserveStartEnd"
+                  />
+                  <YAxis hide />
+                  <Tooltip
+                    cursor={{ fill: "hsl(var(--muted))", radius: 6 }}
+                    content={(props) => <DailyTooltip {...props} formatAmount={formatAmount} />}
+                  />
+                  <Bar
+                    dataKey="amount"
+                    fill="url(#barGrad)"
+                    shape={<RoundedBar />}
+                    activeBar={<RoundedBar fill="hsl(var(--primary))" />}
+                  />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          ) : empty}
+        </div>
+
+        <style>{`
+          @keyframes fadeSlideIn {
+            from { opacity: 0; transform: translateX(-6px); }
+            to   { opacity: 1; transform: translateX(0); }
+          }
+          @keyframes growWidth {
+            from { width: 0%; }
+          }
+        `}</style>
       </div>
 
-      <style>{`
-        @keyframes fadeSlideIn {
-          from { opacity: 0; transform: translateX(-6px); }
-          to   { opacity: 1; transform: translateX(0); }
-        }
-        @keyframes growWidth {
-          from { width: 0%; }
-        }
-      `}</style>
-    </div>
+      {/* ── Full breakdown dialog ─────────────────────────────────────── */}
+      <CategoryBreakdownDialog
+        open={breakdownOpen}
+        onOpenChange={setBreakdownOpen}
+        categoryData={categoryData}
+        total={total}
+        formatAmount={formatAmount}
+      />
+    </>
   );
 }
