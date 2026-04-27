@@ -738,7 +738,7 @@ export function HabitListItem({ habit, completions, isSelected, onSelect }: Prop
             <div className="flex items-baseline gap-2 min-w-0">
               <span className={cn(
                 "font-semibold text-[14px] tracking-[-0.025em] text-foreground leading-[1.3]",
-                "overflow-hidden [display:-webkit-box] [-webkit-line-clamp:2] [-webkit-box-orient:vertical]",
+                "min-w-0 overflow-hidden [display:-webkit-box] [-webkit-line-clamp:2] [-webkit-box-orient:vertical]",
                 "sm:whitespace-nowrap sm:[display:block] sm:overflow-hidden sm:text-ellipsis",
                 "transition-[opacity,color] duration-200",
                 optimisticDone && "opacity-30 line-through decoration-muted-foreground/40 decoration-[1.5px]"

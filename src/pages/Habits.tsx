@@ -205,7 +205,7 @@ export default function Habits() {
         .hp-skeleton-list { display: flex; flex-direction: column; gap: 4px; }
 
         /* ── Desktop sidebar ── */
-        .hp-detail-col { width: 540px; flex-shrink: 0; display: none; position: sticky; top: 80px; }
+        .hp-detail-col { flex: 1; min-width: 0; display: none; position: sticky; top: 80px; }
         @media (min-width: 1024px) { .hp-detail-col { display: block; } }
         .hp-detail-card { border-radius: 18px; border: 1px solid hsl(var(--border)); background: hsl(var(--card)); overflow: hidden; }
 
@@ -318,7 +318,7 @@ export default function Habits() {
 
         {/* Tabs */}
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-          <TabsList className="grid w-full max-w-md grid-cols-2 mb-6">
+          <TabsList className="grid max-w-md grid-cols-2 mb-6 mx-auto">
             <TabsTrigger value="habits">Habits</TabsTrigger>
             <TabsTrigger value="analytics">Analytics</TabsTrigger>
           </TabsList>

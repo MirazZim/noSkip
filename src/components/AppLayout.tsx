@@ -15,9 +15,6 @@ const navItems = [
 
 type BoxStyle = { left: number; top: number; width: number; height: number };
 
-const glassPill =
-  "bg-white/[0.06] rounded-2xl ring-1 ring-inset ring-white/[0.08] backdrop-blur-2xl shadow-lg shadow-black/20";
-
 export function AppLayout({ children }: { children: ReactNode }) {
   const location = useLocation();
   const navigate  = useNavigate();
@@ -57,86 +54,100 @@ export function AppLayout({ children }: { children: ReactNode }) {
   return (
     <div className="min-h-screen bg-background">
 
-      {/* ── Floating top bar ── */}
-      <header className="fixed top-4 left-4 right-4 z-50 flex items-center justify-between gap-3">
-
-        {/* Logo pill — right on mobile (order-2), left on desktop */}
-        <button
-          onClick={() => navigate("/")}
-          className={cn("order-2 md:order-none flex items-center h-12 px-5", glassPill, "hover:bg-white/[0.08] transition-colors")}
+      {/* ── Floating navbar ── */}
+      <header className="fixed top-4 left-4 right-4 z-50">
+        {/* Gradient border wrapper */}
+        <div
+          className="p-px rounded-2xl"
+          style={{ background: "linear-gradient(135deg, hsl(var(--foreground)/0.14), hsl(var(--foreground)/0.03) 50%, hsl(var(--foreground)/0.10))" }}
         >
-          <span className="font-bold text-lg tracking-tight text-foreground font-display">
-            No<span className="text-primary">Skip</span>
-          </span>
-        </button>
+          <div className="flex items-center h-[50px] rounded-[15px] overflow-hidden bg-background/80 backdrop-blur-3xl shadow-[0_12px_48px_rgba(0,0,0,0.18)]">
 
-        {/* Center nav pill — desktop only */}
-        <nav className={cn("hidden md:flex items-center relative p-2", glassPill)}>
-          {navItems.map(({ path, label }, i) => {
-            const isActive = location.pathname === path;
-            return (
-              <button
-                key={path}
-                ref={el => { linkRefs.current[i] = el; }}
-                onClick={() => navigate(path)}
-                className={cn(
-                  "relative z-10 grid items-center h-9 px-5 text-sm font-medium tracking-wide rounded-xl transition-colors duration-300",
-                  isActive ? "text-zinc-900" : "text-foreground/50 hover:text-foreground"
-                )}
-              >
-                {label}
-              </button>
-            );
-          })}
-
-          {/* Sliding active pill */}
-          {box && (
+            {/* Left slot: hamburger on mobile / logo on desktop */}
             <div
-              className="absolute z-0 pointer-events-none"
-              style={{
-                left: box.left, top: box.top, width: box.width, height: box.height,
-                transition: ready
-                  ? "left 550ms cubic-bezier(0.34,1.56,0.64,1), width 550ms cubic-bezier(0.34,1.56,0.64,1)"
-                  : "none",
-              }}
+              className="flex items-center h-full shrink-0"
+              style={{ borderRight: "1px solid hsl(var(--foreground)/0.06)" }}
             >
-              <div
-                key={location.pathname}
-                className={cn(
-                  "relative w-full h-full bg-white rounded-xl overflow-hidden",
-                  "shadow-[0_0_24px_2px_rgba(255,255,255,0.25),0_6px_22px_rgba(168,85,247,0.45)]",
-                  ready && "animate-pill-morph"
-                )}
+              <button
+                onClick={() => setMobileOpen(v => !v)}
+                aria-label="Toggle menu"
+                className="md:hidden flex items-center justify-center w-[50px] h-full text-foreground/50 hover:text-foreground transition-colors"
               >
-                <span className="absolute inset-y-0 -left-1/3 w-1/2 bg-gradient-to-r from-transparent via-white/80 to-transparent animate-pill-shine" />
-              </div>
+                {mobileOpen ? <X className="h-[18px] w-[18px]" /> : <Menu className="h-[18px] w-[18px]" />}
+              </button>
+              <button
+                onClick={() => navigate("/")}
+                className="hidden md:flex items-center px-5 h-full hover:bg-foreground/[0.03] transition-colors"
+              >
+                <span className="font-display font-bold text-[13px] tracking-tight text-foreground">
+                  No<span className="text-primary">Skip</span>
+                </span>
+              </button>
             </div>
-          )}
-        </nav>
 
-        {/* Logout pill — desktop only */}
-        <button
-          onClick={handleLogout}
-          className={cn(
-            "hidden md:flex items-center gap-2 h-12 px-5 text-sm font-medium text-foreground/80 hover:text-foreground",
-            glassPill, "hover:bg-white/[0.08] transition-colors"
-          )}
-        >
-          <LogOut className="h-4 w-4" />
-          Logout
-        </button>
+            {/* Center nav — desktop */}
+            <nav className="hidden md:flex items-center flex-1 justify-center relative h-full">
+              {navItems.map(({ path, label }, i) => {
+                const isActive = location.pathname === path;
+                return (
+                  <button
+                    key={path}
+                    ref={el => { linkRefs.current[i] = el; }}
+                    onClick={() => navigate(path)}
+                    className={cn(
+                      "relative h-full px-5 text-[13px] font-medium tracking-wide transition-all duration-200",
+                      isActive ? "text-foreground" : "text-foreground/35 hover:text-foreground/65"
+                    )}
+                  >
+                    {label}
+                  </button>
+                );
+              })}
 
-        {/* Hamburger — mobile left (order-1) */}
-        <button
-          onClick={() => setMobileOpen(v => !v)}
-          className={cn(
-            "order-1 md:hidden flex items-center justify-center h-12 w-12 text-foreground/80 hover:text-foreground",
-            glassPill, "hover:bg-white/[0.08] transition-colors"
-          )}
-          aria-label="Toggle menu"
-        >
-          {mobileOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
-        </button>
+              {/* Glowing underline indicator */}
+              {box && (
+                <div
+                  className="absolute bottom-0 h-[2px] rounded-t-full pointer-events-none"
+                  style={{
+                    left: box.left,
+                    width: box.width,
+                    background: "linear-gradient(90deg, transparent, hsl(var(--primary)), transparent)",
+                    boxShadow: "0 0 10px hsl(var(--primary)/0.7)",
+                    transition: ready
+                      ? "left 420ms cubic-bezier(0.4,0,0.2,1), width 420ms cubic-bezier(0.4,0,0.2,1)"
+                      : "none",
+                  }}
+                />
+              )}
+            </nav>
+
+            {/* Mobile spacer */}
+            <div className="flex-1 md:hidden" />
+
+            {/* Right slot: logo on mobile / logout on desktop */}
+            <div
+              className="flex items-center h-full shrink-0"
+              style={{ borderLeft: "1px solid hsl(var(--foreground)/0.06)" }}
+            >
+              <button
+                onClick={() => navigate("/")}
+                className="md:hidden flex items-center px-5 h-full hover:bg-foreground/[0.03] transition-colors"
+              >
+                <span className="font-display font-bold text-[13px] tracking-tight text-foreground">
+                  No<span className="text-primary">Skip</span>
+                </span>
+              </button>
+              <button
+                onClick={handleLogout}
+                title="Logout"
+                className="hidden md:flex items-center justify-center w-[50px] h-full text-foreground/30 hover:text-foreground transition-colors"
+              >
+                <LogOut className="h-[15px] w-[15px]" />
+              </button>
+            </div>
+
+          </div>
+        </div>
       </header>
 
       {/* ── Mobile backdrop ── */}
@@ -159,7 +170,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
       </aside>
 
       {/* ── Page content ── */}
-      <main className="pt-24 pb-10 px-8 sm:px-16 md:px-24 lg:px-36 xl:px-56">
+      <main className="pt-24 pb-10 px-3 sm:px-10 md:px-20 lg:px-32 xl:px-48">
         <div className="max-w-4xl mx-auto">
           {children}
         </div>
