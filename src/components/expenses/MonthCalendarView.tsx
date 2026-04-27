@@ -54,10 +54,6 @@ export function MonthCalendarView({ expenses, incomes, month, onMonthChange, onD
     return { days: allDays, leadingBlanks: firstDow, dayExpenseMap: expenseMap, dayIncomeMap: incomeMap };
   }, [expenses, incomes, month]);
 
-  const maxDayTotal = useMemo(() => {
-    return Math.max(1, ...Object.values(dayExpenseMap).map((d) => d.total));
-  }, [dayExpenseMap]);
-
   function getSortedCategories(categories: Record<string, number>) {
     return Object.entries(categories)
       .sort((a, b) => b[1] - a[1])
@@ -119,13 +115,7 @@ export function MonthCalendarView({ expenses, incomes, month, onMonthChange, onD
             const incomeAmount = dayIncomeMap[dateStr];
             const today = isToday(day);
             const future = isFuture(day);
-            const intensity = data ? Math.min(data.total / maxDayTotal, 1) : 0;
             const isWeekend = idx % 7 >= 5;
-
-            const topCategory = data
-              ? Object.entries(data.categories).sort((a, b) => b[1] - a[1])[0]?.[0]
-              : null;
-            const topColor = topCategory ? resolveColor(topCategory) : null;
 
             const sortedCats = data ? getSortedCategories(data.categories) : [];
             const totalForBar = sortedCats.reduce((s, [, v]) => s + v, 0);
@@ -138,13 +128,6 @@ export function MonthCalendarView({ expenses, incomes, month, onMonthChange, onD
                 style={{
                   animation: "calFadeIn 0.25s ease both",
                   animationDelay: `${(leadingBlanks + idx) * 12}ms`,
-                  ...(data && !today
-                    ? {
-                        backgroundColor: `${topColor}${Math.round(intensity * 28 + 8)
-                          .toString(16)
-                          .padStart(2, "0")}`,
-                      }
-                    : {}),
                 }}
                 className={cn(
                   "group relative flex flex-col items-center rounded-xl transition-all duration-150",
