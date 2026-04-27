@@ -4,6 +4,7 @@ import { Income, INCOME_SOURCE_COLORS, type IncomeSource } from "@/hooks/useInco
 import { useCurrency } from "@/hooks/useCurrency";
 import { Button } from "@/components/ui/button";
 import { AddIncomeDialog } from "./AddIncomeDialog";
+import { hslAlpha } from "@/lib/utils";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -18,7 +19,7 @@ function IncomeIcon({ source, color }: { source: string; color: string }) {
     return (
         <div
             className="flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl"
-            style={{ backgroundColor: `${color}20` }}
+            style={{ backgroundColor: hslAlpha(color, 0.13) }}
         >
             <TrendingUp className="h-4 w-4" style={{ color }} strokeWidth={2} />
         </div>
@@ -129,7 +130,7 @@ function SwipeRow({ inc, color, formatAmount, onEdit, openId, setOpenId }: Swipe
                             <p className="text-sm font-bold truncate leading-snug">{inc.source}</p>
                             <span
                                 className="shrink-0 text-[9px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded-full"
-                                style={{ backgroundColor: `${color}18`, color }}
+                                style={{ backgroundColor: hslAlpha(color, 0.09), color }}
                             >
                                 Income
                             </span>

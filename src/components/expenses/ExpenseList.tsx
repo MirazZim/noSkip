@@ -11,6 +11,7 @@ import { useCurrency } from "@/hooks/useCurrency";
 import { Button } from "@/components/ui/button";
 import { EditExpenseDialog } from "./EditExpenseDialog";
 import { toast } from "sonner";
+import { hslAlpha } from "@/lib/utils";
 
 interface ExpenseListProps {
   expenses: Expense[];
@@ -44,7 +45,7 @@ function CategoryIcon({ category, color }: { category: string; color: string }) 
   return (
     <div
       className="flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl"
-      style={{ backgroundColor: `${color}20` }}
+      style={{ backgroundColor: hslAlpha(color, 0.13) }}
     >
       <Icon className="h-4 w-4" style={{ color }} strokeWidth={2} />
     </div>

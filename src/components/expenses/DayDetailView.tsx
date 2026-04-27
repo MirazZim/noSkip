@@ -7,7 +7,7 @@ import { useState, useRef, useCallback } from "react";
 import { useDeleteExpense } from "@/hooks/useExpenses";
 import { useDeleteIncome } from "@/hooks/useIncomes";
 import { toast } from "sonner";
-import { cn } from "@/lib/utils";
+import { cn, hslAlpha } from "@/lib/utils";
 
 interface DayDetailViewProps {
   date: string;
@@ -386,7 +386,7 @@ export function DayDetailView({
                   <div className="flex items-center gap-3 px-4 py-3.5">
                     <div
                       className="h-8 w-8 rounded-xl shrink-0 flex items-center justify-center"
-                      style={{ backgroundColor: `${CATEGORY_COLORS[exp.category as ExpenseCategory] || CATEGORY_COLORS.Other}18` }}
+                      style={{ backgroundColor: hslAlpha(CATEGORY_COLORS[exp.category as ExpenseCategory] || CATEGORY_COLORS.Other, 0.09) }}
                     >
                       <div className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: CATEGORY_COLORS[exp.category as ExpenseCategory] || CATEGORY_COLORS.Other }} />
                     </div>
@@ -455,7 +455,7 @@ export function DayDetailView({
                   <div className="flex items-center gap-3 px-4 py-3.5">
                     <div
                       className="h-8 w-8 rounded-xl shrink-0 flex items-center justify-center"
-                      style={{ backgroundColor: `${INCOME_SOURCE_COLORS[inc.source as IncomeSource] || INCOME_SOURCE_COLORS.Other}18` }}
+                      style={{ backgroundColor: hslAlpha(INCOME_SOURCE_COLORS[inc.source as IncomeSource] || INCOME_SOURCE_COLORS.Other, 0.09) }}
                     >
                       <div className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: INCOME_SOURCE_COLORS[inc.source as IncomeSource] || INCOME_SOURCE_COLORS.Other }} />
                     </div>
