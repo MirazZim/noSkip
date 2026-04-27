@@ -84,10 +84,20 @@ export default {
           from: { height: "var(--radix-accordion-content-height)" },
           to: { height: "0" },
         },
+        "pill-morph": {
+          "0%":   { transform: "scaleX(0.88)", opacity: "0.6" },
+          "100%": { transform: "scaleX(1)",    opacity: "1"   },
+        },
+        "pill-shine": {
+          "from": { transform: "translateX(-100%)" },
+          "to":   { transform: "translateX(300%)"  },
+        },
       },
       animation: {
         "accordion-down": "accordion-down 0.2s ease-out",
-        "accordion-up": "accordion-up 0.2s ease-out",
+        "accordion-up":   "accordion-up 0.2s ease-out",
+        "pill-morph":     "pill-morph 0.35s cubic-bezier(0.34,1.56,0.64,1) forwards",
+        "pill-shine":     "pill-shine 0.7s ease 0.05s forwards",
       },
     },
   },

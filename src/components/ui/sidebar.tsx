@@ -1,7 +1,7 @@
 import * as React from "react";
 import { Slot } from "@radix-ui/react-slot";
 import { VariantProps, cva } from "class-variance-authority";
-import { Zap } from "lucide-react";
+import { Menu, X } from "lucide-react";
 
 import { useIsMobile } from "@/hooks/use-mobile";
 import { cn } from "@/lib/utils";
@@ -205,9 +205,9 @@ Sidebar.displayName = "Sidebar";
 // ─── Sidebar Trigger ────────────────────────────────────────────────────────
 const SidebarTrigger = React.forwardRef<React.ElementRef<typeof Button>, React.ComponentProps<typeof Button>>(
   ({ className, onClick, ...props }, ref) => {
-    const { toggleSidebar } = useSidebar();
-
+    const { toggleSidebar, isMobile, openMobile, state } = useSidebar();
     const [showHint, setShowHint] = React.useState(false);
+    const isOpen = isMobile ? openMobile : state === "expanded";
 
     React.useEffect(() => {
       try {
@@ -227,231 +227,42 @@ const SidebarTrigger = React.forwardRef<React.ElementRef<typeof Button>, React.C
 
     return (
       <>
-        <style>{`
-          /* ── DARK MODE — nuclear outward bloom ── */
-          @keyframes darkPulse {
-            0%, 100% {
-              box-shadow:
-                0 0 6px   3px  rgba(var(--primary-rgb), 1),
-                0 0 18px  6px  rgba(var(--primary-rgb), 1),
-                0 0 40px  12px rgba(var(--primary-rgb), 0.9),
-                0 0 80px  24px rgba(var(--primary-rgb), 0.65),
-                0 0 140px 40px rgba(var(--primary-rgb), 0.35),
-                0 0 200px 60px rgba(var(--primary-rgb), 0.15),
-                inset 0 0 16px 4px rgba(var(--primary-rgb), 0.6);
+        {showHint && (
+          <style>{`
+            @keyframes sidebarHintFadeIn {
+              from { opacity: 0; transform: translateX(-8px); }
+              to   { opacity: 1; transform: translateX(0); }
             }
-            50% {
-              box-shadow:
-                0 0 10px  4px  rgba(var(--primary-rgb), 1),
-                0 0 28px  10px rgba(var(--primary-rgb), 1),
-                0 0 60px  18px rgba(var(--primary-rgb), 1),
-                0 0 110px 35px rgba(var(--primary-rgb), 0.85),
-                0 0 180px 55px rgba(var(--primary-rgb), 0.55),
-                0 0 260px 80px rgba(var(--primary-rgb), 0.25),
-                inset 0 0 28px 8px rgba(var(--primary-rgb), 0.9);
+            @keyframes sidebarDotPing {
+              0%, 100% { transform: scale(1); opacity: 0.6; }
+              50%       { transform: scale(2.2); opacity: 0; }
             }
-          }
-
-          /*
-           * ── LIGHT MODE — colored shadow casting downward + tight ring + strong inset ──
-           * Key: we TRIPLE the shadow spread values vs before so they're impossible to miss
-           * even against white. The downward cast shadows are the hero here.
-           */
-          @keyframes lightPulse {
-            0%, 100% {
-              box-shadow:
-                /* crisp outer ring — always visible */
-                0 0 0    3px  rgba(var(--primary-rgb), 1),
-                /* tight colored halo */
-                0 0 12px 6px  rgba(var(--primary-rgb), 0.95),
-                0 0 28px 10px rgba(var(--primary-rgb), 0.75),
-                /* downward cast colored shadow — the magic for light mode */
-                0 8px  28px 6px  rgba(var(--primary-rgb), 0.7),
-                0 16px 50px 12px rgba(var(--primary-rgb), 0.5),
-                0 24px 80px 20px rgba(var(--primary-rgb), 0.3),
-                /* inset — button interior glows */
-                inset 0 0 16px 4px rgba(var(--primary-rgb), 0.5);
-            }
-            50% {
-              box-shadow:
-                0 0 0    3px  rgba(var(--primary-rgb), 1),
-                0 0 18px 8px  rgba(var(--primary-rgb), 1),
-                0 0 40px 14px rgba(var(--primary-rgb), 0.9),
-                0 10px 40px 10px rgba(var(--primary-rgb), 0.9),
-                0 20px 70px 18px rgba(var(--primary-rgb), 0.65),
-                0 32px 110px 28px rgba(var(--primary-rgb), 0.4),
-                inset 0 0 28px 8px rgba(var(--primary-rgb), 0.75);
-            }
-          }
-
-          @keyframes iconNuclear {
-            0%, 100% {
-              filter:
-                drop-shadow(0 0 3px  hsl(var(--primary)))
-                drop-shadow(0 0 10px hsl(var(--primary)))
-                drop-shadow(0 0 22px hsl(var(--primary)))
-                drop-shadow(0 0 40px hsl(var(--primary) / 0.95));
-              transform: scale(1);
-            }
-            50% {
-              filter:
-                drop-shadow(0 0 5px  hsl(var(--primary)))
-                drop-shadow(0 0 15px hsl(var(--primary)))
-                drop-shadow(0 0 35px hsl(var(--primary)))
-                drop-shadow(0 0 60px hsl(var(--primary)))
-                drop-shadow(0 0 90px hsl(var(--primary) / 0.85));
-              transform: scale(1.2);
-            }
-          }
-          @keyframes innerCorePulse {
-            0%, 100% { opacity: 0.8; transform: scale(1); }
-            50%       { opacity: 1;   transform: scale(1.3); }
-          }
-          @keyframes halo1Dark {
-            0%, 100% { opacity: 0.6; transform: scale(1); }
-            50%       { opacity: 1;   transform: scale(1.25); }
-          }
-          @keyframes halo2Dark {
-            0%, 100% { opacity: 0.3; transform: scale(1); }
-            50%       { opacity: 0.7; transform: scale(1.5); }
-          }
-          @keyframes halo3Dark {
-            0%, 100% { opacity: 0.12; transform: scale(1); }
-            50%       { opacity: 0.35; transform: scale(1.8); }
-          }
-          /* Light mode halos — stronger opacity, tighter radii so color is denser */
-          @keyframes halo1Light {
-            0%, 100% { opacity: 0.8; transform: scale(1); }
-            50%       { opacity: 1;   transform: scale(1.2); }
-          }
-          @keyframes halo2Light {
-            0%, 100% { opacity: 0.5; transform: scale(1); }
-            50%       { opacity: 0.85; transform: scale(1.35); }
-          }
-          @keyframes sidebarHintFadeIn {
-            from { opacity: 0; transform: translateX(-8px); }
-            to   { opacity: 1; transform: translateX(0); }
-          }
-          @keyframes sidebarDotPing {
-            0%, 100% { transform: scale(1); opacity: 0.6; }
-            50%       { transform: scale(2.2); opacity: 0; }
-          }
-
-          .sidebar-trigger-btn {
-            border: 2px solid rgba(var(--primary-rgb), 1) !important;
-            border-radius: 0.75rem !important;
-            transition: background 0.2s ease !important;
-            position: relative !important;
-          }
-
-          /* DARK */
-          .dark .sidebar-trigger-btn {
-            background: rgba(var(--primary-rgb), 0.3) !important;
-            animation: darkPulse 1.6s ease-in-out infinite !important;
-          }
-          .dark .sidebar-trigger-btn:hover {
-            background: rgba(var(--primary-rgb), 0.45) !important;
-          }
-          .dark .stb-halo1 { animation: halo1Dark 1.6s ease-in-out infinite; }
-          .dark .stb-halo2 { animation: halo2Dark 1.6s ease-in-out infinite; }
-          .dark .stb-halo3 { animation: halo3Dark 1.6s ease-in-out infinite; }
-
-          /* LIGHT */
-          :not(.dark) .sidebar-trigger-btn {
-            background: rgba(var(--primary-rgb), 0.14) !important;
-            animation: lightPulse 1.6s ease-in-out infinite !important;
-          }
-          :not(.dark) .sidebar-trigger-btn:hover {
-            background: rgba(var(--primary-rgb), 0.24) !important;
-          }
-          :not(.dark) .stb-halo1 {
-            background: radial-gradient(circle at 50% 60%,
-              rgba(var(--primary-rgb), 0.28) 0%,
-              rgba(var(--primary-rgb), 0.1)  50%,
-              transparent 70%) !important;
-            animation: halo1Light 1.6s ease-in-out infinite !important;
-          }
-          :not(.dark) .stb-halo2 {
-            background: radial-gradient(circle at 50% 65%,
-              rgba(var(--primary-rgb), 0.18) 0%,
-              rgba(var(--primary-rgb), 0.05) 50%,
-              transparent 70%) !important;
-            animation: halo2Light 1.6s ease-in-out infinite !important;
-          }
-          :not(.dark) .stb-halo3 { display: none; }
-
-          /* Shared halo base styles */
-          .stb-core {
-            position: absolute;
-            inset: -4px;
-            border-radius: 1rem;
-            pointer-events: none;
-            animation: innerCorePulse 1.6s ease-in-out infinite;
-            background: radial-gradient(circle at 50% 50%,
-              rgba(var(--primary-rgb), 0.7)  0%,
-              rgba(var(--primary-rgb), 0.3)  40%,
-              transparent 70%);
-          }
-          .stb-halo1 {
-            position: absolute;
-            inset: -16px;
-            border-radius: 1.5rem;
-            pointer-events: none;
-            background: radial-gradient(circle at 50% 50%,
-              rgba(var(--primary-rgb), 0.5)  0%,
-              rgba(var(--primary-rgb), 0.15) 50%,
-              transparent 70%);
-          }
-          .stb-halo2 {
-            position: absolute;
-            inset: -36px;
-            border-radius: 2.5rem;
-            pointer-events: none;
-            background: radial-gradient(circle at 50% 50%,
-              rgba(var(--primary-rgb), 0.35) 0%,
-              rgba(var(--primary-rgb), 0.08) 50%,
-              transparent 70%);
-          }
-          .stb-halo3 {
-            position: absolute;
-            inset: -60px;
-            border-radius: 4rem;
-            pointer-events: none;
-            background: radial-gradient(circle at 50% 50%,
-              rgba(var(--primary-rgb), 0.25) 0%,
-              rgba(var(--primary-rgb), 0.06) 50%,
-              transparent 70%);
-          }
-          .sidebar-trigger-icon {
-            animation: iconNuclear 1.6s ease-in-out infinite;
-            color: hsl(var(--primary));
-            position: relative;
-            z-index: 10;
-          }
-        `}</style>
+          `}</style>
+        )}
 
         <div className="relative inline-flex items-center">
-          <div className="relative inline-flex items-center justify-center" style={{ padding: 20, margin: -20 }}>
-            <span aria-hidden className="stb-halo3" />
-            <span aria-hidden className="stb-halo2" />
-            <span aria-hidden className="stb-halo1" />
+          <Button
+            ref={ref}
+            data-sidebar="trigger"
+            variant="ghost"
+            size="icon"
+            className={cn(
+              "h-9 w-9 rounded-xl",
+              "bg-white/[0.06] ring-1 ring-inset ring-white/[0.08] backdrop-blur-xl shadow-md shadow-black/20",
+              "text-foreground/70 hover:text-foreground hover:bg-white/[0.10]",
+              "transition-all duration-200",
+              className
+            )}
+            onClick={handleClick}
+            {...props}
+          >
+            {isOpen
+              ? <X className="h-[18px] w-[18px]" />
+              : <Menu className="h-[18px] w-[18px]" />
+            }
+            <span className="sr-only">Toggle Sidebar</span>
+          </Button>
 
-            <Button
-              ref={ref}
-              data-sidebar="trigger"
-              variant="ghost"
-              size="icon"
-              className={cn("relative h-9 w-9 sidebar-trigger-btn overflow-visible", className)}
-              onClick={handleClick}
-              {...props}
-            >
-              <span aria-hidden className="stb-core" />
-              <Zap className="sidebar-trigger-icon h-[18px] w-[18px]" />
-              <span className="sr-only">Toggle Sidebar</span>
-            </Button>
-          </div>
-
-          {/* New-user hint pill */}
           {showHint && (
             <div
               className="absolute left-full ml-6 z-50 flex items-center gap-1.5 pointer-events-none"
@@ -474,10 +285,7 @@ const SidebarTrigger = React.forwardRef<React.ElementRef<typeof Button>, React.C
                   />
                   <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-primary" />
                 </span>
-                <span
-                  className="text-[11px] font-medium tracking-wide"
-                  style={{ color: "hsl(var(--primary))" }}
-                >
+                <span className="text-[11px] font-medium tracking-wide" style={{ color: "hsl(var(--primary))" }}>
                   Tap to open menu
                 </span>
               </div>
