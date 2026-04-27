@@ -1,6 +1,6 @@
 import { ReactNode, useState, useRef, useEffect, useLayoutEffect } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { Menu, X, LogOut } from "lucide-react";
+import { Menu, X, LogOut, Zap } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
@@ -73,13 +73,17 @@ export function AppLayout({ children }: { children: ReactNode }) {
                 aria-label="Toggle menu"
                 className="md:hidden flex items-center justify-center w-[50px] h-full text-foreground/50 hover:text-foreground transition-colors"
               >
-                {mobileOpen ? <X className="h-[18px] w-[18px]" /> : <Menu className="h-[18px] w-[18px]" />}
+                {mobileOpen ? <X className="h-[22px] w-[22px]" /> : <Menu className="h-[22px] w-[22px]" />}
               </button>
               <button
                 onClick={() => navigate("/")}
                 className="hidden md:flex items-center px-5 h-full hover:bg-foreground/[0.03] transition-colors"
               >
-                <span className="font-display font-bold text-[13px] tracking-tight text-foreground">
+                <span className="flex items-center gap-1 font-display font-bold text-[16px] tracking-tight text-foreground">
+                  <Zap
+                    className="h-[16px] w-[16px] text-primary fill-primary"
+                    style={{ animation: "noskip-zap 2s ease-in-out infinite" }}
+                  />
                   No<span className="text-primary">Skip</span>
                 </span>
               </button>
@@ -133,7 +137,11 @@ export function AppLayout({ children }: { children: ReactNode }) {
                 onClick={() => navigate("/")}
                 className="md:hidden flex items-center px-5 h-full hover:bg-foreground/[0.03] transition-colors"
               >
-                <span className="font-display font-bold text-[13px] tracking-tight text-foreground">
+                <span className="flex items-center gap-1 font-display font-bold text-[16px] tracking-tight text-foreground">
+                  <Zap
+                    className="h-[16px] w-[16px] text-primary fill-primary"
+                    style={{ animation: "noskip-zap 2s ease-in-out infinite" }}
+                  />
                   No<span className="text-primary">Skip</span>
                 </span>
               </button>
