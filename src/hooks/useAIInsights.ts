@@ -1,7 +1,10 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { format } from "date-fns";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
+import { loadCycleConfig, CYCLE_CHANGE_EVENT } from "@/components/expenses/BudgetManager";
+import { getCycleRangeForDate, getCycleRangeAtOffset } from "@/hooks/useSavings";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -76,7 +79,20 @@ export function useAIInsights() {
     setGenError(null);
 
     try {
-      const { error } = await supabase.functions.invoke("generate-insights");
+      const config    = loadCycleConfig();
+      const current   = getCycleRangeForDate(config, new Date());
+      const previous  = getCycleRangeAtOffset(config, -1);
+
+      const { error } = await supabase.functions.invoke("generate-insights", {
+        body: {
+          cycleStart:     format(current.start,  "yyyy-MM-dd"),
+          cycleEnd:       format(current.end,    "yyyy-MM-dd"),
+          prevCycleStart: format(previous.start, "yyyy-MM-dd"),
+          prevCycleEnd:   format(previous.end,   "yyyy-MM-dd"),
+          cycleType:      config.type,
+          payday:         config.payday,
+        },
+      });
       if (error) throw new Error(error.message);
       // Pull the freshly saved rows into the cache
       await queryClient.invalidateQueries({ queryKey: ["ai_insights", user.id] });
@@ -100,6 +116,15 @@ export function useAIInsights() {
       generate();
     }
   }, [isLoading, user, insights, generate]);
+
+  // Regenerate when the user changes their payday/calendar cycle config —
+  // otherwise the AI keeps analyzing the previous cycle's window.
+  useEffect(() => {
+    if (!user) return;
+    const handler = () => { generate(); };
+    window.addEventListener(CYCLE_CHANGE_EVENT, handler);
+    return () => window.removeEventListener(CYCLE_CHANGE_EVENT, handler);
+  }, [user, generate]);
 
   // ── Rate an insight (was_useful feedback) ───────────────────────────────────
   const rateInsightMutation = useMutation({
