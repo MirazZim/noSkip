@@ -6,6 +6,7 @@ import { useExpenses, CATEGORY_COLORS, type ExpenseCategory } from "@/hooks/useE
 import { useHabitReminders } from "@/hooks/useHabitReminders";
 import { useCurrency } from "@/hooks/useCurrency";
 import { DashboardExpenseCharts } from "@/components/dashboard/DashboardExpenseCharts";
+import { AIInsightsPanel } from "@/components/AIInsightsPanel";
 import { cn } from "@/lib/utils";
 
 // ─── SEMANTIC ACCENT COLORS (universal, theme-independent) ───────────────────
@@ -1054,6 +1055,9 @@ export default function Dashboard() {
             <DashboardExpenseCharts expenses={expenses} month={today} />
           </div>
         )}
+
+        {/* ══ AI INSIGHTS ══════════════════════════════════════════════════ */}
+        <AIInsightsPanel />
 
       </div>
     </AppLayout>

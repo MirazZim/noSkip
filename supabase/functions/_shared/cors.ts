@@ -1,10 +1,16 @@
-const ALLOWED_ORIGINS = new Set([
+const PRODUCTION_ORIGINS = new Set([
   "https://no-skip-main.vercel.app",
-  "http://localhost:8080",
 ]);
 
 export function corsHeaders(origin: string, methods = "POST, OPTIONS") {
-  const allowed = ALLOWED_ORIGINS.has(origin) ? origin : "null";
+  let allowed: string;
+  try {
+    const { hostname } = new URL(origin);
+    const isLocal = hostname === "localhost" || hostname === "127.0.0.1" || hostname === "[::1]";
+    allowed = (isLocal || PRODUCTION_ORIGINS.has(origin)) ? origin : "null";
+  } catch {
+    allowed = PRODUCTION_ORIGINS.has(origin) ? origin : "null";
+  }
   return {
     "Access-Control-Allow-Origin":  allowed,
     "Access-Control-Allow-Methods": methods,
