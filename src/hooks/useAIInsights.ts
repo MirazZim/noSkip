@@ -12,7 +12,8 @@ export type InsightType =
   | "spending_summary"
   | "habit_coaching"
   | "anomaly"
-  | "financial_health";
+  | "financial_health"
+  | "top_action";
 
 // Matches the ai_insights table schema from the Step 2 migration exactly.
 export interface AiInsight {

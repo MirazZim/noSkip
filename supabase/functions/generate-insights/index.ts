@@ -52,6 +52,19 @@ interface BudgetPerformanceRow {
   status: "on_track" | "warning" | "exceeded";
 }
 
+// ─── Derived metrics ──────────────────────────────────────────────────────────
+
+interface DerivedMetrics {
+  spending_concentration: number; // 0-100
+  expense_volatility: { cv: number; label: "stable" | "moderate" | "erratic" } | null;
+  habit_recovery_rate: { rate: number; label: "high" | "moderate" | "low" } | null;
+}
+
+interface HealthScoreBreakdown {
+  score: number;
+  components: { savings: number; budget: number; habit: number; volatility: number };
+}
+
 // ─── Cycle bounds ─────────────────────────────────────────────────────────────
 
 interface CycleBounds {
@@ -64,7 +77,6 @@ interface CycleBounds {
 }
 
 function defaultCycleBounds(): CycleBounds {
-  // Fallback when the client doesn't send bounds: calendar month, current and previous.
   const now      = new Date();
   const firstOf  = (y: number, m: number) => `${y}-${String(m + 1).padStart(2, "0")}-01`;
   const lastOf   = (y: number, m: number) => {
@@ -102,13 +114,158 @@ function parseCycleBounds(body: unknown): CycleBounds {
   };
 }
 
+// ─── Derived metric helpers ───────────────────────────────────────────────────
+
+function computeHabitRecoveryRate(
+  habits: HabitSummaryRow[],
+  completions: Array<{ habit_id: string; date: string }>,
+): { rate: number; label: "high" | "moderate" | "low" } | null {
+  const dailyHabits = habits.filter(h => h.frequency === "daily");
+  if (dailyHabits.length === 0) return null;
+
+  // Build last 30 days (oldest → newest)
+  const days: string[] = [];
+  const today = new Date();
+  for (let i = 29; i >= 0; i--) {
+    const d = new Date(today);
+    d.setDate(d.getDate() - i);
+    days.push(d.toISOString().slice(0, 10));
+  }
+
+  const byHabit: Record<string, Set<string>> = {};
+  for (const c of completions) {
+    (byHabit[c.habit_id] ??= new Set()).add(c.date);
+  }
+
+  let recoveries = 0;
+  let failedRecoveries = 0;
+
+  for (const h of dailyHabits) {
+    const completed = byHabit[h.habit_id] ?? new Set<string>();
+    for (let i = 0; i < days.length; i++) {
+      if (completed.has(days[i])) continue;
+      // Need at least 1 future day to determine recovery
+      if (i + 1 >= days.length) continue;
+      let recovered = false;
+      for (let j = i + 1; j <= i + 3 && j < days.length; j++) {
+        if (completed.has(days[j])) { recovered = true; break; }
+      }
+      if (recovered) recoveries++;
+      else failedRecoveries++;
+    }
+  }
+
+  const total = recoveries + failedRecoveries;
+  if (total === 0) return null;
+  const rate = recoveries / total;
+  const label: "high" | "moderate" | "low" =
+    rate > 0.7 ? "high" : rate >= 0.4 ? "moderate" : "low";
+  return { rate: Number(rate.toFixed(2)), label };
+}
+
+function computeDerivedMetrics(
+  cycleExpenses: Array<{ amount: number | string; category: string }>,
+  monthlyExpenses: ExpenseSummaryRow[],
+  habits: HabitSummaryRow[],
+  habitCompletions: Array<{ habit_id: string; date: string }>,
+): DerivedMetrics {
+  // spending_concentration: top 2 categories / total of current cycle
+  let spending_concentration = 0;
+  if (cycleExpenses.length > 0) {
+    const byCat: Record<string, number> = {};
+    for (const r of cycleExpenses) {
+      byCat[r.category] = (byCat[r.category] ?? 0) + Number(r.amount);
+    }
+    const sorted = Object.values(byCat).sort((a, b) => b - a);
+    const total = sorted.reduce((s, v) => s + v, 0);
+    if (total > 0) {
+      const top2 = (sorted[0] ?? 0) + (sorted[1] ?? 0);
+      spending_concentration = Number(((top2 / total) * 100).toFixed(1));
+    }
+  }
+
+  // expense_volatility: CV of monthly totals from 3-month view
+  let expense_volatility: DerivedMetrics["expense_volatility"] = null;
+  if (monthlyExpenses.length > 0) {
+    const byMonth: Record<string, number> = {};
+    for (const r of monthlyExpenses) {
+      byMonth[r.month] = (byMonth[r.month] ?? 0) + Number(r.total_amount);
+    }
+    const totals = Object.values(byMonth);
+    if (totals.length >= 2) {
+      const mean = totals.reduce((s, v) => s + v, 0) / totals.length;
+      if (mean > 0) {
+        const stddev = Math.sqrt(totals.reduce((s, v) => s + (v - mean) ** 2, 0) / totals.length);
+        const cv = stddev / mean;
+        const label: "stable" | "moderate" | "erratic" =
+          cv < 0.15 ? "stable" : cv <= 0.35 ? "moderate" : "erratic";
+        expense_volatility = { cv: Number(cv.toFixed(2)), label };
+      }
+    }
+  }
+
+  const habit_recovery_rate = computeHabitRecoveryRate(habits, habitCompletions);
+
+  return { spending_concentration, expense_volatility, habit_recovery_rate };
+}
+
+function computeFinancialHealthScore(
+  snap: FinancialSnapshotRow | null,
+  budgets: BudgetPerformanceRow[],
+  habits: HabitSummaryRow[],
+  derived: DerivedMetrics,
+): HealthScoreBreakdown {
+  // savingsScore (0-10): linear on (net_savings / total_income). >= 0.3 → 10. negative → 0.
+  let savingsScore = 7;
+  if (snap && snap.total_income > 0) {
+    const ratio = snap.net_savings / snap.total_income;
+    if (ratio >= 0.3) savingsScore = 10;
+    else if (ratio < 0) savingsScore = 0;
+    else savingsScore = Math.round((ratio / 0.3) * 10);
+  }
+
+  // budgetScore (0-10): % budget categories on_track
+  let budgetScore = 7;
+  if (budgets.length > 0) {
+    const onTrack = budgets.filter(b => b.status === "on_track").length;
+    budgetScore = Math.round((onTrack / budgets.length) * 10);
+  }
+
+  // habitScore (0-10): avg consistency_score / 10
+  let habitScore = 7;
+  if (habits.length > 0) {
+    const avgConsistency =
+      habits.reduce((s, h) => s + Number(h.consistency_score), 0) / habits.length;
+    habitScore = Math.round(avgConsistency / 10);
+  }
+
+  // volatilityScore (0-10): stable→10, moderate→6, erratic→2, null→7
+  let volatilityScore = 7;
+  if (derived.expense_volatility) {
+    const lbl = derived.expense_volatility.label;
+    volatilityScore = lbl === "stable" ? 10 : lbl === "moderate" ? 6 : 2;
+  }
+
+  const raw =
+    savingsScore   * 0.35 +
+    budgetScore    * 0.25 +
+    habitScore     * 0.25 +
+    volatilityScore * 0.15;
+  const score = Math.max(1, Math.min(10, Math.round(raw)));
+
+  return {
+    score,
+    components: { savings: savingsScore, budget: budgetScore, habit: habitScore, volatility: volatilityScore },
+  };
+}
+
 // ─── Memory extraction (Part A) ───────────────────────────────────────────────
 
 function extractMemories(
   snap:      FinancialSnapshotRow | null,
-  expenses:  ExpenseSummaryRow[],
   budgets:   BudgetPerformanceRow[],
   habits:    HabitSummaryRow[],
+  derived:   DerivedMetrics,
   userId:    string,
   currency:  string,
   cycleType: "calendar" | "payday",
@@ -119,12 +276,10 @@ function extractMemories(
   const push = (key: string, value: string) =>
     out.push({ user_id: userId, memory_key: key, memory_value: value, confidence: 1.0, last_updated: now });
 
-  // biggest_spending_category
   if (snap?.biggest_spending_category) {
     push("biggest_spending_category", snap.biggest_spending_category);
   }
 
-  // weakest_habit / strongest_habit
   if (habits.length > 0) {
     const sorted    = [...habits].sort((a, b) => Number(a.consistency_score) - Number(b.consistency_score));
     const weakest   = sorted[0];
@@ -133,13 +288,11 @@ function extractMemories(
     push("strongest_habit", `${strongest.habit_name} (${strongest.consistency_score}% consistency)`);
   }
 
-  // current_period_savings — net savings for the current cycle (calendar month or payday cycle)
   if (snap) {
     const key = cycleType === "payday" ? "current_cycle_savings" : "current_month_savings";
     push(key, `${currency} ${Number(snap.net_savings).toFixed(0)}`);
   }
 
-  // most_exceeded_budget_category — prefer exceeded, fall back to highest utilization
   if (budgets.length > 0) {
     const exceeded = budgets.filter(b => b.status === "exceeded");
     const pool     = exceeded.length > 0 ? exceeded : budgets;
@@ -149,21 +302,9 @@ function extractMemories(
     push("most_exceeded_budget_category", worst.category);
   }
 
-  // income_stability — coefficient of variation of monthly expense totals
-  // CV < 0.2 → stable, otherwise variable
-  if (expenses.length > 0) {
-    const byMonth: Record<string, number> = {};
-    for (const r of expenses) {
-      byMonth[r.month] = (byMonth[r.month] ?? 0) + Number(r.total_amount);
-    }
-    const totals = Object.values(byMonth);
-    if (totals.length >= 2) {
-      const mean = totals.reduce((s, v) => s + v, 0) / totals.length;
-      if (mean > 0) {
-        const stddev = Math.sqrt(totals.reduce((s, v) => s + (v - mean) ** 2, 0) / totals.length);
-        push("income_stability", stddev / mean < 0.2 ? "stable" : "variable");
-      }
-    }
+  // expense_volatility (replaces the old, mislabeled income_stability key)
+  if (derived.expense_volatility) {
+    push("expense_volatility", derived.expense_volatility.label);
   }
 
   return out;
@@ -172,14 +313,83 @@ function extractMemories(
 // ─── Prompt builders ──────────────────────────────────────────────────────────
 
 function buildSystemPrompt(unhelpfulTypes: string[]): string {
-  let base = `You are a personal finance and habit coach analyzing real data from a personal tracking app.
-Be specific — reference actual numbers from the data. Be direct — no generic advice, no filler.
+  let base = `You are a friendly, no-nonsense personal finance and habit coach.
+Talk like a real coach, not an analyst. Warm, direct, human.
 
-Return a JSON object with exactly these 4 keys:
-- "spending_summary": string — 2-3 sentences on spending patterns, category trends, and notable observations
-- "habit_coaching": string — 2-3 sentences on habit consistency, streak quality, and behavioral patterns
-- "anomaly": string — 1 sentence flagging anything unusual or worth the user's attention ("No anomalies detected." if nothing stands out)
-- "financial_health": object with "score" (integer 1-10, where 10 is excellent) and "verdict" (1 sentence overall assessment)
+VOICE RULES:
+- Talk TO the user, not ABOUT them. Use "you" and "your".
+- Use everyday words. Say "spending" not "expenditure". Say "jumped" not "increased significantly".
+- Numbers are essential — but wrap them in plain language.
+- One observation, then one specific suggestion. Don't over-explain.
+- Sound like a friend who happens to know money, not a textbook.
+
+FORBIDDEN WORDS (do not use ever):
+"month-over-month", "indicates", "concentration", "discretionary", "consumption",
+"trajectory", "metrics", "represents", "demonstrates", "exhibits"
+
+BEHAVIORAL LEVERAGE — use these techniques surgically, not constantly.
+Aim for roughly 1 leverage technique per 3 observations.
+
+LOSS FRAMING: When the user is leaking money or breaking a streak, frame as a
+loss not a missed gain. "You're bleeding BDT 500 a week to food you don't
+remember eating" hits harder than "You could save BDT 500."
+
+IDENTITY ANCHORING: Reference who the user is becoming or claims to be.
+"Disciplined operators don't break a 12-day streak for a snack."
+
+IMPLEMENTATION INTENTIONS: When prescribing action, use if-then format.
+"When Friday hits and takeout temptation rises, order one item not three"
+beats "spend less on food."
+
+SUNK-COST AS ASSET: For long streaks, name the investment. "You've banked
+12 days. Don't bankrupt the run for one night."
+
+FUTURE-SELF CONFRONTATION (use sparingly, max once per response):
+"The version of you in six months is being decided by Friday's choice."
+
+STRATEGIC DISSATISFACTION: Even on a good month, name the next gap.
+Never let the user feel done.
+
+COMPARATIVE PRESSURE: Compare the user only to their PAST SELF — never to
+other people. "Last month-you saved BDT 12k. This month-you is on track
+for BDT 8k. Where did the BDT 4k go?"
+
+HARD LINES — never cross these:
+- No shame tactics around body, weight, gym performance, eating, or appearance
+- No self-worth attacks ("you're lazy", "you have no discipline")
+- No catastrophizing ("you'll fail", "this always happens")
+- Strategic dissatisfaction = pointing at the gap. Identity erosion = attacking
+  the person. Do the first, never the second.
+
+PRIORITIES (in order):
+1. What changed in the user's behavior and why it matters
+2. Risk patterns worth flagging
+3. Specific numbers — always
+4. One concrete action
+
+If evidence is sparse or weak, say so plainly. Don't pretend to know more than the data shows.
+
+EXAMPLE OF BAD OUTPUT (analyst voice):
+"Food spending increased 38% month-over-month and now represents 41% of total expenses,
+indicating spending concentration in discretionary consumption."
+
+EXAMPLE OF GOOD OUTPUT (coach voice):
+"Food's eating up almost half your money this month — BDT 9,200 of your BDT 22,000 spend.
+That's a 38% jump from last month, and it's not groceries doing it. Try capping takeout
+at 2 days a week. You'll feel that difference fast."
+
+ANOTHER GOOD EXAMPLE:
+"Your morning run is rock solid — 12 days straight. But reading dropped from 84% to 50%
+this month. When one habit takes off, another usually pays the price. Block 20 minutes
+after dinner three nights a week and you'll get reading back without losing the run."
+
+Return a JSON object with exactly these 5 keys:
+- "spending_summary": 4-6 sentences in coach voice — what shifted, what it means, why it matters
+- "habit_coaching": 4-6 sentences in coach voice — what's working, what's slipping, what to do
+- "anomaly": 1-2 sentences flagging anything unusual ("Nothing weird this period." if clean)
+- "financial_health": object with "verdict" only — 1-2 sentences in plain language. Score is computed externally.
+- "top_action": one specific thing to do this week, with a number
+  (e.g. "Cap food spending at BDT 7,500 next week — that's 20% below your current pace")
 
 Respond with valid JSON only. No markdown code fences. No text outside the JSON object.`;
 
@@ -199,6 +409,8 @@ function buildUserPrompt(
   currency:    string,
   memoriesMap: Record<string, string>,
   cycle:       CycleBounds,
+  derived:     DerivedMetrics,
+  health:      HealthScoreBreakdown,
 ): string {
   const cycleLabel = cycle.cycleType === "payday"
     ? `Current Pay Cycle (${cycle.cycleStart} → ${cycle.cycleEnd}, payday on the ${cycle.payday})`
@@ -210,7 +422,7 @@ function buildUserPrompt(
   // ── What I know about you (Part B) ───────────────────────────────────────
   const savingsMemKey = cycle.cycleType === "payday" ? "current_cycle_savings" : "current_month_savings";
   const knownKeys = ["biggest_spending_category", "weakest_habit", "strongest_habit",
-                     savingsMemKey, "most_exceeded_budget_category", "income_stability"];
+                     savingsMemKey, "most_exceeded_budget_category", "expense_volatility"];
   if (knownKeys.some(k => memoriesMap[k])) {
     lines.push("## What I know about you");
     if (memoriesMap.biggest_spending_category)
@@ -223,8 +435,8 @@ function buildUserPrompt(
       lines.push(`- Savings this ${periodWord}: ${memoriesMap[savingsMemKey]}`);
     if (memoriesMap.most_exceeded_budget_category)
       lines.push(`- Most exceeded budget category: ${memoriesMap.most_exceeded_budget_category}`);
-    if (memoriesMap.income_stability)
-      lines.push(`- Income: ${memoriesMap.income_stability}`);
+    if (memoriesMap.expense_volatility)
+      lines.push(`- Expense volatility: ${memoriesMap.expense_volatility}`);
     lines.push("");
   }
 
@@ -300,6 +512,33 @@ function buildUserPrompt(
     lines.push("");
   }
 
+  // ── Behavioral signals (derived) ──────────────────────────────────────────
+  const sigLines: string[] = [];
+  if (derived.spending_concentration > 0) {
+    sigLines.push(`- Spending concentration: ${derived.spending_concentration}% (top 2 categories drive most spending)`);
+  }
+  if (derived.expense_volatility) {
+    sigLines.push(`- Expense volatility: ${derived.expense_volatility.label} (CV ${derived.expense_volatility.cv})`);
+  }
+  if (derived.habit_recovery_rate) {
+    sigLines.push(`- Habit recovery rate: ${derived.habit_recovery_rate.label} (${derived.habit_recovery_rate.rate})`);
+  }
+  if (sigLines.length > 0) {
+    lines.push("## Behavioral Signals");
+    lines.push(...sigLines);
+    lines.push("");
+  }
+
+  // ── Computed financial health score ───────────────────────────────────────
+  lines.push(`## Computed Financial Health Score: ${health.score}/10`);
+  lines.push(
+    `Components: savings ${health.components.savings}/10, ` +
+    `budget ${health.components.budget}/10, ` +
+    `habits ${health.components.habit}/10, ` +
+    `volatility ${health.components.volatility}/10`
+  );
+  lines.push("");
+
   if (lines.length === 0) {
     lines.push("No tracking data available yet. User may be new to the app.");
   }
@@ -355,9 +594,6 @@ Deno.serve(async (req) => {
     try { bodyJson = await req.json(); } catch { /* no body / not JSON */ }
     const cycle = parseCycleBounds(bodyJson);
 
-    // The budgets table is keyed to the first day of a calendar month. For payday
-    // cycles we use the budget row whose month matches the cycle start's month
-    // (e.g. an Apr 10 → May 9 cycle uses the April budgets).
     const budgetMonth = cycle.cycleStart.slice(0, 8) + "01";
 
     // 2. Fetch all data in parallel ───────────────────────────────────────────
@@ -365,40 +601,39 @@ Deno.serve(async (req) => {
     cutoff.setMonth(cutoff.getMonth() - 3);
     const startMonth = cutoff.toISOString().slice(0, 7) + "-01";
 
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+    const thirtyDaysAgoStr = thirtyDaysAgo.toISOString().slice(0, 10);
+
     const [
-      { data: expenses,          error: expErr   },
-      { data: habits,            error: habErr   },
-      { data: cycleExpenseRows,  error: cExpErr  },
-      { data: prevExpenseRows,   error: pExpErr  },
-      { data: cycleIncomeRows,   error: incErr   },
-      { data: activeLoansRows,   error: loanErr  },
-      { data: cycleBudgetRows,   error: budErr   },
-      { data: profile,           error: profErr  },
-      { data: storedMemories,    error: memErr   },
-      { data: existingInsights,  error: insErr   },
+      { data: expenses,            error: expErr   },
+      { data: habits,              error: habErr   },
+      { data: cycleExpenseRows,    error: cExpErr  },
+      { data: prevExpenseRows,     error: pExpErr  },
+      { data: cycleIncomeRows,     error: incErr   },
+      { data: activeLoansRows,     error: loanErr  },
+      { data: cycleBudgetRows,     error: budErr   },
+      { data: profile,             error: profErr  },
+      { data: storedMemories,      error: memErr   },
+      { data: existingInsights,    error: insErr   },
+      { data: habitCompletionRows, error: hcErr    },
     ] = await Promise.all([
-      // Calendar-monthly trend history (3 months) — fine for trends regardless of cycle type
       userClient.from("ai_expense_summary").select("*").eq("user_id", userId).gte("month", startMonth),
       userClient.from("ai_habit_summary").select("*").eq("user_id", userId),
-      // Current cycle expenses — raw rows, used for both snapshot and budget perf
       userClient.from("expenses").select("amount, category, date")
         .eq("user_id", userId).gte("date", cycle.cycleStart).lte("date", cycle.cycleEnd),
-      // Previous cycle expenses — only need the totals for MoM change
       userClient.from("expenses").select("amount")
         .eq("user_id", userId).gte("date", cycle.prevCycleStart).lte("date", cycle.prevCycleEnd),
-      // Current cycle incomes
       userClient.from("incomes").select("amount")
         .eq("user_id", userId).gte("date", cycle.cycleStart).lte("date", cycle.cycleEnd),
-      // Active (unpaid) loans — persistent, not date-filtered
       userClient.from("loans").select("amount").eq("user_id", userId).eq("is_paid", false),
-      // Budget rows for the cycle's calendar-month anchor
       userClient.from("budgets").select("category, amount")
         .eq("user_id", userId).eq("month", budgetMonth),
       userClient.from("profiles").select("currency_preference").eq("id", userId).single(),
-      // Part B: existing memories for prompt context
       serviceClient.from("ai_memories").select("memory_key, memory_value").eq("user_id", userId),
-      // Part C + idMap: single read covers both was_useful filtering and ID reuse
       serviceClient.from("ai_insights").select("id, insight_type, was_useful").eq("user_id", userId),
+      userClient.from("habit_completions").select("habit_id, date")
+        .eq("user_id", userId).gte("date", thirtyDaysAgoStr),
     ]);
 
     if (expErr)  console.error("ai_expense_summary:", expErr.message);
@@ -411,16 +646,17 @@ Deno.serve(async (req) => {
     if (profErr) console.error("profiles:",           profErr.message);
     if (memErr)  console.error("ai_memories:",        memErr.message);
     if (insErr)  console.error("ai_insights:",        insErr.message);
+    if (hcErr)   console.error("habit_completions:",  hcErr.message);
 
     const currency = profile?.currency_preference ?? "INR";
 
-    // ── Build the cycle-bound snapshot from raw rows ───────────────────────────
     type ExpenseRow = { amount: number | string; category: string; date: string };
-    const cycleExpenses = (cycleExpenseRows ?? []) as ExpenseRow[];
-    const cycleIncomes  = (cycleIncomeRows  ?? []) as Array<{ amount: number | string }>;
-    const prevExpenses  = (prevExpenseRows  ?? []) as Array<{ amount: number | string }>;
-    const activeLoans   = (activeLoansRows  ?? []) as Array<{ amount: number | string }>;
-    const cycleBudgets  = (cycleBudgetRows  ?? []) as Array<{ category: string; amount: number | string }>;
+    const cycleExpenses    = (cycleExpenseRows    ?? []) as ExpenseRow[];
+    const cycleIncomes     = (cycleIncomeRows     ?? []) as Array<{ amount: number | string }>;
+    const prevExpenses     = (prevExpenseRows     ?? []) as Array<{ amount: number | string }>;
+    const activeLoans      = (activeLoansRows     ?? []) as Array<{ amount: number | string }>;
+    const cycleBudgets     = (cycleBudgetRows     ?? []) as Array<{ category: string; amount: number | string }>;
+    const habitCompletions = (habitCompletionRows ?? []) as Array<{ habit_id: string; date: string }>;
 
     const sumAmt = <T extends { amount: number | string }>(rows: T[]) =>
       rows.reduce((s, r) => s + Number(r.amount), 0);
@@ -430,7 +666,6 @@ Deno.serve(async (req) => {
     const cycleIncomeTotal  = sumAmt(cycleIncomes);
     const loansTotal        = sumAmt(activeLoans);
 
-    // Spend by category for both the snapshot and the budget-performance shape
     const spentByCategory: Record<string, number> = {};
     for (const r of cycleExpenses) {
       spentByCategory[r.category] = (spentByCategory[r.category] ?? 0) + Number(r.amount);
@@ -474,7 +709,13 @@ Deno.serve(async (req) => {
       };
     });
 
-    // Part B: build memories map
+    // Derived metrics + computed health score (deterministic)
+    const monthlyExpenses = (expenses ?? []) as ExpenseSummaryRow[];
+    const habitsTyped     = (habits   ?? []) as HabitSummaryRow[];
+    const derived         = computeDerivedMetrics(cycleExpenses, monthlyExpenses, habitsTyped, habitCompletions);
+    const health          = computeFinancialHealthScore(snapshot, budgets, habitsTyped, derived);
+
+    // Memories map (Part B prompt context)
     const memoriesMap: Record<string, string> = {};
     for (const m of storedMemories ?? []) {
       memoriesMap[m.memory_key] = m.memory_value;
@@ -488,19 +729,20 @@ Deno.serve(async (req) => {
       typedInsights.filter(r => r.was_useful === false).map(r => r.insight_type)
     )];
 
-    // idMap: reuse existing row IDs so was_useful ratings survive upsert
     const idMap = new Map(typedInsights.map(r => [r.insight_type, r.id]));
 
     // 3. Build prompts ─────────────────────────────────────────────────────────
     const systemPrompt = buildSystemPrompt(unhelpfulTypes);
     const userPrompt   = buildUserPrompt(
-      snapshot  as FinancialSnapshotRow | null,
-      (expenses ?? []) as ExpenseSummaryRow[],
-      (budgets  ?? []) as BudgetPerformanceRow[],
-      (habits   ?? []) as HabitSummaryRow[],
+      snapshot,
+      monthlyExpenses,
+      budgets,
+      habitsTyped,
       currency,
       memoriesMap,
       cycle,
+      derived,
+      health,
     );
 
     // 4. Call OpenRouter ───────────────────────────────────────────────────────
@@ -527,11 +769,18 @@ Deno.serve(async (req) => {
       );
     }
 
+    // Overwrite financial_health.score with deterministic value (AI's score is discarded)
+    if (parsed.financial_health && typeof parsed.financial_health === "object") {
+      (parsed.financial_health as Record<string, unknown>).score = health.score;
+    } else {
+      parsed.financial_health = { score: health.score, verdict: "" };
+    }
+
     // 6. Upsert ai_insights ────────────────────────────────────────────────────
     const now       = new Date().toISOString();
     const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
 
-    const INSIGHT_TYPES = ["spending_summary", "habit_coaching", "anomaly", "financial_health"] as const;
+    const INSIGHT_TYPES = ["spending_summary", "habit_coaching", "anomaly", "financial_health", "top_action"] as const;
 
     const insightRows = INSIGHT_TYPES
       .filter((t) => parsed[t] !== undefined)
@@ -561,10 +810,10 @@ Deno.serve(async (req) => {
 
     // 7. Part A: extract and upsert ai_memories ───────────────────────────────
     const memoryRows = extractMemories(
-      snapshot  as FinancialSnapshotRow | null,
-      (expenses ?? []) as ExpenseSummaryRow[],
-      (budgets  ?? []) as BudgetPerformanceRow[],
-      (habits   ?? []) as HabitSummaryRow[],
+      snapshot,
+      budgets,
+      habitsTyped,
+      derived,
       userId,
       currency,
       cycle.cycleType,
@@ -575,7 +824,6 @@ Deno.serve(async (req) => {
         .from("ai_memories")
         .upsert(memoryRows, { onConflict: "user_id,memory_key" });
       if (memSaveErr) {
-        // Non-fatal — insights already saved, memories are a best-effort enhancement
         console.error("ai_memories upsert:", memSaveErr.message);
       }
     }

@@ -1,12 +1,13 @@
 import { useMemo, useState, useEffect } from "react";
 import { format, subDays } from "date-fns";
+import { Sparkles } from "lucide-react";
 import { AppLayout } from "@/components/AppLayout";
 import { useHabits, useHabitCompletions, calculateStreak } from "@/hooks/useHabits";
 import { useExpenses, CATEGORY_COLORS, type ExpenseCategory } from "@/hooks/useExpenses";
 import { useHabitReminders } from "@/hooks/useHabitReminders";
 import { useCurrency } from "@/hooks/useCurrency";
 import { DashboardExpenseCharts } from "@/components/dashboard/DashboardExpenseCharts";
-import { AIInsightsPanel } from "@/components/AIInsightsPanel";
+import { AIAnalystDialog } from "@/components/AIAnalystDialog";
 import { cn } from "@/lib/utils";
 
 // ─── SEMANTIC ACCENT COLORS (universal, theme-independent) ───────────────────
@@ -287,6 +288,9 @@ export default function Dashboard() {
     });
   }, [completions, todayStr, habitPct, activeHabits.length]);
 
+  // ── AI Analyst modal ──────────────────────────────────────────────────────
+  const [analystOpen, setAnalystOpen] = useState(false);
+
   // ── Confetti ──────────────────────────────────────────────────────────────
   const [particles, setParticles] = useState<{ id: number; x: number; color: string; size: number }[]>([]);
   const [celebrated, setCelebrated] = useState(false);
@@ -399,6 +403,31 @@ export default function Dashboard() {
               {format(today, "EEEE, MMMM d")}
             </h1>
           </div>
+
+          {/* AI Analyst trigger */}
+          <button
+            onClick={() => setAnalystOpen(true)}
+            title="Ask Your Personal AI Finance Analyst"
+            style={{
+              display: "flex", alignItems: "center", gap: 6,
+              padding: "8px 12px", borderRadius: 12,
+              background:    "hsl(var(--primary) / 0.08)",
+              border:        "1px solid hsl(var(--primary) / 0.3)",
+              color:         "hsl(var(--primary))",
+              fontSize:      11, fontWeight: 700,
+              letterSpacing: "-0.01em",
+              cursor:        "pointer",
+              flexShrink:    0,
+              boxShadow:     "0 0 16px hsl(var(--primary) / 0.08)",
+              transition:    "background 0.2s",
+            }}
+            onMouseEnter={(e) => { e.currentTarget.style.background = "hsl(var(--primary) / 0.14)"; }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = "hsl(var(--primary) / 0.08)"; }}
+          >
+            <Sparkles size={12} />
+            <span className="hidden sm:inline">Ask Your AI Analyst</span>
+            <span className="sm:hidden">AI Analyst</span>
+          </button>
 
           {/* Day progress pill */}
           <div style={{ ...card, borderRadius: 14, padding: "8px 14px", display: "flex", flexDirection: "column", alignItems: "center", gap: 5, flexShrink: 0, minWidth: 100 }}>
@@ -1057,7 +1086,7 @@ export default function Dashboard() {
         )}
 
         {/* ══ AI INSIGHTS ══════════════════════════════════════════════════ */}
-        <AIInsightsPanel />
+        <AIAnalystDialog open={analystOpen} onOpenChange={setAnalystOpen} />
 
       </div>
     </AppLayout>
