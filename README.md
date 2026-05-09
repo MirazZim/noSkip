@@ -22,6 +22,13 @@ By logging spending and habits side by side, NoSkip helps you see how your finan
 - **Clarity‑first design**
   - Minimal, distraction‑free UI.
   - Dark, modern look with subtle highlights for key information.
+- **AI Finance Analyst**
+  - On-demand modal that analyzes your spending and habits using a hosted LLM.
+  - Coach-voice insights — spending summary, habit coaching, anomaly flag, financial health verdict, and a single "Top Action" for the week.
+  - Deterministic financial health score (savings rate, budget adherence, habit consistency, expense volatility) — the AI writes the verdict, the math stays in code.
+  - Cycle-aware: respects payday cycles as well as calendar months, so the analysis matches the window you actually budget against.
+  - Persistent memory layer (`ai_memories`) lets the AI reference your strongest/weakest habit, biggest spending category, and expense volatility across sessions.
+  - Thumbs up / down feedback on every card; the next generation avoids styles you marked unhelpful.
 - **Authentication**
   - Email/password sign up & sign in.
   - Toggled auth screen with support for "primary focus" (Spending discipline, Habit consistency, Both).
@@ -39,11 +46,15 @@ By logging spending and habits side by side, NoSkip helps you see how your finan
 - **State & Data**
   - TanStack Query (React Query)
   - Custom `AuthContext` for authentication
-  - Supabase (PostgreSQL + Auth + Storage)
+  - Supabase (PostgreSQL + Auth + Storage + Row Level Security)
+- **Backend Logic**
+  - Supabase Edge Functions (Deno) — serverless compute for the AI analyst
+  - OpenRouter — LLM provider used by the `generate-insights` Edge Function
 - **Tooling**
   - ESLint / Prettier
   - Vitest + Testing Library
   - npm / pnpm / yarn
+  - Supabase CLI (for Edge Function deploys + migrations)
 
 ---
 
@@ -76,6 +87,13 @@ Create a `.env.local` file in the project root:
 ```env
 VITE_SUPABASE_URL=your_supabase_url
 VITE_SUPABASE_ANON_KEY=your_supabase_anon_key
+```
+
+The AI Finance Analyst runs inside the `generate-insights` Supabase Edge Function. Its secrets live on the Supabase side, not in the Vite bundle:
+
+```bash
+supabase secrets set OPENROUTER_API_KEY=your_openrouter_key
+supabase functions deploy generate-insights
 ```
 
 ### Run Locally
@@ -122,6 +140,11 @@ graph TB
         Auth[Supabase Auth]
         Database[(PostgreSQL + RLS)]
         Storage[Supabase Storage]
+        EdgeFn[Edge Function: generate-insights]
+    end
+
+    subgraph "External"
+        OpenRouter[OpenRouter LLM]
     end
 
     subgraph "DevOps"
@@ -138,12 +161,17 @@ graph TB
     QueryClient --> SupabaseClient
     SupabaseClient --> Auth
     SupabaseClient --> Database
+    SupabaseClient -->|invoke| EdgeFn
+    EdgeFn --> Database
+    EdgeFn --> OpenRouter
     GitHub -->|push| Vercel
     Vercel -.->|serves| UI
 
     style UI fill:#4f46e5,color:#fff
     style Database fill:#10b981,color:#fff
     style SupabaseClient fill:#3b82f6,color:#fff
+    style EdgeFn fill:#f59e0b,color:#fff
+    style OpenRouter fill:#ec4899,color:#fff
     style useHabits fill:#8b5cf6,color:#fff
     style useExpenses fill:#8b5cf6,color:#fff
 ```
@@ -268,6 +296,37 @@ sequenceDiagram
 
 ---
 
+### AI Insights Flow
+
+```mermaid
+sequenceDiagram
+    participant User
+    participant Dialog as AIAnalystDialog
+    participant Hook as useAIInsights
+    participant EdgeFn as generate-insights
+    participant DB as Supabase
+    participant LLM as OpenRouter
+
+    User->>Dialog: Click "Ask Your AI Analyst"
+    Dialog->>DB: Read ai_memories + cycle-bound expenses/incomes/loans
+    DB-->>Dialog: Snapshot for "What I Know About You"
+    User->>Dialog: Click "Generate Analysis"
+    Dialog->>Hook: refresh() with cycle bounds
+    Hook->>EdgeFn: invoke({ cycleStart, cycleEnd, prevCycle..., cycleType })
+    EdgeFn->>DB: Fetch expenses, habits, budgets, memories, prior ratings
+    EdgeFn->>EdgeFn: Compute derived metrics + financial health score
+    EdgeFn->>LLM: System + user prompt (coach voice)
+    LLM-->>EdgeFn: 5 insights (JSON)
+    EdgeFn->>EdgeFn: Overwrite AI's score with deterministic value
+    EdgeFn->>DB: Upsert ai_insights + ai_memories
+    EdgeFn-->>Hook: Saved insights
+    Hook-->>Dialog: Render Top Action card + 2x2 grid
+    User->>Dialog: 👍 / 👎 feedback per card
+    Dialog->>DB: Update was_useful (steers next generation)
+```
+
+---
+
 ### Database Schema
 
 ```mermaid
@@ -371,7 +430,7 @@ graph LR
 - [ ] Progressive Web App (PWA) — offline support & installability
 - [ ] Real-time multi-device sync
 - [ ] Push notifications for habit reminders
-- [ ] AI-powered insights and predictions
+- [x] AI-powered insights and predictions
 - [ ] PDF report export
 - [ ] Calendar and fitness app integrations
 
