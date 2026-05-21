@@ -371,6 +371,15 @@ export function AIAnalystDialog({ open, onOpenChange }: Props) {
       const totalIncome   = incomes.reduce((s, r)  => s + Number(r.amount), 0);
       const loansTotal    = loans.reduce((s, r)    => s + Number(r.amount), 0);
 
+      // CORRECT FINANCIAL LOGIC: Calculate loan offsets for net savings
+      const unpaidLoansGiven = loans
+        .filter(l => l.direction === 'lent' && !l.is_paid)
+        .reduce((sum, l) => sum + Number(l.amount), 0);
+
+      const unpaidLoansBorrowed = loans
+        .filter(l => l.direction === 'borrowed' && !l.is_paid)
+        .reduce((sum, l) => sum + Number(l.amount), 0);
+
       const byCat: Record<string, number> = {};
       for (const r of expenses) {
         byCat[r.category] = (byCat[r.category] ?? 0) + Number(r.amount);
@@ -384,7 +393,7 @@ export function AIAnalystDialog({ open, onOpenChange }: Props) {
       return {
         total_income:              totalIncome,
         total_expenses:            totalExpenses,
-        net_savings:               totalIncome - totalExpenses,
+        net_savings:               totalIncome - totalExpenses - unpaidLoansGiven + unpaidLoansBorrowed,
         biggest_spending_category: biggest,
         active_loans_count:        loans.length,
         active_loans_total:        loansTotal,

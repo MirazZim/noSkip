@@ -104,7 +104,6 @@ export function EditLoanDialog({ loan, open, onOpenChange }: Props) {
           due_date: dueDate || null,
           note: note.trim() || null,
         },
-        oldLoan: loan,
       });
       toast.success(active.successMsg(personName.trim()));
       onOpenChange(false);

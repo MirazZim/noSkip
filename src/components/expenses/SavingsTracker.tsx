@@ -18,6 +18,7 @@ import {
   type CycleConfig, type CycleRange,
 } from "@/hooks/useSavings";
 import { loadCycleConfig, CYCLE_CHANGE_EVENT } from "@/components/expenses/BudgetManager";
+import { useLoans } from "@/hooks/useLoans";
 import { useCurrency } from "@/hooks/useCurrency";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
@@ -220,12 +221,23 @@ export function SavingsTracker({ cycleExpenses, cycleIncomes, cycleStart, cycleE
 
   const { data: allSavings = [] } = useSavings();
   const { data: currentEntry } = useSavingsForCycle(cycleStart);
+  const { data: loans = [] } = useLoans();
   const upsert = useUpsertSavings();
   const del = useDeleteSavings();
 
   const totalIncome = cycleIncomes.reduce((s, i) => s + i.amount, 0);
   const totalSpend = cycleExpenses.reduce((s, e) => s + e.amount, 0);
-  const surplus = totalIncome - totalSpend;
+
+  // CORRECT FINANCIAL LOGIC: Loans affect surplus calculation
+  const unpaidLoansGiven = loans
+    .filter(l => l.direction === 'lent' && !l.is_paid)
+    .reduce((sum, l) => sum + l.amount, 0);
+
+  const unpaidLoansBorrowed = loans
+    .filter(l => l.direction === 'borrowed' && !l.is_paid)
+    .reduce((sum, l) => sum + l.amount, 0);
+
+  const surplus = totalIncome - totalSpend - unpaidLoansGiven + unpaidLoansBorrowed;
   const recorded = currentEntry?.amount ?? 0;
   const savingsRate = totalIncome > 0 ? Math.round((recorded / totalIncome) * 100) : null;
   const totalSaved = allSavings.reduce((s, e) => s + e.amount, 0);

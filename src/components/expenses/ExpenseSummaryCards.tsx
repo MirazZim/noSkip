@@ -10,6 +10,7 @@ import {
 } from "date-fns";
 import { Expense, Budget } from "@/hooks/useExpenses";
 import { Income } from "@/hooks/useIncomes";
+import { useLoans } from "@/hooks/useLoans";
 import { useCurrency } from "@/hooks/useCurrency";
 import { cn } from "@/lib/utils";
 
@@ -178,6 +179,7 @@ export function ExpenseSummaryCards({
   prevIncomes, savedThisCycle, onBudgetClick, onSavingsClick,
 }: Props) {
   const { formatAmount } = useCurrency();
+  const { data: loans = [] } = useLoans();
 
   // ── Derived data ────────────────────────────────────────────────────────────
   const totalSpend = expenses.reduce((s, e) => s + e.amount, 0);
@@ -188,7 +190,16 @@ export function ExpenseSummaryCards({
   const prevIncome = prevIncomes.reduce((s, i) => s + i.amount, 0);
   const incomeChange = prevIncome ? Math.round(((totalIncome - prevIncome) / prevIncome) * 100) : 0;
 
-  const netBalance = totalIncome - totalSpend - savedThisCycle;
+  // CORRECT FINANCIAL LOGIC: Loans affect net balance
+  const unpaidLoansGiven = loans
+    .filter(l => l.direction === 'lent' && !l.is_paid)
+    .reduce((sum, l) => sum + l.amount, 0);
+
+  const unpaidLoansBorrowed = loans
+    .filter(l => l.direction === 'borrowed' && !l.is_paid)
+    .reduce((sum, l) => sum + l.amount, 0);
+
+  const netBalance = totalIncome - totalSpend - savedThisCycle - unpaidLoansGiven + unpaidLoansBorrowed;
   const isPositive = netBalance >= 0;
 
   const savingsRate = totalIncome > 0
