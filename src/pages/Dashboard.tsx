@@ -1,6 +1,7 @@
 import { useMemo, useState, useEffect } from "react";
 import { format, subDays } from "date-fns";
 import { Sparkles } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 import { AppLayout } from "@/components/AppLayout";
 import { useHabits, useHabitCompletions, calculateStreak } from "@/hooks/useHabits";
 import { useExpenses, CATEGORY_COLORS, type ExpenseCategory } from "@/hooks/useExpenses";
@@ -214,6 +215,7 @@ function IOSDayRing({ pct, day, isToday }: { pct: number | null; day: string; is
 
 // ─── DASHBOARD ────────────────────────────────────────────────────────────────
 export default function Dashboard() {
+  const navigate = useNavigate();
   const today = new Date();
   const todayStr = format(today, "yyyy-MM-dd");
   const yesterStr = format(subDays(today, 1), "yyyy-MM-dd");
@@ -730,7 +732,18 @@ export default function Dashboard() {
           style={{ animation: "dshFadeUp 0.45s ease both", animationDelay: "210ms" }}>
 
           {/* ── HABITS ─────────────────────────────────────────────────── */}
-          <div style={{ ...card, overflow: "hidden" }}>
+          <div 
+            style={{ ...card, overflow: "hidden", cursor: "pointer", transition: "transform 0.2s, box-shadow 0.2s" }}
+            onClick={() => navigate("/habits")}
+            onMouseEnter={e => {
+              (e.currentTarget as HTMLDivElement).style.transform = "translateY(-2px)";
+              (e.currentTarget as HTMLDivElement).style.boxShadow = "0 4px 12px hsl(var(--primary) / 0.15)";
+            }}
+            onMouseLeave={e => {
+              (e.currentTarget as HTMLDivElement).style.transform = "translateY(0)";
+              (e.currentTarget as HTMLDivElement).style.boxShadow = "none";
+            }}
+          >
             {/* Header */}
             <div style={{
               display: "flex", alignItems: "center", justifyContent: "space-between",
@@ -879,7 +892,18 @@ export default function Dashboard() {
           </div>
 
           {/* ── EXPENSES ───────────────────────────────────────────────── */}
-          <div style={{ ...card, overflow: "hidden" }}>
+          <div 
+            style={{ ...card, overflow: "hidden", cursor: "pointer", transition: "transform 0.2s, box-shadow 0.2s" }}
+            onClick={() => navigate("/expenses")}
+            onMouseEnter={e => {
+              (e.currentTarget as HTMLDivElement).style.transform = "translateY(-2px)";
+              (e.currentTarget as HTMLDivElement).style.boxShadow = "0 4px 12px hsl(var(--primary) / 0.15)";
+            }}
+            onMouseLeave={e => {
+              (e.currentTarget as HTMLDivElement).style.transform = "translateY(0)";
+              (e.currentTarget as HTMLDivElement).style.boxShadow = "none";
+            }}
+          >
             {/* Header */}
             <div style={{
               display: "flex", alignItems: "center", justifyContent: "space-between",
