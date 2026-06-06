@@ -465,132 +465,131 @@ export function HabitDetailPanel({ habit, completions }: Props) {
         }
       `}</style>
 
-
-
-      <div className="hdp-card">
-        <div className="hdp-card-header">
-          <span className="hdp-card-title">Monthly view</span>
-        </div>
-        <div className="hdp-card-body">
-          <div className="hdp-cal-nav">
-            <Button variant="ghost" size="icon" className="h-7 w-7"
-              onClick={() => setViewMonth((m) => subMonths(m, 1))}>
-              <ChevronLeft className="h-4 w-4" />
-            </Button>
-            <span className="hdp-cal-title">{format(viewMonth, "MMMM yyyy")}</span>
-            <Button variant="ghost" size="icon" className="h-7 w-7"
-              onClick={() => setViewMonth((m) => addMonths(m, 1))}>
-              <ChevronRight className="h-4 w-4" />
-            </Button>
-          </div>
-
-          <div className="hdp-cal-weekdays">
-            {WEEKDAYS.map((d) => (
-              <div key={d} className="hdp-cal-wd">{d.slice(0, 1)}</div>
-            ))}
-          </div>
-
-          <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-            {calendarWeeks.map((week, wi) => (
-              <div key={wi} className="hdp-cal-week">
-                {week.map((day, di) => {
-                  if (!day) return <div key={di} className="hdp-cal-day" />;
-                  const dateStr = format(day, "yyyy-MM-dd");
-                  const isCompleted = completedDates.has(dateStr);
-                  const isToday = dateStr === today;
-                  const { inStreak, isStart, isEnd, isSingle } = getStreakPosition(dateStr);
-
-                  return (
-                    <div key={di} className="hdp-cal-day">
-                      {inStreak && !isSingle && (
-                        <div className={cn(
-                          "hdp-cal-connector",
-                          isStart && "rounded-l-full left-1/2 right-0",
-                          isEnd && "rounded-r-full left-0 right-1/2",
-                          !isStart && !isEnd && "left-0 right-0",
-                        )} />
-                      )}
-                      <span className={cn(
-                        "hdp-cal-dot",
-                        isCompleted && "bg-primary text-primary-foreground",
-                        isToday && !isCompleted && "ring-1 ring-primary text-primary font-bold",
-                        !isCompleted && !isToday && "text-foreground",
-                      )}>
-                        {day.getDate()}
-                      </span>
-                    </div>
-                  );
-                })}
-              </div>
-            ))}
-          </div>
-
-          <div style={{ marginTop: 12 }}>
-            <div className="hdp-month-rate">
-              <span className="hdp-month-rate-label">Monthly completion</span>
-              <span className="hdp-month-rate-val">{monthRate}%</span>
-            </div>
-            <div className="hdp-month-track">
-              <div className="hdp-month-fill" style={{ width: `${monthRate}%` }} />
-            </div>
-            <p className="hdp-month-sub">
-              {monthCompletions} of {pastDays.length} days completed this month
-            </p>
-          </div>
-        </div>
+ {/* ── 1. Weekly pattern ─────────────────────────────────────────────────── */}
+    <div className="hdp-card">
+      <div className="hdp-card-header">
+        <span className="hdp-card-title">Weekly pattern</span>
+        <span style={{ fontSize: 10, color: "hsl(var(--muted-foreground))" }}>
+          {bestDayIdx >= 0 && (
+            <span>💪 Best: <strong style={{ color: "hsl(var(--primary))" }}>{WEEKDAYS[bestDayIdx]}</strong>
+              {worstDayIdx >= 0 && worstDayIdx !== bestDayIdx &&
+                <> · Weakest: <strong style={{ color: "hsl(var(--destructive))" }}>{WEEKDAYS[worstDayIdx]}</strong></>
+              }</span>
+          )}
+        </span>
       </div>
-
-      {/* ── 2. Weekly pattern ─────────────────────────────────────────────────── */}
-      <div className="hdp-card">
-        <div className="hdp-card-header">
-          <span className="hdp-card-title">Weekly pattern</span>
-          <span style={{ fontSize: 10, color: "hsl(var(--muted-foreground))" }}>
-            {bestDayIdx >= 0 && (
-              <span>💪 Best: <strong style={{ color: "hsl(var(--primary))" }}>{WEEKDAYS[bestDayIdx]}</strong>
-                {worstDayIdx >= 0 && worstDayIdx !== bestDayIdx &&
-                  <> · Weakest: <strong style={{ color: "hsl(var(--destructive))" }}>{WEEKDAYS[worstDayIdx]}</strong></>
-                }</span>
-            )}
-          </span>
-        </div>
-        <div className="hdp-card-body">
-          <div className="hdp-week-chart">
-            {weeklyRates.map((rate, i) => {
-              const isNull = rate === null;
-              const isBest = i === bestDayIdx && !isNull;
-              const isWorst = i === worstDayIdx && !isNull && worstDayIdx !== bestDayIdx;
-              const heightPct = isNull ? 8 : Math.max(8, Math.round(((rate ?? 0) / maxWeeklyRate) * 100));
-              return (
-                <div key={i} className="hdp-week-col">
-                  <div className="hdp-week-bar-wrap">
-                    <div
-                      className={cn(
-                        "hdp-week-bar",
-                        isNull && "hdp-week-bar--null",
-                        !isNull && !isBest && !isWorst && "hdp-week-bar--mid",
-                        isBest && "hdp-week-bar--best",
-                        isWorst && "hdp-week-bar--worst",
-                      )}
-                      style={{ height: `${heightPct}%` }}
-                      title={isNull ? "No data" : `${rate}%`}
-                    />
-                  </div>
-                  <span className={cn(
-                    "hdp-week-label",
-                    isBest && "hdp-week-label--best",
-                    isWorst && "hdp-week-label--worst",
-                  )}>
-                    {WEEKDAYS_SHORT[i]}
-                  </span>
+      <div className="hdp-card-body">
+        <div className="hdp-week-chart">
+          {weeklyRates.map((rate, i) => {
+            const isNull = rate === null;
+            const isBest = i === bestDayIdx && !isNull;
+            const isWorst = i === worstDayIdx && !isNull && worstDayIdx !== bestDayIdx;
+            const heightPct = isNull ? 8 : Math.max(8, Math.round(((rate ?? 0) / maxWeeklyRate) * 100));
+            return (
+              <div key={i} className="hdp-week-col">
+                <div className="hdp-week-bar-wrap">
+                  <div
+                    className={cn(
+                      "hdp-week-bar",
+                      isNull && "hdp-week-bar--null",
+                      !isNull && !isBest && !isWorst && "hdp-week-bar--mid",
+                      isBest && "hdp-week-bar--best",
+                      isWorst && "hdp-week-bar--worst",
+                    )}
+                    style={{ height: `${heightPct}%` }}
+                    title={isNull ? "No data" : `${rate}%`}
+                  />
                 </div>
-              );
-            })}
+                <span className={cn(
+                  "hdp-week-label",
+                  isBest && "hdp-week-label--best",
+                  isWorst && "hdp-week-label--worst",
+                )}>
+                  {WEEKDAYS_SHORT[i]}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+        <p style={{ fontSize: 10, color: "hsl(var(--muted-foreground))", marginTop: 8 }}>
+          Completion rate per weekday since habit started
+        </p>
+      </div>
+    </div>
+
+    {/* ── 2. Monthly view ───────────────────────────────────────────────────── */}
+    <div className="hdp-card">
+      <div className="hdp-card-header">
+        <span className="hdp-card-title">Monthly view</span>
+      </div>
+      <div className="hdp-card-body">
+        <div className="hdp-cal-nav">
+          <Button variant="ghost" size="icon" className="h-7 w-7"
+            onClick={() => setViewMonth((m) => subMonths(m, 1))}>
+            <ChevronLeft className="h-4 w-4" />
+          </Button>
+          <span className="hdp-cal-title">{format(viewMonth, "MMMM yyyy")}</span>
+          <Button variant="ghost" size="icon" className="h-7 w-7"
+            onClick={() => setViewMonth((m) => addMonths(m, 1))}>
+            <ChevronRight className="h-4 w-4" />
+          </Button>
+        </div>
+
+        <div className="hdp-cal-weekdays">
+          {WEEKDAYS.map((d) => (
+            <div key={d} className="hdp-cal-wd">{d.slice(0, 1)}</div>
+          ))}
+        </div>
+
+        <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+          {calendarWeeks.map((week, wi) => (
+            <div key={wi} className="hdp-cal-week">
+              {week.map((day, di) => {
+                if (!day) return <div key={di} className="hdp-cal-day" />;
+                const dateStr = format(day, "yyyy-MM-dd");
+                const isCompleted = completedDates.has(dateStr);
+                const isToday = dateStr === today;
+                const { inStreak, isStart, isEnd, isSingle } = getStreakPosition(dateStr);
+
+                return (
+                  <div key={di} className="hdp-cal-day">
+                    {inStreak && !isSingle && (
+                      <div className={cn(
+                        "hdp-cal-connector",
+                        isStart && "rounded-l-full left-1/2 right-0",
+                        isEnd && "rounded-r-full left-0 right-1/2",
+                        !isStart && !isEnd && "left-0 right-0",
+                      )} />
+                    )}
+                    <span className={cn(
+                      "hdp-cal-dot",
+                      isCompleted && "bg-primary text-primary-foreground",
+                      isToday && !isCompleted && "ring-1 ring-primary text-primary font-bold",
+                      !isCompleted && !isToday && "text-foreground",
+                    )}>
+                      {day.getDate()}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          ))}
+        </div>
+
+        <div style={{ marginTop: 12 }}>
+          <div className="hdp-month-rate">
+            <span className="hdp-month-rate-label">Monthly completion</span>
+            <span className="hdp-month-rate-val">{monthRate}%</span>
           </div>
-          <p style={{ fontSize: 10, color: "hsl(var(--muted-foreground))", marginTop: 8 }}>
-            Completion rate per weekday since habit started
+          <div className="hdp-month-track">
+            <div className="hdp-month-fill" style={{ width: `${monthRate}%` }} />
+          </div>
+          <p className="hdp-month-sub">
+            {monthCompletions} of {pastDays.length} days completed this month
           </p>
         </div>
       </div>
+    </div>
 
       {/* ── 3. Momentum ───────────────────────────────────────────────────────── */}
       <div className="hdp-card">
