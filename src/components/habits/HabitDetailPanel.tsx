@@ -18,7 +18,6 @@ interface Props {
 const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 const WEEKDAYS_SHORT = ["M", "T", "W", "T", "F", "S", "S"];
 
-// ── Tiny trend arrow icon ──────────────────────────────────────────────────────
 const TrendUp = () => (
   <svg width="13" height="13" viewBox="0 0 24 24" fill="none"
     stroke="currentColor" strokeWidth="2.8" strokeLinecap="round" strokeLinejoin="round">
@@ -52,22 +51,18 @@ const CalendarProjectIcon = () => (
 export function HabitDetailPanel({ habit, completions }: Props) {
   const [viewMonth, setViewMonth] = useState(new Date());
 
-  // ── All data derived in one pass ─────────────────────────────────────────────
   const insights = useMemo(() => {
     const habitCompletions = completions.filter((c) => c.habit_id === habit.id);
     const completedSet = new Set(habitCompletions.map((c) => c.date));
     const today = format(new Date(), "yyyy-MM-dd");
 
-    // ── 1. Weekly pattern ──────────────────────────────────────────────────────
-    // Count how many times each weekday (0=Mon … 6=Sun) was completed
-    // vs how many times that weekday occurred since habit start
-    const dayCompletions = Array(7).fill(0);   // completed count per weekday
-    const dayOccurrences = Array(7).fill(0);   // total occurrences per weekday
+    const dayCompletions = Array(7).fill(0);
+    const dayOccurrences = Array(7).fill(0);
 
     const startDate = parseISO(habit.start_date);
     const allDays = eachDayOfInterval({ start: startDate, end: new Date() });
     allDays.forEach((day) => {
-      const dow = (getDay(day) + 6) % 7; // Mon=0 … Sun=6
+      const dow = (getDay(day) + 6) % 7;
       dayOccurrences[dow]++;
       if (completedSet.has(format(day, "yyyy-MM-dd"))) {
         dayCompletions[dow]++;
@@ -85,7 +80,6 @@ export function HabitDetailPanel({ habit, completions }: Props) {
       ? weeklyRates.indexOf(Math.min(...definedRates))
       : -1;
 
-    // ── 2. Momentum (last 30 vs prev 30) ──────────────────────────────────────
     const last30Start = format(subDays(new Date(), 29), "yyyy-MM-dd");
     const prev30Start = format(subDays(new Date(), 59), "yyyy-MM-dd");
     const prev30End = format(subDays(new Date(), 30), "yyyy-MM-dd");
@@ -103,25 +97,21 @@ export function HabitDetailPanel({ habit, completions }: Props) {
     const momentumTrend =
       momentumDelta > 3 ? "up" : momentumDelta < -3 ? "down" : "flat";
 
-    // ── 3. Best streak context ─────────────────────────────────────────────────
     const sortedDates = [...completedSet].sort();
 
-    // Find all gaps (missed day runs) between completions
     let longestGap = 0;
     let longestGapAfterDate = "";
-    let longestRecovery = 0; // days until next completion after longest gap
+    let longestRecovery = 0;
 
     for (let i = 1; i < sortedDates.length; i++) {
       const gap = differenceInDays(parseISO(sortedDates[i]), parseISO(sortedDates[i - 1])) - 1;
       if (gap > longestGap) {
         longestGap = gap;
         longestGapAfterDate = sortedDates[i - 1];
-        // Recovery = days between gap start and resumption
         longestRecovery = gap;
       }
     }
 
-    // Last missed streak (days since last completion or since start if never done)
     const lastCompletionDate = sortedDates[sortedDates.length - 1] || null;
     const daysSinceLast = lastCompletionDate
       ? differenceInDays(new Date(), parseISO(lastCompletionDate))
@@ -142,7 +132,6 @@ export function HabitDetailPanel({ habit, completions }: Props) {
       return max;
     })();
 
-    // ── 4. Projected annual ────────────────────────────────────────────────────
     const yearStart = startOfYear(new Date());
     const dayOfYear = differenceInDays(new Date(), yearStart) + 1;
     const yearCompletions = habitCompletions.filter(
@@ -176,7 +165,6 @@ export function HabitDetailPanel({ habit, completions }: Props) {
     };
   }, [habit.id, habit.start_date, completions]);
 
-  // ── Calendar ─────────────────────────────────────────────────────────────────
   const { calendarWeeks, completedDates, streakRanges } = useMemo(() => {
     const monthStart = startOfMonth(viewMonth);
     const monthEnd = endOfMonth(viewMonth);
@@ -249,7 +237,6 @@ export function HabitDetailPanel({ habit, completions }: Props) {
       <style>{`
         .hdp-root { font-family: inherit; }
 
-        /* ── Shared card shell ── */
         .hdp-card {
           border-radius: 14px;
           border: 1px solid hsl(var(--border));
@@ -266,7 +253,6 @@ export function HabitDetailPanel({ habit, completions }: Props) {
         }
         .hdp-card-body { padding: 10px 14px 14px; }
 
-        /* ── KPI pill row ── */
         .hdp-kpi-row {
           display: grid; grid-template-columns: repeat(3, 1fr);
           gap: 1px; background: hsl(var(--border));
@@ -289,7 +275,6 @@ export function HabitDetailPanel({ habit, completions }: Props) {
           text-align: center; line-height: 1.3;
         }
 
-        /* ── Weekly bar chart ── */
         .hdp-week-chart {
           display: flex; align-items: flex-end; gap: 5px;
           height: 64px; padding-top: 4px;
@@ -320,7 +305,6 @@ export function HabitDetailPanel({ habit, completions }: Props) {
         .hdp-week-label--best { color: hsl(var(--primary)); font-weight: 700; }
         .hdp-week-label--worst { color: hsl(var(--destructive)); font-weight: 700; }
 
-        /* ── Momentum ── */
         .hdp-momentum-row {
           display: flex; align-items: center; gap: 10px;
         }
@@ -363,7 +347,6 @@ export function HabitDetailPanel({ habit, completions }: Props) {
           text-align: right; line-height: 1.4;
         }
 
-        /* ── Streak context ── */
         .hdp-streak-grid {
           display: grid; grid-template-columns: 1fr 1fr;
           gap: 8px;
@@ -385,7 +368,6 @@ export function HabitDetailPanel({ habit, completions }: Props) {
           line-height: 1.3;
         }
 
-        /* ── Projection ── */
         .hdp-proj-main {
           display: flex; align-items: baseline; gap: 6px; margin-bottom: 12px;
         }
@@ -413,7 +395,6 @@ export function HabitDetailPanel({ habit, completions }: Props) {
         }
         .hdp-proj-row strong { color: hsl(var(--foreground)); font-weight: 600; }
 
-        /* ── Calendar (existing) ── */
         .hdp-cal-nav {
           display: flex; align-items: center; justify-content: space-between;
           margin-bottom: 12px;
@@ -444,7 +425,6 @@ export function HabitDetailPanel({ habit, completions }: Props) {
           transition: background 0.15s;
         }
 
-        /* ── Monthly rate ── */
         .hdp-month-rate {
           display: flex; align-items: center; justify-content: space-between;
           margin-bottom: 8px;
@@ -465,131 +445,132 @@ export function HabitDetailPanel({ habit, completions }: Props) {
         }
       `}</style>
 
- {/* ── 1. Weekly pattern ─────────────────────────────────────────────────── */}
-    <div className="hdp-card">
-      <div className="hdp-card-header">
-        <span className="hdp-card-title">Weekly pattern</span>
-        <span style={{ fontSize: 10, color: "hsl(var(--muted-foreground))" }}>
-          {bestDayIdx >= 0 && (
-            <span>💪 Best: <strong style={{ color: "hsl(var(--primary))" }}>{WEEKDAYS[bestDayIdx]}</strong>
-              {worstDayIdx >= 0 && worstDayIdx !== bestDayIdx &&
-                <> · Weakest: <strong style={{ color: "hsl(var(--destructive))" }}>{WEEKDAYS[worstDayIdx]}</strong></>
-              }</span>
-          )}
-        </span>
-      </div>
-      <div className="hdp-card-body">
-        <div className="hdp-week-chart">
-          {weeklyRates.map((rate, i) => {
-            const isNull = rate === null;
-            const isBest = i === bestDayIdx && !isNull;
-            const isWorst = i === worstDayIdx && !isNull && worstDayIdx !== bestDayIdx;
-            const heightPct = isNull ? 8 : Math.max(8, Math.round(((rate ?? 0) / maxWeeklyRate) * 100));
-            return (
-              <div key={i} className="hdp-week-col">
-                <div className="hdp-week-bar-wrap">
-                  <div
-                    className={cn(
-                      "hdp-week-bar",
-                      isNull && "hdp-week-bar--null",
-                      !isNull && !isBest && !isWorst && "hdp-week-bar--mid",
-                      isBest && "hdp-week-bar--best",
-                      isWorst && "hdp-week-bar--worst",
-                    )}
-                    style={{ height: `${heightPct}%` }}
-                    title={isNull ? "No data" : `${rate}%`}
-                  />
-                </div>
-                <span className={cn(
-                  "hdp-week-label",
-                  isBest && "hdp-week-label--best",
-                  isWorst && "hdp-week-label--worst",
-                )}>
-                  {WEEKDAYS_SHORT[i]}
-                </span>
-              </div>
-            );
-          })}
+      {/* ── 1. Weekly pattern ─────────────────────────────────────────────────── */}
+      <div className="hdp-card">
+        <div className="hdp-card-header">
+          <span className="hdp-card-title">Weekly pattern</span>
+          <span style={{ fontSize: 10, color: "hsl(var(--muted-foreground))" }}>
+            {bestDayIdx >= 0 && (
+              <span>💪 Best: <strong style={{ color: "hsl(var(--primary))" }}>{WEEKDAYS[bestDayIdx]}</strong>
+                {worstDayIdx >= 0 && worstDayIdx !== bestDayIdx &&
+                  <> · Weakest: <strong style={{ color: "hsl(var(--destructive))" }}>{WEEKDAYS[worstDayIdx]}</strong></>
+                }
+              </span>
+            )}
+          </span>
         </div>
-        <p style={{ fontSize: 10, color: "hsl(var(--muted-foreground))", marginTop: 8 }}>
-          Completion rate per weekday since habit started
-        </p>
-      </div>
-    </div>
-
-    {/* ── 2. Monthly view ───────────────────────────────────────────────────── */}
-    <div className="hdp-card">
-      <div className="hdp-card-header">
-        <span className="hdp-card-title">Monthly view</span>
-      </div>
-      <div className="hdp-card-body">
-        <div className="hdp-cal-nav">
-          <Button variant="ghost" size="icon" className="h-7 w-7"
-            onClick={() => setViewMonth((m) => subMonths(m, 1))}>
-            <ChevronLeft className="h-4 w-4" />
-          </Button>
-          <span className="hdp-cal-title">{format(viewMonth, "MMMM yyyy")}</span>
-          <Button variant="ghost" size="icon" className="h-7 w-7"
-            onClick={() => setViewMonth((m) => addMonths(m, 1))}>
-            <ChevronRight className="h-4 w-4" />
-          </Button>
-        </div>
-
-        <div className="hdp-cal-weekdays">
-          {WEEKDAYS.map((d) => (
-            <div key={d} className="hdp-cal-wd">{d.slice(0, 1)}</div>
-          ))}
-        </div>
-
-        <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-          {calendarWeeks.map((week, wi) => (
-            <div key={wi} className="hdp-cal-week">
-              {week.map((day, di) => {
-                if (!day) return <div key={di} className="hdp-cal-day" />;
-                const dateStr = format(day, "yyyy-MM-dd");
-                const isCompleted = completedDates.has(dateStr);
-                const isToday = dateStr === today;
-                const { inStreak, isStart, isEnd, isSingle } = getStreakPosition(dateStr);
-
-                return (
-                  <div key={di} className="hdp-cal-day">
-                    {inStreak && !isSingle && (
-                      <div className={cn(
-                        "hdp-cal-connector",
-                        isStart && "rounded-l-full left-1/2 right-0",
-                        isEnd && "rounded-r-full left-0 right-1/2",
-                        !isStart && !isEnd && "left-0 right-0",
-                      )} />
-                    )}
-                    <span className={cn(
-                      "hdp-cal-dot",
-                      isCompleted && "bg-primary text-primary-foreground",
-                      isToday && !isCompleted && "ring-1 ring-primary text-primary font-bold",
-                      !isCompleted && !isToday && "text-foreground",
-                    )}>
-                      {day.getDate()}
-                    </span>
+        <div className="hdp-card-body">
+          <div className="hdp-week-chart">
+            {weeklyRates.map((rate, i) => {
+              const isNull = rate === null;
+              const isBest = i === bestDayIdx && !isNull;
+              const isWorst = i === worstDayIdx && !isNull && worstDayIdx !== bestDayIdx;
+              const heightPct = isNull ? 8 : Math.max(8, Math.round(((rate ?? 0) / maxWeeklyRate) * 100));
+              return (
+                <div key={i} className="hdp-week-col">
+                  <div className="hdp-week-bar-wrap">
+                    <div
+                      className={cn(
+                        "hdp-week-bar",
+                        isNull && "hdp-week-bar--null",
+                        !isNull && !isBest && !isWorst && "hdp-week-bar--mid",
+                        isBest && "hdp-week-bar--best",
+                        isWorst && "hdp-week-bar--worst",
+                      )}
+                      style={{ height: `${heightPct}%` }}
+                      title={isNull ? "No data" : `${rate}%`}
+                    />
                   </div>
-                );
-              })}
-            </div>
-          ))}
-        </div>
-
-        <div style={{ marginTop: 12 }}>
-          <div className="hdp-month-rate">
-            <span className="hdp-month-rate-label">Monthly completion</span>
-            <span className="hdp-month-rate-val">{monthRate}%</span>
+                  <span className={cn(
+                    "hdp-week-label",
+                    isBest && "hdp-week-label--best",
+                    isWorst && "hdp-week-label--worst",
+                  )}>
+                    {WEEKDAYS_SHORT[i]}
+                  </span>
+                </div>
+              );
+            })}
           </div>
-          <div className="hdp-month-track">
-            <div className="hdp-month-fill" style={{ width: `${monthRate}%` }} />
-          </div>
-          <p className="hdp-month-sub">
-            {monthCompletions} of {pastDays.length} days completed this month
+          <p style={{ fontSize: 10, color: "hsl(var(--muted-foreground))", marginTop: 8 }}>
+            Completion rate per weekday since habit started
           </p>
         </div>
       </div>
-    </div>
+
+      {/* ── 2. Monthly view ───────────────────────────────────────────────────── */}
+      <div className="hdp-card">
+        <div className="hdp-card-header">
+          <span className="hdp-card-title">Monthly view</span>
+        </div>
+        <div className="hdp-card-body">
+          <div className="hdp-cal-nav">
+            <Button variant="ghost" size="icon" className="h-7 w-7"
+              onClick={() => setViewMonth((m) => subMonths(m, 1))}>
+              <ChevronLeft className="h-4 w-4" />
+            </Button>
+            <span className="hdp-cal-title">{format(viewMonth, "MMMM yyyy")}</span>
+            <Button variant="ghost" size="icon" className="h-7 w-7"
+              onClick={() => setViewMonth((m) => addMonths(m, 1))}>
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+          </div>
+
+          <div className="hdp-cal-weekdays">
+            {WEEKDAYS.map((d) => (
+              <div key={d} className="hdp-cal-wd">{d.slice(0, 1)}</div>
+            ))}
+          </div>
+
+          <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+            {calendarWeeks.map((week, wi) => (
+              <div key={wi} className="hdp-cal-week">
+                {week.map((day, di) => {
+                  if (!day) return <div key={di} className="hdp-cal-day" />;
+                  const dateStr = format(day, "yyyy-MM-dd");
+                  const isCompleted = completedDates.has(dateStr);
+                  const isToday = dateStr === today;
+                  const { inStreak, isStart, isEnd, isSingle } = getStreakPosition(dateStr);
+
+                  return (
+                    <div key={di} className="hdp-cal-day">
+                      {inStreak && !isSingle && (
+                        <div className={cn(
+                          "hdp-cal-connector",
+                          isStart && "rounded-l-full left-1/2 right-0",
+                          isEnd && "rounded-r-full left-0 right-1/2",
+                          !isStart && !isEnd && "left-0 right-0",
+                        )} />
+                      )}
+                      <span className={cn(
+                        "hdp-cal-dot",
+                        isCompleted && "bg-primary text-primary-foreground",
+                        isToday && !isCompleted && "ring-1 ring-primary text-primary font-bold",
+                        !isCompleted && !isToday && "text-foreground",
+                      )}>
+                        {day.getDate()}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            ))}
+          </div>
+
+          <div style={{ marginTop: 12 }}>
+            <div className="hdp-month-rate">
+              <span className="hdp-month-rate-label">Monthly completion</span>
+              <span className="hdp-month-rate-val">{monthRate}%</span>
+            </div>
+            <div className="hdp-month-track">
+              <div className="hdp-month-fill" style={{ width: `${monthRate}%` }} />
+            </div>
+            <p className="hdp-month-sub">
+              {monthCompletions} of {pastDays.length} days completed this month
+            </p>
+          </div>
+        </div>
+      </div>
 
       {/* ── 3. Momentum ───────────────────────────────────────────────────────── */}
       <div className="hdp-card">
@@ -599,7 +580,6 @@ export function HabitDetailPanel({ habit, completions }: Props) {
         <div className="hdp-card-body">
           <div className="hdp-momentum-row">
             <div className="hdp-momentum-bars">
-              {/* Last 30 days */}
               <div>
                 <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
                   <span style={{ fontSize: 10, color: "hsl(var(--foreground))", fontWeight: 600 }}>Last 30 days</span>
@@ -609,7 +589,6 @@ export function HabitDetailPanel({ habit, completions }: Props) {
                   <div className="hdp-momentum-fill hdp-momentum-fill--current" style={{ width: `${last30Rate}%` }} />
                 </div>
               </div>
-              {/* Prev 30 days */}
               <div>
                 <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
                   <span style={{ fontSize: 10, color: "hsl(var(--muted-foreground))" }}>Previous 30 days</span>
@@ -621,7 +600,6 @@ export function HabitDetailPanel({ habit, completions }: Props) {
               </div>
             </div>
 
-            {/* Trend badge */}
             <div className="hdp-momentum-meta">
               <div className={cn(
                 "hdp-momentum-badge",
@@ -646,7 +624,7 @@ export function HabitDetailPanel({ habit, completions }: Props) {
         </div>
       </div>
 
-      {/* ── 4. Streak context ─────────────────────────────────────────────────── */}
+      {/* ── 4. Streak history ─────────────────────────────────────────────────── */}
       <div className="hdp-card">
         <div className="hdp-card-header">
           <span className="hdp-card-title">Streak history</span>
@@ -707,7 +685,6 @@ export function HabitDetailPanel({ habit, completions }: Props) {
             <span className="hdp-proj-unit">completions / year</span>
           </div>
 
-          {/* Progress toward 365 */}
           <div className="hdp-proj-track">
             <div
               className={cn("hdp-proj-fill", projectedAnnual < 200 && "hdp-proj-fill--behind")}
@@ -735,6 +712,7 @@ export function HabitDetailPanel({ habit, completions }: Props) {
           )}
         </div>
       </div>
+
     </div>
   );
 }
