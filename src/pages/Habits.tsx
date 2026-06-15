@@ -20,7 +20,6 @@ import { AddHabitDialog } from "@/components/habits/AddHabitDialog";
 import { HabitListItem } from "@/components/habits/HabitListItem";
 import { HabitDetailPanel } from "@/components/habits/HabitDetailPanel";
 import { HabitQuote } from "@/components/habits/HabitQuote";
-import { StreakGrid } from "@/components/habits/StreakGrid";
 import { HabitAnalytics } from "@/components/habits/HabitAnalytics";
 import {
   useHabits,
@@ -86,11 +85,6 @@ function HabitDetail({
           <span className="hd-stat-value">{rate > 0 ? `${rate}%` : "—"}</span>
           <span className="hd-stat-label">Rate</span>
         </div>
-      </div>
-
-      <div className="hd-section">
-        <p className="hd-section-title">Year overview</p>
-        <StreakGrid habitId={habit.id} completions={completions} />
       </div>
 
       <div className="hd-section">

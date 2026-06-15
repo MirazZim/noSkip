@@ -3,12 +3,13 @@ import {
   format,
   startOfMonth, endOfMonth, eachDayOfInterval,
   getDay, subDays, addMonths, subMonths,
-  differenceInDays, parseISO, startOfYear, endOfToday,
+  differenceInDays, parseISO, startOfYear,
 } from "date-fns";
 import { ChevronLeft, ChevronRight } from "lucide-react";
-import { Habit, HabitCompletion, calculateStreak, longestStreak } from "@/hooks/useHabits";
+import { Habit, HabitCompletion } from "@/hooks/useHabits";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { StreakGrid } from "@/components/habits/StreakGrid";
 
 interface Props {
   habit: Habit;
@@ -445,60 +446,7 @@ export function HabitDetailPanel({ habit, completions }: Props) {
         }
       `}</style>
 
-      {/* ── 1. Weekly pattern ─────────────────────────────────────────────────── */}
-      <div className="hdp-card">
-        <div className="hdp-card-header">
-          <span className="hdp-card-title">Weekly pattern</span>
-          <span style={{ fontSize: 10, color: "hsl(var(--muted-foreground))" }}>
-            {bestDayIdx >= 0 && (
-              <span>💪 Best: <strong style={{ color: "hsl(var(--primary))" }}>{WEEKDAYS[bestDayIdx]}</strong>
-                {worstDayIdx >= 0 && worstDayIdx !== bestDayIdx &&
-                  <> · Weakest: <strong style={{ color: "hsl(var(--destructive))" }}>{WEEKDAYS[worstDayIdx]}</strong></>
-                }
-              </span>
-            )}
-          </span>
-        </div>
-        <div className="hdp-card-body">
-          <div className="hdp-week-chart">
-            {weeklyRates.map((rate, i) => {
-              const isNull = rate === null;
-              const isBest = i === bestDayIdx && !isNull;
-              const isWorst = i === worstDayIdx && !isNull && worstDayIdx !== bestDayIdx;
-              const heightPct = isNull ? 8 : Math.max(8, Math.round(((rate ?? 0) / maxWeeklyRate) * 100));
-              return (
-                <div key={i} className="hdp-week-col">
-                  <div className="hdp-week-bar-wrap">
-                    <div
-                      className={cn(
-                        "hdp-week-bar",
-                        isNull && "hdp-week-bar--null",
-                        !isNull && !isBest && !isWorst && "hdp-week-bar--mid",
-                        isBest && "hdp-week-bar--best",
-                        isWorst && "hdp-week-bar--worst",
-                      )}
-                      style={{ height: `${heightPct}%` }}
-                      title={isNull ? "No data" : `${rate}%`}
-                    />
-                  </div>
-                  <span className={cn(
-                    "hdp-week-label",
-                    isBest && "hdp-week-label--best",
-                    isWorst && "hdp-week-label--worst",
-                  )}>
-                    {WEEKDAYS_SHORT[i]}
-                  </span>
-                </div>
-              );
-            })}
-          </div>
-          <p style={{ fontSize: 10, color: "hsl(var(--muted-foreground))", marginTop: 8 }}>
-            Completion rate per weekday since habit started
-          </p>
-        </div>
-      </div>
-
-      {/* ── 2. Monthly view ───────────────────────────────────────────────────── */}
+      {/* ── 1. Monthly view ───────────────────────────────────────────────────── */}
       <div className="hdp-card">
         <div className="hdp-card-header">
           <span className="hdp-card-title">Monthly view</span>
@@ -511,6 +459,7 @@ export function HabitDetailPanel({ habit, completions }: Props) {
             </Button>
             <span className="hdp-cal-title">{format(viewMonth, "MMMM yyyy")}</span>
             <Button variant="ghost" size="icon" className="h-7 w-7"
+              disabled={startOfMonth(viewMonth) >= startOfMonth(new Date())}
               onClick={() => setViewMonth((m) => addMonths(m, 1))}>
               <ChevronRight className="h-4 w-4" />
             </Button>
@@ -572,7 +521,70 @@ export function HabitDetailPanel({ habit, completions }: Props) {
         </div>
       </div>
 
-      {/* ── 3. Momentum ───────────────────────────────────────────────────────── */}
+      {/* ── 2. Year overview ──────────────────────────────────────────────────── */}
+      <div className="hdp-card">
+        <div className="hdp-card-header">
+          <span className="hdp-card-title">Year overview</span>
+        </div>
+        <div className="hdp-card-body">
+          <StreakGrid habitId={habit.id} completions={completions} />
+        </div>
+      </div>
+
+      {/* ── 3. Weekly pattern ─────────────────────────────────────────────────── */}
+      <div className="hdp-card">
+        <div className="hdp-card-header">
+          <span className="hdp-card-title">Weekly pattern</span>
+          <span style={{ fontSize: 10, color: "hsl(var(--muted-foreground))" }}>
+            {bestDayIdx >= 0 && (
+              <span>💪 Best: <strong style={{ color: "hsl(var(--primary))" }}>{WEEKDAYS[bestDayIdx]}</strong>
+                {worstDayIdx >= 0 && worstDayIdx !== bestDayIdx &&
+                  <> · Weakest: <strong style={{ color: "hsl(var(--destructive))" }}>{WEEKDAYS[worstDayIdx]}</strong></>
+                }
+              </span>
+            )}
+          </span>
+        </div>
+        <div className="hdp-card-body">
+          <div className="hdp-week-chart">
+            {weeklyRates.map((rate, i) => {
+              const isNull = rate === null;
+              const isBest = i === bestDayIdx && !isNull;
+              const isWorst = i === worstDayIdx && !isNull && worstDayIdx !== bestDayIdx;
+              const heightPct = isNull ? 8 : Math.max(8, Math.round(((rate ?? 0) / maxWeeklyRate) * 100));
+              return (
+                <div key={i} className="hdp-week-col">
+                  <div className="hdp-week-bar-wrap">
+                    <div
+                      className={cn(
+                        "hdp-week-bar",
+                        isNull && "hdp-week-bar--null",
+                        !isNull && !isBest && !isWorst && "hdp-week-bar--mid",
+                        isBest && "hdp-week-bar--best",
+                        isWorst && "hdp-week-bar--worst",
+                      )}
+                      style={{ height: `${heightPct}%` }}
+                      title={isNull ? "No data" : `${rate}%`}
+                    />
+                  </div>
+                  <span className={cn(
+                    "hdp-week-label",
+                    isBest && "hdp-week-label--best",
+                    isWorst && "hdp-week-label--worst",
+                  )}>
+                    {WEEKDAYS_SHORT[i]}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+          <p style={{ fontSize: 10, color: "hsl(var(--muted-foreground))", marginTop: 8 }}>
+            Completion rate per weekday since habit started
+          </p>
+        </div>
+      </div>
+
+      {/* ── 4. Momentum ───────────────────────────────────────────────────────── */}
       <div className="hdp-card">
         <div className="hdp-card-header">
           <span className="hdp-card-title">Momentum</span>
