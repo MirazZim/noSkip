@@ -9,6 +9,7 @@ import Auth from "./pages/Auth";
 import Dashboard from "./pages/Dashboard";
 import Expenses from "./pages/Expenses";
 import Habits from "./pages/Habits";
+import PersonaShift from "./pages/PersonaShift";
 import SettingsPage from "./pages/SettingsPage";
 import NotFound from "./pages/NotFound";
 import { AdminAuthProvider } from "@/contexts/AdminAuthContext";
@@ -62,6 +63,7 @@ const App = () => (
                 <Route path="/"        element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
                 <Route path="/expenses" element={<ProtectedRoute><Expenses /></ProtectedRoute>} />
                 <Route path="/habits"   element={<ProtectedRoute><Habits /></ProtectedRoute>} />
+                <Route path="/persona"  element={<ProtectedRoute><PersonaShift /></ProtectedRoute>} />
                 <Route path="/settings" element={<ProtectedRoute><SettingsPage /></ProtectedRoute>} />
 
                 {/* Admin routes — completely separate auth */}

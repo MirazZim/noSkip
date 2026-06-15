@@ -10,6 +10,7 @@ const navItems = [
   { path: "/",         label: "Dashboard" },
   { path: "/expenses", label: "Expenses"  },
   { path: "/habits",   label: "Habits"    },
+  { path: "/persona",  label: "Persona"   },
   { path: "/settings", label: "Settings"  },
 ];
 

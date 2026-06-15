@@ -1,4 +1,4 @@
-import { LayoutDashboard, Wallet, Target, Settings, LogOut, Palette, Check, X } from "lucide-react";
+import { LayoutDashboard, Wallet, Target, Compass, Settings, LogOut, Palette, Check, X } from "lucide-react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { useTheme, THEMES } from "@/contexts/ThemeContext";
@@ -9,6 +9,7 @@ const navItems = [
   { title: "Dashboard", path: "/",         icon: LayoutDashboard },
   { title: "Expenses",  path: "/expenses", icon: Wallet          },
   { title: "Habits",    path: "/habits",   icon: Target          },
+  { title: "Persona",   path: "/persona",  icon: Compass         },
   { title: "Settings",  path: "/settings", icon: Settings        },
 ];
 
