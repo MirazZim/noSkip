@@ -441,25 +441,34 @@ function SevenDayRow({ completions, habitId }: { completions: HabitCompletion[];
 }
 
 // ── Desktop context menu ───────────────────────────────────────────────────────
-function ContextMenu({ onEdit, onDelete, onClose }: {
+function ContextMenu({ onEdit, onDelete, onClose, style }: {
   onEdit: () => void; onDelete: () => void; onClose: () => void;
+  style?: React.CSSProperties;
 }) {
-  return (
-    <div className="absolute right-0 top-[calc(100%+8px)] z-50 min-w-[152px] p-[5px] bg-popover border border-border/80 rounded-[14px] shadow-[0_4px_6px_hsl(var(--foreground)/0.04),0_20px_50px_hsl(var(--foreground)/0.10)] animate-in fade-in-0 zoom-in-95 slide-in-from-top-2 duration-150">
-      <button
-        className="flex items-center gap-[9px] w-full px-[11px] py-[9px] rounded-[10px] border-none bg-transparent text-foreground cursor-pointer text-[13px] font-medium font-[inherit] hover:bg-muted/80 transition-colors duration-100"
-        onClick={() => { onEdit(); onClose(); }}
+  return createPortal(
+    <>
+      {/* Invisible backdrop to catch outside clicks */}
+      <div className="fixed inset-0 z-[199]" onClick={onClose} />
+      <div
+        className="fixed z-[200] min-w-[152px] p-[5px] bg-popover border border-border/80 rounded-[14px] shadow-[0_4px_6px_hsl(var(--foreground)/0.04),0_20px_50px_hsl(var(--foreground)/0.10)] animate-in fade-in-0 zoom-in-95 duration-150"
+        style={style}
       >
-        <PencilIcon /> Edit habit
-      </button>
-      <div className="h-px bg-border/60 my-[3px]" />
-      <button
-        className="flex items-center gap-[9px] w-full px-[11px] py-[9px] rounded-[10px] border-none bg-transparent text-destructive cursor-pointer text-[13px] font-medium font-[inherit] hover:bg-destructive/[0.08] transition-colors duration-100"
-        onClick={() => { onDelete(); onClose(); }}
-      >
-        <TrashIcon /> Delete
-      </button>
-    </div>
+        <button
+          className="flex items-center gap-[9px] w-full px-[11px] py-[9px] rounded-[10px] border-none bg-transparent text-foreground cursor-pointer text-[13px] font-medium font-[inherit] hover:bg-muted/80 transition-colors duration-100"
+          onClick={() => { onEdit(); onClose(); }}
+        >
+          <PencilIcon /> Edit habit
+        </button>
+        <div className="h-px bg-border/60 my-[3px]" />
+        <button
+          className="flex items-center gap-[9px] w-full px-[11px] py-[9px] rounded-[10px] border-none bg-transparent text-destructive cursor-pointer text-[13px] font-medium font-[inherit] hover:bg-destructive/[0.08] transition-colors duration-100"
+          onClick={() => { onDelete(); onClose(); }}
+        >
+          <TrashIcon /> Delete
+        </button>
+      </div>
+    </>,
+    document.body
   );
 }
 
@@ -536,11 +545,13 @@ export function HabitListItem({ habit, completions, isSelected, onSelect }: Prop
   const deleteHabit = useDeleteHabit();
   const [editOpen, setEditOpen]           = useState(false);
   const [menuOpen, setMenuOpen]           = useState(false);
+  const [menuPos, setMenuPos]             = useState<{ top: number; right: number }>({ top: 0, right: 0 });
   const [swipeX, setSwipeX]               = useState(0);
   const [isSwipeOpen, setIsSwipeOpen]     = useState(false);
   const [isActiveSwipe, setIsActiveSwipe] = useState(false);
   const [showDopamine, setShowDopamine]   = useState(false);
 
+  const menuBtnRef  = useRef<HTMLDivElement>(null);
   const touchStartX = useRef(0);
   const touchStartY = useRef(0);
   const swipeIntent = useRef<"none" | "swipe" | "scroll">("none");
@@ -739,7 +750,6 @@ export function HabitListItem({ habit, completions, isSelected, onSelect }: Prop
               <span className={cn(
                 "font-semibold text-[14px] tracking-[-0.025em] text-foreground leading-[1.3]",
                 "min-w-0 overflow-hidden [display:-webkit-box] [-webkit-line-clamp:2] [-webkit-box-orient:vertical]",
-                "sm:whitespace-nowrap sm:[display:block] sm:overflow-hidden sm:text-ellipsis",
                 "transition-[opacity,color] duration-200",
                 optimisticDone && "opacity-30 line-through decoration-muted-foreground/40 decoration-[1.5px]"
               )}>
@@ -782,7 +792,7 @@ export function HabitListItem({ habit, completions, isSelected, onSelect }: Prop
                   <CalendarIcon /> yday
                 </button>
               )}
-              <div className="hidden [@media(hover:hover)_and_(pointer:fine)]:block relative">
+              <div className="hidden [@media(hover:hover)_and_(pointer:fine)]:block relative" ref={menuBtnRef}>
                 <button
                   className={cn(
                     "flex items-center justify-center w-[30px] h-[30px] rounded-full border-none",
@@ -791,7 +801,14 @@ export function HabitListItem({ habit, completions, isSelected, onSelect }: Prop
                     "hover:bg-muted hover:text-foreground",
                     menuOpen && "bg-muted text-foreground"
                   )}
-                  onClick={(e) => { e.stopPropagation(); setMenuOpen((o) => !o); }}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (!menuOpen) {
+                      const rect = menuBtnRef.current?.getBoundingClientRect();
+                      if (rect) setMenuPos({ top: rect.bottom + 8, right: window.innerWidth - rect.right });
+                    }
+                    setMenuOpen((o) => !o);
+                  }}
                 >
                   <DotsIcon />
                 </button>
@@ -800,6 +817,7 @@ export function HabitListItem({ habit, completions, isSelected, onSelect }: Prop
                     onEdit={() => setEditOpen(true)}
                     onDelete={handleDelete}
                     onClose={() => setMenuOpen(false)}
+                    style={{ top: menuPos.top, right: menuPos.right }}
                   />
                 )}
               </div>

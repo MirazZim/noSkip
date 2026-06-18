@@ -17,6 +17,8 @@ import { toast } from "sonner";
 interface Props {
   rule: PersonaRule;
   completions: HabitCompletion[];
+  isSelected?: boolean;
+  onSelect?: () => void;
 }
 
 // ── 7-day pip row (same shape as the habit row) ─────────────────────────────────
@@ -49,7 +51,7 @@ function SevenDayRow({ completions, ruleId }: { completions: HabitCompletion[]; 
   );
 }
 
-export function PersonaRuleListItem({ rule, completions }: Props) {
+export function PersonaRuleListItem({ rule, completions, isSelected = false, onSelect }: Props) {
   const toggle = useToggleHabitCompletion();
   const deleteRule = useDeletePersonaRule();
   const [editOpen, setEditOpen] = useState(false);
@@ -99,12 +101,15 @@ export function PersonaRuleListItem({ rule, completions }: Props) {
     <>
       <div
         ref={setNodeRef}
-        style={{ transform: CSS.Transform.toString(transform), transition }}
+        style={{ transform: CSS.Transform.toString(transform), transition, cursor: onSelect ? "pointer" : undefined }}
         className={cn(
           "rounded-[18px] border border-border/60 bg-card transition-shadow duration-200",
           "hover:shadow-[0_2px_20px_hsl(var(--foreground)/0.06)]",
-          isDragging && "z-[999] shadow-[0_24px_56px_hsl(var(--foreground)/0.15)]"
+          isDragging && "z-[999] shadow-[0_24px_56px_hsl(var(--foreground)/0.15)]",
+          isSelected && "bg-primary/[0.04] border-primary/25",
         )}
+        onClick={onSelect}
+        role={onSelect ? "button" : undefined}
       >
         <div className="flex items-center gap-[13px] px-4 py-[15px] pl-3">
           {/* Drag handle */}
