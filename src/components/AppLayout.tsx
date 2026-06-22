@@ -1,10 +1,9 @@
 import { ReactNode, useState, useRef, useEffect, useLayoutEffect } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { Menu, X, LogOut, Zap } from "lucide-react";
+import { LogOut, Zap, LayoutDashboard, Wallet, Target, Compass, Settings } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
-import { AppSidebar } from "@/components/AppSidebar";
 
 const navItems = [
   { path: "/",         label: "Dashboard" },
@@ -14,6 +13,14 @@ const navItems = [
   { path: "/settings", label: "Settings"  },
 ];
 
+const bottomNavItems = [
+  { path: "/",         label: "Dashboard", icon: LayoutDashboard },
+  { path: "/expenses", label: "Expenses",  icon: Wallet          },
+  { path: "/habits",   label: "Habits",    icon: Target          },
+  { path: "/persona",  label: "Persona",   icon: Compass         },
+  { path: "/settings", label: "Settings",  icon: Settings        },
+];
+
 type BoxStyle = { left: number; top: number; width: number; height: number };
 
 export function AppLayout({ children }: { children: ReactNode }) {
@@ -21,9 +28,8 @@ export function AppLayout({ children }: { children: ReactNode }) {
   const navigate  = useNavigate();
   const { signOut } = useAuth();
 
-  const [mobileOpen, setMobileOpen] = useState(false);
-  const [box,        setBox]        = useState<BoxStyle | null>(null);
-  const [ready,      setReady]      = useState(false);
+  const [box,   setBox]   = useState<BoxStyle | null>(null);
+  const [ready, setReady] = useState(false);
   const linkRefs = useRef<(HTMLButtonElement | null)[]>([]);
 
   useLayoutEffect(() => {
@@ -45,8 +51,6 @@ export function AppLayout({ children }: { children: ReactNode }) {
     }
   }, [box, ready]);
 
-  useEffect(() => { setMobileOpen(false); }, [location.pathname]);
-
   const handleLogout = async () => {
     try   { await signOut(); toast.success("Signed out"); }
     catch { toast.error("Failed to sign out"); }
@@ -57,28 +61,20 @@ export function AppLayout({ children }: { children: ReactNode }) {
 
       {/* ── Floating navbar ── */}
       <header className="fixed top-4 left-4 right-4 z-50">
-        {/* Gradient border wrapper */}
         <div
           className="p-px rounded-2xl"
           style={{ background: "linear-gradient(135deg, hsl(var(--foreground)/0.14), hsl(var(--foreground)/0.03) 50%, hsl(var(--foreground)/0.10))" }}
         >
           <div className="flex items-center h-[50px] rounded-[15px] overflow-hidden bg-background/80 backdrop-blur-3xl shadow-[0_12px_48px_rgba(0,0,0,0.18)]">
 
-            {/* Left slot: hamburger on mobile / logo on desktop */}
+            {/* Left slot: logo (desktop only) */}
             <div
-              className="flex items-center h-full shrink-0"
+              className="hidden md:flex items-center h-full shrink-0"
               style={{ borderRight: "1px solid hsl(var(--foreground)/0.06)" }}
             >
               <button
-                onClick={() => setMobileOpen(v => !v)}
-                aria-label="Toggle menu"
-                className="md:hidden flex items-center justify-center w-[50px] h-full text-foreground/50 hover:text-foreground transition-colors"
-              >
-                {mobileOpen ? <X className="h-[22px] w-[22px]" /> : <Menu className="h-[22px] w-[22px]" />}
-              </button>
-              <button
                 onClick={() => navigate("/")}
-                className="hidden md:flex items-center px-5 h-full hover:bg-foreground/[0.03] transition-colors"
+                className="flex items-center px-5 h-full hover:bg-foreground/[0.03] transition-colors"
               >
                 <span className="flex items-center gap-1 font-display font-bold text-[16px] tracking-tight text-foreground">
                   <Zap
@@ -126,30 +122,29 @@ export function AppLayout({ children }: { children: ReactNode }) {
               )}
             </nav>
 
-            {/* Mobile spacer */}
-            <div className="flex-1 md:hidden" />
+            {/* Mobile: logo centered */}
+            <div className="flex md:hidden flex-1 items-center justify-center h-full">
+              <button
+                onClick={() => navigate("/")}
+                className="flex items-center gap-1 font-display font-bold text-[16px] tracking-tight text-foreground"
+              >
+                <Zap
+                  className="h-[16px] w-[16px] text-primary fill-primary"
+                  style={{ animation: "noskip-zap 2s ease-in-out infinite" }}
+                />
+                No<span className="text-primary">Skip</span>
+              </button>
+            </div>
 
-            {/* Right slot: logo on mobile / logout on desktop */}
+            {/* Right slot: logout (desktop only) */}
             <div
-              className="flex items-center h-full shrink-0"
+              className="hidden md:flex items-center h-full shrink-0"
               style={{ borderLeft: "1px solid hsl(var(--foreground)/0.06)" }}
             >
               <button
-                onClick={() => navigate("/")}
-                className="md:hidden flex items-center px-5 h-full hover:bg-foreground/[0.03] transition-colors"
-              >
-                <span className="flex items-center gap-1 font-display font-bold text-[16px] tracking-tight text-foreground">
-                  <Zap
-                    className="h-[16px] w-[16px] text-primary fill-primary"
-                    style={{ animation: "noskip-zap 2s ease-in-out infinite" }}
-                  />
-                  No<span className="text-primary">Skip</span>
-                </span>
-              </button>
-              <button
                 onClick={handleLogout}
                 title="Logout"
-                className="hidden md:flex items-center justify-center w-[50px] h-full text-foreground/30 hover:text-foreground transition-colors"
+                className="flex items-center justify-center w-[50px] h-full text-foreground/30 hover:text-foreground transition-colors"
               >
                 <LogOut className="h-[15px] w-[15px]" />
               </button>
@@ -159,27 +154,94 @@ export function AppLayout({ children }: { children: ReactNode }) {
         </div>
       </header>
 
-      {/* ── Mobile backdrop ── */}
-      <div
-        onClick={() => setMobileOpen(false)}
-        className={cn(
-          "fixed inset-0 z-40 bg-background/60 backdrop-blur-sm md:hidden transition-opacity duration-300",
-          mobileOpen ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"
-        )}
-      />
+      {/* ── Mobile liquid glass bottom nav ── */}
+      <nav className="fixed bottom-5 left-5 right-5 z-50 md:hidden">
+        {/* Rim — bright at top-left, fades around, catches again at bottom-right */}
+        <div
+          className="p-px rounded-[36px]"
+          style={{
+            background:
+              "linear-gradient(145deg, rgba(255,255,255,0.65) 0%, rgba(255,255,255,0.15) 20%, rgba(255,255,255,0.04) 50%, rgba(255,255,255,0.12) 80%, rgba(255,255,255,0.45) 100%)",
+          }}
+        >
+          {/* Liquid glass body */}
+          <div
+            className="relative flex items-center justify-around h-[62px] rounded-[35px] overflow-hidden"
+            style={{
+              background:
+                "linear-gradient(180deg, rgba(255,255,255,0.07) 0%, rgba(255,255,255,0.02) 100%)",
+              backdropFilter: "blur(80px) saturate(180%) brightness(1.02) contrast(1.02)",
+              WebkitBackdropFilter: "blur(80px) saturate(180%) brightness(1.02) contrast(1.02)",
+              boxShadow: [
+                "inset 0 2px 0 rgba(255,255,255,0.28)",   /* top specular */
+                "inset 0 -1px 0 rgba(0,0,0,0.22)",         /* bottom inner shadow */
+                "inset 1px 0 0 rgba(255,255,255,0.08)",     /* left edge */
+                "inset -1px 0 0 rgba(255,255,255,0.08)",    /* right edge */
+                "0 24px 64px rgba(0,0,0,0.22)",             /* deep ambient */
+                "0 6px 20px rgba(0,0,0,0.14)",              /* close shadow */
+                "0 1px 0 rgba(255,255,255,0.06)",           /* base line */
+              ].join(", "),
+            }}
+          >
+            {/* Curved specular arc — the "liquid" light catch at top */}
+            <div
+              className="absolute top-0 left-0 right-0 h-[30px] pointer-events-none"
+              style={{
+                background:
+                  "radial-gradient(ellipse 70% 60% at 50% -10%, rgba(255,255,255,0.10) 0%, rgba(255,255,255,0) 100%)",
+              }}
+            />
 
-      {/* ── Mobile sidebar panel ── */}
-      <aside
-        className={cn(
-          "fixed top-0 left-0 bottom-0 z-50 w-64 md:hidden flex flex-col bg-card/90 backdrop-blur-2xl border-r border-white/10 transition-transform duration-300",
-          mobileOpen ? "translate-x-0" : "-translate-x-full"
-        )}
-      >
-        <AppSidebar onClose={() => setMobileOpen(false)} />
-      </aside>
+            {/* Bottom caustic shadow */}
+            <div
+              className="absolute bottom-0 left-4 right-4 h-px pointer-events-none"
+              style={{
+                background:
+                  "linear-gradient(90deg, transparent, rgba(0,0,0,0.18) 30%, rgba(0,0,0,0.18) 70%, transparent)",
+              }}
+            />
+
+            {bottomNavItems.map(({ path, label, icon: Icon }) => {
+              const isActive = location.pathname === path;
+              return (
+                <button
+                  key={path}
+                  onClick={() => navigate(path)}
+                  aria-label={label}
+                  className="relative flex items-center justify-center flex-1 h-full"
+                >
+                  {isActive && (
+                    <span
+                      className="absolute inset-y-[9px] inset-x-[5px] rounded-[22px]"
+                      style={{
+                        background:
+                          "linear-gradient(180deg, rgba(255,255,255,0.22) 0%, rgba(255,255,255,0.08) 100%)",
+                        backdropFilter: "blur(20px) saturate(160%)",
+                        WebkitBackdropFilter: "blur(20px) saturate(160%)",
+                        boxShadow: [
+                          "inset 0 1.5px 0 rgba(255,255,255,0.5)",
+                          "inset 0 -1px 0 rgba(0,0,0,0.15)",
+                          "0 2px 8px rgba(0,0,0,0.1)",
+                        ].join(", "),
+                      }}
+                    />
+                  )}
+                  <Icon
+                    className={cn(
+                      "relative h-[21px] w-[21px] transition-all duration-200 drop-shadow-sm",
+                      isActive ? "text-white" : "text-white/45"
+                    )}
+                    strokeWidth={isActive ? 2 : 1.5}
+                  />
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      </nav>
 
       {/* ── Page content ── */}
-      <main className="pt-24 pb-10 px-3 sm:px-10 md:px-20 lg:px-32 xl:px-48">
+      <main className="pt-24 pb-28 md:pb-10 px-3 sm:px-10 md:px-20 lg:px-32 xl:px-48">
         <div className="max-w-4xl mx-auto">
           {children}
         </div>

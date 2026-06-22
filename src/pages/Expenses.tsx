@@ -392,7 +392,7 @@ export default function Expenses() {
         {/* ══ DESKTOP TAB BAR ═══════════════════════════════════════════════ */}
         {/* Premium pill tabs — active tab is an elevated glass card          */}
         <div
-          className="hidden sm:flex gap-1 p-1 rounded-2xl"
+          className="flex gap-1 p-1 rounded-2xl"
           style={{
             background: "hsl(var(--muted) / 0.5)",
             border: "1px solid hsl(var(--border) / 0.4)",
@@ -407,7 +407,7 @@ export default function Expenses() {
               <button
                 key={id}
                 onClick={() => switchTab(id)}
-                className="flex-1 relative flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl transition-all duration-200 active:scale-95"
+                className="flex-1 relative flex items-center justify-center gap-1.5 px-2 sm:px-3 py-2 rounded-xl transition-all duration-200 active:scale-95"
                 style={{
                   background: active ? "hsl(var(--card))" : "transparent",
                   boxShadow: active
@@ -417,12 +417,27 @@ export default function Expenses() {
                   color: active ? "hsl(var(--foreground))" : "hsl(var(--muted-foreground))",
                 }}
               >
-                <Icon
-                  className="shrink-0"
-                  size={13}
-                  strokeWidth={active ? 2.5 : 1.75}
-                />
+                <div className="relative shrink-0">
+                  <Icon
+                    size={16}
+                    strokeWidth={active ? 2.5 : 1.75}
+                  />
+                  {/* Loan badge — mobile only (icon-only mode) */}
+                  {id === "loans" && activeLoans > 0 && (
+                    <span
+                      className="sm:hidden absolute -top-1 -right-1.5 flex items-center justify-center rounded-full font-black text-white"
+                      style={{
+                        width: 14, height: 14, fontSize: 8,
+                        background: active ? "hsl(var(--muted-foreground))" : S.rose,
+                      }}
+                    >
+                      {activeLoans > 9 ? "9+" : activeLoans}
+                    </span>
+                  )}
+                </div>
+
                 <span
+                  className="hidden sm:inline"
                   style={{
                     fontSize: 11,
                     fontWeight: active ? 800 : 600,
@@ -433,10 +448,10 @@ export default function Expenses() {
                   {label}
                 </span>
 
-                {/* Loan alert badge */}
+                {/* Loan alert badge — desktop only */}
                 {id === "loans" && activeLoans > 0 && (
                   <span
-                    className="flex items-center justify-center rounded-full tabular-nums"
+                    className="hidden sm:flex items-center justify-center rounded-full tabular-nums"
                     style={{
                       width: 18, height: 18,
                       fontSize: 9, fontWeight: 900,
@@ -896,90 +911,12 @@ export default function Expenses() {
         onOpenChange={open => !open && setEditingLoan(null)}
       />
 
-      {/* ══ MOBILE BOTTOM NAV ════════════════════════════════════════════════ */}
-      <div
-        className="sm:hidden fixed bottom-0 left-0 right-0 z-40 flex flex-col"
-        style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
-      >
-        <nav
-          className="flex items-stretch"
-          style={{
-            background: "hsl(var(--card) / 0.92)",
-            backdropFilter: "blur(20px) saturate(160%)",
-            WebkitBackdropFilter: "blur(20px) saturate(160%)",
-            borderTop: "1px solid hsl(var(--border) / 0.5)",
-            boxShadow: "0 -4px 24px hsl(var(--background) / 0.3)",
-          }}
-        >
-          {TABS.map(({ id, label, icon: Icon }) => {
-            const active = activeTab === id;
-            return (
-              <button
-                key={id}
-                onClick={() => switchTab(id)}
-                className="flex-1 flex flex-col items-center justify-center pt-3 pb-7 gap-1 relative transition-all duration-200 active:scale-95"
-              >
-                {/* Active indicator line */}
-                {active && (
-                  <span
-                    className="absolute top-0 left-1/2 -translate-x-1/2 rounded-full"
-                    style={{
-                      width: 32, height: 3,
-                      background: "hsl(var(--foreground))",
-                      animation: "pillIn 0.25s cubic-bezier(0.34,1.56,0.64,1) both",
-                    }}
-                  />
-                )}
-
-                <div className="relative">
-                  <Icon
-                    size={22}
-                    strokeWidth={active ? 2.5 : 1.75}
-                    style={{
-                      color: active ? "hsl(var(--foreground))" : "hsl(var(--muted-foreground))",
-                      transition: "color 0.2s, stroke-width 0.2s",
-                    }}
-                  />
-                  {/* Loan badge */}
-                  {id === "loans" && activeLoans > 0 && !active && (
-                    <span
-                      className="absolute -top-1 -right-1.5 flex items-center justify-center rounded-full font-black text-white"
-                      style={{
-                        width: 16, height: 16, fontSize: 9,
-                        background: S.rose,
-                        boxShadow: `0 0 8px ${S.rose}70`,
-                      }}
-                    >
-                      {activeLoans > 9 ? "9+" : activeLoans}
-                    </span>
-                  )}
-                </div>
-
-                <span
-                  style={{
-                    fontSize: 10,
-                    fontWeight: active ? 800 : 600,
-                    letterSpacing: "0.07em",
-                    textTransform: "uppercase",
-                    lineHeight: 1,
-                    color: active ? "hsl(var(--foreground))" : "hsl(var(--muted-foreground))",
-                    transition: "color 0.2s",
-                  }}
-                >
-                  {label}
-                </span>
-              </button>
-            );
-          })}
-        </nav>
-      </div>
-
       {/* Mobile FAB */}
       {activeTab === "transactions" && (
         <div
           className="sm:hidden fixed z-40"
           style={{
-            bottom: "calc(env(safe-area-inset-bottom) + 72px)",
+            bottom: 96,
             right: 12,
             animation: "fabIn 0.4s cubic-bezier(0.34,1.56,0.64,1) both",
             animationDelay: "200ms",

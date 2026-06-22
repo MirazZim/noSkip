@@ -9,11 +9,16 @@ import { useTheme, THEMES } from "@/contexts/ThemeContext";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
-import { Check } from "lucide-react";
+import { Check, LogOut } from "lucide-react";
 
 export default function SettingsPage() {
-  const { user } = useAuth();
+  const { user, signOut } = useAuth();
   const { currency } = useCurrency();
+
+  const handleLogout = async () => {
+    try   { await signOut(); toast.success("Signed out"); }
+    catch { toast.error("Failed to sign out"); }
+  };
   const { theme, setTheme } = useTheme();
   const queryClient = useQueryClient();
 
@@ -95,6 +100,21 @@ export default function SettingsPage() {
                 </SelectContent>
               </Select>
             </div>
+          </CardContent>
+        </Card>
+        {/* Account */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-sm font-medium">Account</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <button
+              onClick={handleLogout}
+              className="flex items-center gap-2.5 px-4 py-2.5 rounded-xl text-sm font-medium text-destructive hover:bg-destructive/10 transition-colors"
+            >
+              <LogOut className="h-4 w-4" />
+              Sign out
+            </button>
           </CardContent>
         </Card>
       </div>
