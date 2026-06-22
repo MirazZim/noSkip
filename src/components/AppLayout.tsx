@@ -237,7 +237,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
       >
         {/* Gradient border */}
         <div
-          className="p-px rounded-[36px]"
+          className="p-px rounded-[40px]"
           style={{
             background: isDragging
               ? "linear-gradient(135deg, hsl(var(--foreground)/0.22), hsl(var(--foreground)/0.06) 50%, hsl(var(--foreground)/0.18))"
@@ -248,7 +248,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
           {/* Glass body */}
           <div
             ref={navBodyRef}
-            className="relative flex items-center justify-around h-[62px] rounded-[35px] overflow-hidden backdrop-blur-3xl"
+            className="relative flex items-center justify-around h-[72px] rounded-[39px] overflow-hidden backdrop-blur-3xl"
             style={{
               background: isDragging ? "hsl(var(--background)/0.65)" : "hsl(var(--background)/0.75)",
               boxShadow: isDragging
@@ -268,7 +268,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
 
             {/* Liquid pill — stretches as it passes between tabs */}
             <div
-              className="absolute inset-y-[9px] rounded-[22px] bg-foreground/[0.07] pointer-events-none"
+              className="absolute inset-y-[10px] rounded-[26px] bg-foreground/[0.07] pointer-events-none"
               style={{
                 left:  pillStyle.left,
                 width: pillStyle.width,
@@ -293,7 +293,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
                   className="relative flex items-center justify-center flex-1 h-full"
                 >
                   <Icon
-                    className="relative h-[21px] w-[21px]"
+                    className="relative h-[24px] w-[24px]"
                     style={{
                       color: `hsl(var(--foreground) / ${opacity})`,
                       strokeWidth: sw,
@@ -308,7 +308,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
       </nav>
 
       {/* ── Page content ── */}
-      <main className="pt-24 pb-28 md:pb-10 px-3 sm:px-10 md:px-20 lg:px-32 xl:px-48">
+      <main className="pt-24 pb-32 md:pb-10 px-3 sm:px-10 md:px-20 lg:px-32 xl:px-48">
         <div className="max-w-4xl mx-auto">
           {children}
         </div>
