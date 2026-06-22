@@ -13,6 +13,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Textarea } from "@/components/ui/textarea";
 import { useAddExpense, getCategoryColor, EXPENSE_CATEGORIES, CATEGORY_COLORS, type ExpenseCategory } from "@/hooks/useExpenses";
+import { useCurrency } from "@/hooks/useCurrency";
 import {
   useCustomCategories,
   useCreateCustomCategory,
@@ -382,9 +383,9 @@ interface AddExpenseDialogProps {
 
 export function AddExpenseDialog({ defaultDate, onDateUsed }: AddExpenseDialogProps) {
   const [open, setOpen] = useState(false);
-  // Separate display state for comma-formatted amount string
   const [displayAmount, setDisplayAmount] = useState("");
   const addExpense = useAddExpense();
+  const { symbol } = useCurrency();
 
   const { data: customCategories = [], isLoading: categoriesLoading } = useCustomCategories();
 
@@ -500,7 +501,7 @@ export function AddExpenseDialog({ defaultDate, onDateUsed }: AddExpenseDialogPr
                   <FormControl>
                     <div className="relative">
                       <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-muted-foreground font-semibold text-base select-none pointer-events-none">
-                        $
+                        {symbol}
                       </span>
                       <Input
                         // Use text + inputMode so we can display commas while keeping numeric keyboard on mobile

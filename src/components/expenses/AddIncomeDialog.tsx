@@ -21,6 +21,7 @@ import {
     INCOME_SOURCE_COLORS,
     type IncomeSource,
 } from "@/hooks/useIncomes";
+import { useCurrency } from "@/hooks/useCurrency";
 import { toast } from "sonner";
 
 // ─── Schema ───────────────────────────────────────────────────────────────────
@@ -157,6 +158,7 @@ export function AddIncomeDialog({
     const addIncome = useAddIncome();
     const updateIncome = useUpdateIncome();
     const deleteIncome = useDeleteIncome();
+    const { symbol } = useCurrency();
 
     const form = useForm<FormValues>({
         resolver: zodResolver(incomeSchema),
@@ -296,7 +298,7 @@ export function AddIncomeDialog({
                                 <FormControl>
                                     <div className="relative">
                                         <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-muted-foreground font-semibold text-base select-none pointer-events-none">
-                                            $
+                                            {symbol}
                                         </span>
                                         <Input
                                             // type="text" + inputMode="decimal" allows comma display while keeping numeric keyboard on mobile
