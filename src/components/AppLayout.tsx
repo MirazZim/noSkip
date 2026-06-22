@@ -154,50 +154,29 @@ export function AppLayout({ children }: { children: ReactNode }) {
         </div>
       </header>
 
-      {/* ── Mobile liquid glass bottom nav ── */}
+      {/* ── Mobile bottom nav ── */}
       <nav className="fixed bottom-5 left-5 right-5 z-50 md:hidden">
-        {/* Rim — bright at top-left, fades around, catches again at bottom-right */}
+        {/* Gradient border using foreground var — matches top navbar */}
         <div
           className="p-px rounded-[36px]"
           style={{
             background:
-              "linear-gradient(145deg, rgba(255,255,255,0.65) 0%, rgba(255,255,255,0.15) 20%, rgba(255,255,255,0.04) 50%, rgba(255,255,255,0.12) 80%, rgba(255,255,255,0.45) 100%)",
+              "linear-gradient(135deg, hsl(var(--foreground)/0.14), hsl(var(--foreground)/0.03) 50%, hsl(var(--foreground)/0.10))",
           }}
         >
-          {/* Liquid glass body */}
+          {/* Glass body — same material as top navbar */}
           <div
-            className="relative flex items-center justify-around h-[62px] rounded-[35px] overflow-hidden"
+            className="relative flex items-center justify-around h-[62px] rounded-[35px] overflow-hidden bg-background/75 backdrop-blur-3xl"
             style={{
-              background:
-                "linear-gradient(180deg, rgba(255,255,255,0.07) 0%, rgba(255,255,255,0.02) 100%)",
-              backdropFilter: "blur(80px) saturate(180%) brightness(1.02) contrast(1.02)",
-              WebkitBackdropFilter: "blur(80px) saturate(180%) brightness(1.02) contrast(1.02)",
-              boxShadow: [
-                "inset 0 2px 0 rgba(255,255,255,0.28)",   /* top specular */
-                "inset 0 -1px 0 rgba(0,0,0,0.22)",         /* bottom inner shadow */
-                "inset 1px 0 0 rgba(255,255,255,0.08)",     /* left edge */
-                "inset -1px 0 0 rgba(255,255,255,0.08)",    /* right edge */
-                "0 24px 64px rgba(0,0,0,0.22)",             /* deep ambient */
-                "0 6px 20px rgba(0,0,0,0.14)",              /* close shadow */
-                "0 1px 0 rgba(255,255,255,0.06)",           /* base line */
-              ].join(", "),
+              boxShadow: "0 12px 48px rgba(0,0,0,0.18), inset 0 1px 0 hsl(var(--foreground)/0.06)",
             }}
           >
-            {/* Curved specular arc — the "liquid" light catch at top */}
+            {/* Subtle top rim highlight */}
             <div
-              className="absolute top-0 left-0 right-0 h-[30px] pointer-events-none"
+              className="absolute top-0 left-8 right-8 h-px pointer-events-none"
               style={{
                 background:
-                  "radial-gradient(ellipse 70% 60% at 50% -10%, rgba(255,255,255,0.10) 0%, rgba(255,255,255,0) 100%)",
-              }}
-            />
-
-            {/* Bottom caustic shadow */}
-            <div
-              className="absolute bottom-0 left-4 right-4 h-px pointer-events-none"
-              style={{
-                background:
-                  "linear-gradient(90deg, transparent, rgba(0,0,0,0.18) 30%, rgba(0,0,0,0.18) 70%, transparent)",
+                  "linear-gradient(90deg, transparent, hsl(var(--foreground)/0.10) 30%, hsl(var(--foreground)/0.10) 70%, transparent)",
               }}
             />
 
@@ -212,24 +191,16 @@ export function AppLayout({ children }: { children: ReactNode }) {
                 >
                   {isActive && (
                     <span
-                      className="absolute inset-y-[9px] inset-x-[5px] rounded-[22px]"
+                      className="absolute inset-y-[9px] inset-x-[5px] rounded-[22px] bg-foreground/[0.07]"
                       style={{
-                        background:
-                          "linear-gradient(180deg, rgba(255,255,255,0.22) 0%, rgba(255,255,255,0.08) 100%)",
-                        backdropFilter: "blur(20px) saturate(160%)",
-                        WebkitBackdropFilter: "blur(20px) saturate(160%)",
-                        boxShadow: [
-                          "inset 0 1.5px 0 rgba(255,255,255,0.5)",
-                          "inset 0 -1px 0 rgba(0,0,0,0.15)",
-                          "0 2px 8px rgba(0,0,0,0.1)",
-                        ].join(", "),
+                        boxShadow: "inset 0 1px 0 hsl(var(--foreground)/0.08)",
                       }}
                     />
                   )}
                   <Icon
                     className={cn(
-                      "relative h-[21px] w-[21px] transition-all duration-200 drop-shadow-sm",
-                      isActive ? "text-white" : "text-white/45"
+                      "relative h-[21px] w-[21px] transition-all duration-200",
+                      isActive ? "text-foreground" : "text-foreground/35"
                     )}
                     strokeWidth={isActive ? 2 : 1.5}
                   />
