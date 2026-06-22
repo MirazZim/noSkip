@@ -1,4 +1,4 @@
-import { ReactNode, useState, useRef, useEffect, useLayoutEffect } from "react";
+import { ReactNode, useState, useRef, useEffect, useLayoutEffect, useCallback } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { LogOut, Zap, LayoutDashboard, Wallet, Target, Compass, Settings } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -23,6 +23,16 @@ const bottomNavItems = [
 
 type BoxStyle = { left: number; top: number; width: number; height: number };
 
+// Liquid pill: stretches between tabs using a sine-wave envelope on the fractional position
+const getPillStyle = (fi: number) => {
+  const n      = bottomNavItems.length;
+  const tabPct = 100 / n;
+  const frac   = fi - Math.floor(fi);
+  const w      = (tabPct - 2) + tabPct * 0.7 * Math.sin(frac * Math.PI);
+  const center = (fi + 0.5) * tabPct;
+  return { left: `${center - w / 2}%`, width: `${w}%` };
+};
+
 export function AppLayout({ children }: { children: ReactNode }) {
   const location = useLocation();
   const navigate  = useNavigate();
@@ -31,6 +41,61 @@ export function AppLayout({ children }: { children: ReactNode }) {
   const [box,   setBox]   = useState<BoxStyle | null>(null);
   const [ready, setReady] = useState(false);
   const linkRefs = useRef<(HTMLButtonElement | null)[]>([]);
+
+  // Bottom nav scrub-drag state
+  const [floatIdx,   setFloatIdx]   = useState<number | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
+  const [isPressed,  setIsPressed]  = useState(false);
+  const dragRef      = useRef({ startX: 0, active: false, moved: false, startIdx: 0 });
+  const snapIdxRef   = useRef<number | null>(null);
+  const navBodyRef   = useRef<HTMLDivElement>(null);
+  const activeIdxRef = useRef(0);
+
+  const activeIdx = bottomNavItems.findIndex(item => item.path === location.pathname);
+  activeIdxRef.current = activeIdx;
+  // Continuous float position: drives pill geometry + icon brightness
+  const displayFi = (isDragging && floatIdx !== null) ? floatIdx : activeIdx;
+  const pillStyle = getPillStyle(displayFi);
+
+  const onNavPointerDown = useCallback((e: React.PointerEvent<HTMLElement>) => {
+    dragRef.current = { startX: e.clientX, active: true, moved: false, startIdx: activeIdxRef.current };
+    setIsPressed(true);
+    e.currentTarget.setPointerCapture(e.pointerId);
+  }, []);
+
+  const onNavPointerMove = useCallback((e: React.PointerEvent<HTMLElement>) => {
+    const d = dragRef.current;
+    if (!d.active) return;
+    const dx = e.clientX - d.startX;
+    if (!d.moved && Math.abs(dx) < 10) return;
+    d.moved = true;
+    setIsPressed(false);
+    setIsDragging(true);
+    const navWidth = navBodyRef.current?.offsetWidth ?? (window.innerWidth - 40);
+    const tabWidth = navWidth / bottomNavItems.length;
+    const fi       = Math.max(0, Math.min(bottomNavItems.length - 1, d.startIdx + dx / tabWidth));
+    snapIdxRef.current = Math.round(fi);
+    setFloatIdx(fi);
+  }, []);
+
+  const onNavPointerUp = useCallback(() => {
+    const d = dragRef.current;
+    d.active = false;
+    setIsPressed(false);
+    setIsDragging(false);
+    if (d.moved && snapIdxRef.current !== null) {
+      navigate(bottomNavItems[snapIdxRef.current].path);
+    }
+    snapIdxRef.current = null;
+    setFloatIdx(null);
+  }, [navigate]);
+
+  const onNavClick = useCallback((e: React.MouseEvent) => {
+    if (dragRef.current.moved) {
+      e.stopPropagation();
+      dragRef.current.moved = false;
+    }
+  }, []);
 
   useLayoutEffect(() => {
     const measure = () => {
@@ -155,23 +220,44 @@ export function AppLayout({ children }: { children: ReactNode }) {
       </header>
 
       {/* ── Mobile bottom nav ── */}
-      <nav className="fixed bottom-5 left-5 right-5 z-50 md:hidden">
-        {/* Gradient border using foreground var — matches top navbar */}
+      <nav
+        className="fixed bottom-5 left-5 right-5 z-50 md:hidden"
+        onPointerDown={onNavPointerDown}
+        onPointerMove={onNavPointerMove}
+        onPointerUp={onNavPointerUp}
+        onPointerCancel={onNavPointerUp}
+        onClick={onNavClick}
+        style={{
+          touchAction: "none",
+          transform: isPressed ? "scale(0.97)" : "scale(1)",
+          transition: isPressed
+            ? "transform 60ms ease-out"
+            : "transform 500ms cubic-bezier(0.34, 1.56, 0.64, 1)",
+        }}
+      >
+        {/* Gradient border */}
         <div
           className="p-px rounded-[36px]"
           style={{
-            background:
-              "linear-gradient(135deg, hsl(var(--foreground)/0.14), hsl(var(--foreground)/0.03) 50%, hsl(var(--foreground)/0.10))",
+            background: isDragging
+              ? "linear-gradient(135deg, hsl(var(--foreground)/0.22), hsl(var(--foreground)/0.06) 50%, hsl(var(--foreground)/0.18))"
+              : "linear-gradient(135deg, hsl(var(--foreground)/0.14), hsl(var(--foreground)/0.03) 50%, hsl(var(--foreground)/0.10))",
+            transition: "background 200ms ease",
           }}
         >
-          {/* Glass body — same material as top navbar */}
+          {/* Glass body */}
           <div
-            className="relative flex items-center justify-around h-[62px] rounded-[35px] overflow-hidden bg-background/75 backdrop-blur-3xl"
+            ref={navBodyRef}
+            className="relative flex items-center justify-around h-[62px] rounded-[35px] overflow-hidden backdrop-blur-3xl"
             style={{
-              boxShadow: "0 12px 48px rgba(0,0,0,0.18), inset 0 1px 0 hsl(var(--foreground)/0.06)",
+              background: isDragging ? "hsl(var(--background)/0.65)" : "hsl(var(--background)/0.75)",
+              boxShadow: isDragging
+                ? "0 16px 52px rgba(0,0,0,0.24), inset 0 1px 0 hsl(var(--foreground)/0.08)"
+                : "0 12px 48px rgba(0,0,0,0.18), inset 0 1px 0 hsl(var(--foreground)/0.06)",
+              transition: "background 200ms ease, box-shadow 200ms ease",
             }}
           >
-            {/* Subtle top rim highlight */}
+            {/* Top rim highlight */}
             <div
               className="absolute top-0 left-8 right-8 h-px pointer-events-none"
               style={{
@@ -180,8 +266,25 @@ export function AppLayout({ children }: { children: ReactNode }) {
               }}
             />
 
-            {bottomNavItems.map(({ path, label, icon: Icon }) => {
-              const isActive = location.pathname === path;
+            {/* Liquid pill — stretches as it passes between tabs */}
+            <div
+              className="absolute inset-y-[9px] rounded-[22px] bg-foreground/[0.07] pointer-events-none"
+              style={{
+                left:  pillStyle.left,
+                width: pillStyle.width,
+                boxShadow: "inset 0 1px 0 hsl(var(--foreground)/0.08)",
+                transition: isDragging
+                  ? "none"
+                  : "left 500ms cubic-bezier(0.34, 1.56, 0.64, 1), width 500ms cubic-bezier(0.34, 1.56, 0.64, 1)",
+              }}
+            />
+
+            {bottomNavItems.map(({ path, label, icon: Icon }, i) => {
+              // Continuous brightness: full at current float, fades linearly to 0.35 one tab away
+              const dist       = Math.abs(displayFi - i);
+              const brightness = Math.max(0, 1 - dist);
+              const opacity    = 0.35 + 0.65 * brightness;
+              const sw         = 1.5  + 0.5  * brightness;
               return (
                 <button
                   key={path}
@@ -189,20 +292,13 @@ export function AppLayout({ children }: { children: ReactNode }) {
                   aria-label={label}
                   className="relative flex items-center justify-center flex-1 h-full"
                 >
-                  {isActive && (
-                    <span
-                      className="absolute inset-y-[9px] inset-x-[5px] rounded-[22px] bg-foreground/[0.07]"
-                      style={{
-                        boxShadow: "inset 0 1px 0 hsl(var(--foreground)/0.08)",
-                      }}
-                    />
-                  )}
                   <Icon
-                    className={cn(
-                      "relative h-[21px] w-[21px] transition-all duration-200",
-                      isActive ? "text-foreground" : "text-foreground/35"
-                    )}
-                    strokeWidth={isActive ? 2 : 1.5}
+                    className="relative h-[21px] w-[21px]"
+                    style={{
+                      color: `hsl(var(--foreground) / ${opacity})`,
+                      strokeWidth: sw,
+                      transition: isDragging ? "none" : "color 300ms ease",
+                    }}
                   />
                 </button>
               );
