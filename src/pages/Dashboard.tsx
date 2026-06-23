@@ -229,10 +229,17 @@ export default function Dashboard() {
   // ── Derived ───────────────────────────────────────────────────────────────
   const activeHabits = useMemo(() => habits?.filter(h => h.is_active) ?? [], [habits]);
 
+  // Only IDs that belong to regular habits — excludes persona_shift rules
+  const habitIdSet = useMemo(() => new Set(activeHabits.map(h => h.id)), [activeHabits]);
+
   const completedTodaySet = useMemo(() => {
     if (!completions) return new Set<string>();
-    return new Set(completions.filter(c => c.date === todayStr).map(c => c.habit_id));
-  }, [completions, todayStr]);
+    return new Set(
+      completions
+        .filter(c => c.date === todayStr && habitIdSet.has(c.habit_id))
+        .map(c => c.habit_id)
+    );
+  }, [completions, todayStr, habitIdSet]);
 
   const todayExpenses = useMemo(() => expenses?.filter(e => e.date === todayStr) ?? [], [expenses, todayStr]);
   const yesterExpenses = useMemo(() => expenses?.filter(e => e.date === yesterStr) ?? [], [expenses, yesterStr]);
@@ -281,7 +288,7 @@ export default function Dashboard() {
       if (isT) return { day: label, pct: habitPct, isToday: true };
       if (!completions || activeHabits.length === 0)
         return { day: label, pct: d < today ? 0 : null, isToday: false };
-      const uniqueDone = new Set(completions.filter(c => c.date === dStr).map(c => c.habit_id)).size;
+      const uniqueDone = new Set(completions.filter(c => c.date === dStr && habitIdSet.has(c.habit_id)).map(c => c.habit_id)).size;
       return {
         day: label,
         pct: d < today ? uniqueDone / activeHabits.length : null,

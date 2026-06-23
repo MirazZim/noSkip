@@ -6,49 +6,49 @@ import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 
 const navItems = [
-  { path: "/",         label: "Dashboard" },
-  { path: "/expenses", label: "Expenses"  },
-  { path: "/habits",   label: "Habits"    },
-  { path: "/persona",  label: "Persona"   },
-  { path: "/settings", label: "Settings"  },
+  { path: "/", label: "Dashboard" },
+  { path: "/expenses", label: "Expenses" },
+  { path: "/habits", label: "Habits" },
+  { path: "/persona", label: "Persona" },
+  { path: "/settings", label: "Settings" },
 ];
 
 const bottomNavItems = [
-  { path: "/",         label: "Dashboard", icon: LayoutDashboard },
-  { path: "/expenses", label: "Expenses",  icon: Wallet          },
-  { path: "/habits",   label: "Habits",    icon: Target          },
-  { path: "/persona",  label: "Persona",   icon: Compass         },
-  { path: "/settings", label: "Settings",  icon: Settings        },
+  { path: "/", label: "Dashboard", icon: LayoutDashboard },
+  { path: "/expenses", label: "Expenses", icon: Wallet },
+  { path: "/habits", label: "Habits", icon: Target },
+  { path: "/persona", label: "Persona", icon: Compass },
+  { path: "/settings", label: "Settings", icon: Settings },
 ];
 
 type BoxStyle = { left: number; top: number; width: number; height: number };
 
 // Liquid pill: stretches between tabs using a sine-wave envelope on the fractional position
 const getPillStyle = (fi: number) => {
-  const n      = bottomNavItems.length;
+  const n = bottomNavItems.length;
   const tabPct = 100 / n;
-  const frac   = fi - Math.floor(fi);
-  const w      = (tabPct - 2) + tabPct * 0.7 * Math.sin(frac * Math.PI);
+  const frac = fi - Math.floor(fi);
+  const w = (tabPct - 2) + tabPct * 0.7 * Math.sin(frac * Math.PI);
   const center = (fi + 0.5) * tabPct;
   return { left: `${center - w / 2}%`, width: `${w}%` };
 };
 
 export function AppLayout({ children }: { children: ReactNode }) {
   const location = useLocation();
-  const navigate  = useNavigate();
+  const navigate = useNavigate();
   const { signOut } = useAuth();
 
-  const [box,   setBox]   = useState<BoxStyle | null>(null);
+  const [box, setBox] = useState<BoxStyle | null>(null);
   const [ready, setReady] = useState(false);
   const linkRefs = useRef<(HTMLButtonElement | null)[]>([]);
 
   // Bottom nav scrub-drag state
-  const [floatIdx,   setFloatIdx]   = useState<number | null>(null);
+  const [floatIdx, setFloatIdx] = useState<number | null>(null);
   const [isDragging, setIsDragging] = useState(false);
-  const [isPressed,  setIsPressed]  = useState(false);
-  const dragRef      = useRef({ startX: 0, active: false, moved: false, startIdx: 0 });
-  const snapIdxRef   = useRef<number | null>(null);
-  const navBodyRef   = useRef<HTMLDivElement>(null);
+  const [isPressed, setIsPressed] = useState(false);
+  const dragRef = useRef({ startX: 0, active: false, moved: false, startIdx: 0 });
+  const snapIdxRef = useRef<number | null>(null);
+  const navBodyRef = useRef<HTMLDivElement>(null);
   const activeIdxRef = useRef(0);
 
   const activeIdx = bottomNavItems.findIndex(item => item.path === location.pathname);
@@ -73,7 +73,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
     setIsDragging(true);
     const navWidth = navBodyRef.current?.offsetWidth ?? (window.innerWidth - 40);
     const tabWidth = navWidth / bottomNavItems.length;
-    const fi       = Math.max(0, Math.min(bottomNavItems.length - 1, d.startIdx + dx / tabWidth));
+    const fi = Math.max(0, Math.min(bottomNavItems.length - 1, d.startIdx + dx / tabWidth));
     snapIdxRef.current = Math.round(fi);
     setFloatIdx(fi);
   }, []);
@@ -100,7 +100,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
   useLayoutEffect(() => {
     const measure = () => {
       const idx = navItems.findIndex(item => item.path === location.pathname);
-      const el  = linkRefs.current[idx];
+      const el = linkRefs.current[idx];
       if (!el) return;
       setBox({ left: el.offsetLeft, top: el.offsetTop, width: el.offsetWidth, height: el.offsetHeight });
     };
@@ -117,7 +117,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
   }, [box, ready]);
 
   const handleLogout = async () => {
-    try   { await signOut(); toast.success("Signed out"); }
+    try { await signOut(); toast.success("Signed out"); }
     catch { toast.error("Failed to sign out"); }
   };
 
@@ -270,7 +270,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
             <div
               className="absolute inset-y-[10px] rounded-[26px] bg-foreground/[0.07] pointer-events-none"
               style={{
-                left:  pillStyle.left,
+                left: pillStyle.left,
                 width: pillStyle.width,
                 boxShadow: "inset 0 1px 0 hsl(var(--foreground)/0.08)",
                 transition: isDragging
@@ -281,10 +281,10 @@ export function AppLayout({ children }: { children: ReactNode }) {
 
             {bottomNavItems.map(({ path, label, icon: Icon }, i) => {
               // Continuous brightness: full at current float, fades linearly to 0.35 one tab away
-              const dist       = Math.abs(displayFi - i);
+              const dist = Math.abs(displayFi - i);
               const brightness = Math.max(0, 1 - dist);
-              const opacity    = 0.35 + 0.65 * brightness;
-              const sw         = 1.5  + 0.5  * brightness;
+              const opacity = 0.35 + 0.65 * brightness;
+              const sw = 1.5 + 0.5 * brightness;
               return (
                 <button
                   key={path}
