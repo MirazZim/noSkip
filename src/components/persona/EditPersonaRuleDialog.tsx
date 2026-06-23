@@ -9,6 +9,7 @@ import { PersonaCoachNote } from "./PersonaCoachNote";
 import { toast } from "sonner";
 
 const MAX_LEN = 120;
+const MAX_DESC_LEN = 1000;
 
 interface Props {
   rule: PersonaRule;
@@ -18,6 +19,7 @@ interface Props {
 
 export function EditPersonaRuleDialog({ rule, open, onOpenChange }: Props) {
   const [text, setText] = useState(rule.name);
+  const [description, setDescription] = useState(rule.description ?? "");
   const [reaction, setReaction] = useState<CoachReaction | null>(null);
   const updateRule = useUpdatePersonaRule();
 
@@ -25,16 +27,21 @@ export function EditPersonaRuleDialog({ rule, open, onOpenChange }: Props) {
   useEffect(() => {
     if (open) {
       setText(rule.name);
+      setDescription(rule.description ?? "");
       setReaction(null);
     }
-  }, [open, rule.id, rule.name]);
+  }, [open, rule.id, rule.name, rule.description]);
 
   const handleSubmit = async () => {
     const trimmed = text.trim();
     if (!trimmed) return;
     try {
       // Editing re-runs the coach reaction (one round-trip).
-      const result = await updateRule.mutateAsync({ id: rule.id, text: trimmed });
+      const result = await updateRule.mutateAsync({
+        id: rule.id,
+        text: trimmed,
+        description: description.trim() || undefined,
+      });
       setReaction(result);
     } catch {
       toast.error("Failed to update rule");
@@ -70,6 +77,24 @@ export function EditPersonaRuleDialog({ rule, open, onOpenChange }: Props) {
               }}
             />
             <p className="text-right text-[11px] text-muted-foreground">{text.length}/{MAX_LEN}</p>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="persona-desc-edit">
+              Mindset & principles
+              <span className="ml-2 text-[11px] font-normal text-muted-foreground">optional</span>
+            </Label>
+            <Textarea
+              id="persona-desc-edit"
+              value={description}
+              onChange={(e) => setDescription(e.target.value.slice(0, MAX_DESC_LEN))}
+              placeholder={"Explain the mindset behind this rule — why it matters, what it looks like in practice.\n\nStart a line with > to make it a power statement.\n> Seal your lips. Open them only when the work is done."}
+              rows={5}
+              className="resize-none text-[13px] leading-relaxed"
+            />
+            {description.length > 0 && (
+              <p className="text-right text-[11px] text-muted-foreground">{description.length}/{MAX_DESC_LEN}</p>
+            )}
           </div>
 
           {saved && reaction!.flag_level !== "none" && (

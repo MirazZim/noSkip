@@ -27,6 +27,7 @@ export interface PersonaRule {
   category: string;
   coach_note: string | null;
   flag_level: FlagLevel;
+  description: string | null;
 }
 
 export interface CoachReaction {
@@ -90,7 +91,7 @@ export function useAddPersonaRule() {
   const { user } = useAuth();
   return useMutation({
     // Returns the coach reaction so the caller can surface it right after save.
-    mutationFn: async ({ text }: { text: string }): Promise<CoachReaction> => {
+    mutationFn: async ({ text, description }: { text: string; description?: string }): Promise<CoachReaction> => {
       const reaction = await evaluateRule(text);
 
       const { data: existing } = await supabase
@@ -112,6 +113,7 @@ export function useAddPersonaRule() {
         flag_level: reaction.flag_level,
         user_id: user!.id,
         sort_order: nextOrder,
+        description: description?.trim() || null,
       });
       if (error) throw error;
 
@@ -125,7 +127,7 @@ export function useUpdatePersonaRule() {
   const queryClient = useQueryClient();
   return useMutation({
     // Editing the rule text re-fires the coach reaction (one round-trip).
-    mutationFn: async ({ id, text }: { id: string; text: string }): Promise<CoachReaction> => {
+    mutationFn: async ({ id, text, description }: { id: string; text: string; description?: string }): Promise<CoachReaction> => {
       const reaction = await evaluateRule(text);
 
       const { error } = await supabase
@@ -134,6 +136,7 @@ export function useUpdatePersonaRule() {
           name: text,
           coach_note: reaction.coach_note || null,
           flag_level: reaction.flag_level,
+          description: description?.trim() || null,
         })
         .eq("id", id);
       if (error) throw error;

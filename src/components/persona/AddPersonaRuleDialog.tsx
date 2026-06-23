@@ -9,15 +9,18 @@ import { PersonaCoachNote } from "./PersonaCoachNote";
 import { toast } from "sonner";
 
 const MAX_LEN = 120;
+const MAX_DESC_LEN = 1000;
 
 export function AddPersonaRuleDialog() {
   const [open, setOpen] = useState(false);
   const [text, setText] = useState("");
+  const [description, setDescription] = useState("");
   const [reaction, setReaction] = useState<CoachReaction | null>(null);
   const addRule = useAddPersonaRule();
 
   const reset = () => {
     setText("");
+    setDescription("");
     setReaction(null);
   };
 
@@ -30,9 +33,10 @@ export function AddPersonaRuleDialog() {
     const trimmed = text.trim();
     if (!trimmed) return;
     try {
-      // The rule is saved regardless of the coach's read — the reaction is
-      // advisory. mutateAsync resolves with it so we can show it immediately.
-      const result = await addRule.mutateAsync({ text: trimmed });
+      const result = await addRule.mutateAsync({
+        text: trimmed,
+        description: description.trim() || undefined,
+      });
       setReaction(result);
     } catch {
       toast.error("Failed to create rule");
@@ -58,6 +62,7 @@ export function AddPersonaRuleDialog() {
         </DialogHeader>
 
         <div className="space-y-4">
+          {/* Rule name */}
           <div className="space-y-2">
             <Label htmlFor="persona-rule">Your rule</Label>
             <Textarea
@@ -77,6 +82,27 @@ export function AddPersonaRuleDialog() {
             />
             <p className="text-right text-[11px] text-muted-foreground">{text.length}/{MAX_LEN}</p>
           </div>
+
+          {/* Optional description */}
+          {!saved && (
+            <div className="space-y-2">
+              <Label htmlFor="persona-desc">
+                Mindset & principles
+                <span className="ml-2 text-[11px] font-normal text-muted-foreground">optional</span>
+              </Label>
+              <Textarea
+                id="persona-desc"
+                value={description}
+                onChange={(e) => setDescription(e.target.value.slice(0, MAX_DESC_LEN))}
+                placeholder={"Explain the mindset behind this rule — why it matters, what it looks like in practice.\n\nStart a line with > to make it a power statement.\n> Seal your lips. Open them only when the work is done."}
+                rows={5}
+                className="resize-none text-[13px] leading-relaxed"
+              />
+              {description.length > 0 && (
+                <p className="text-right text-[11px] text-muted-foreground">{description.length}/{MAX_DESC_LEN}</p>
+              )}
+            </div>
+          )}
 
           {/* Coach's read — shown the moment the rule is saved */}
           {saved && (

@@ -18,9 +18,9 @@ import { restrictToVerticalAxis } from "@dnd-kit/modifiers";
 import { AppLayout } from "@/components/AppLayout";
 import { AddPersonaRuleDialog } from "@/components/persona/AddPersonaRuleDialog";
 import { PersonaRuleListItem } from "@/components/persona/PersonaRuleListItem";
-import { HabitDetailPanel } from "@/components/habits/HabitDetailPanel";
+import { PersonaDetailPanel } from "@/components/persona/PersonaDetailPanel";
 import { usePersonaRules, useReorderPersonaRules, type PersonaRule } from "@/hooks/usePersonaRules";
-import { useHabitCompletions, calculateStreak, type HabitCompletion, type Habit } from "@/hooks/useHabits";
+import { useHabitCompletions, type HabitCompletion, type Habit } from "@/hooks/useHabits";
 import { Skeleton } from "@/components/ui/skeleton";
 
 const XIcon = () => (
@@ -38,49 +38,20 @@ function PersonaRuleDetail({
   completions: HabitCompletion[];
   onClose?: () => void;
 }) {
-  const streak = calculateStreak(completions, rule.id, rule.start_date);
-  const total = completions.filter((c) => c.habit_id === rule.id).length;
-  const daysSinceStart = Math.max(
-    1,
-    Math.ceil((Date.now() - new Date(rule.start_date).getTime()) / 86400000)
-  );
-  const rate = total > 0 ? Math.round((total / daysSinceStart) * 100) : 0;
-
   // PersonaRule is structurally compatible with Habit — same required fields
   const habitCompat = rule as unknown as Habit;
 
   return (
     <div className="hd-inner">
-      <div className="hd-hero">
-        <div className="hd-emoji">{rule.emoji}</div>
-        <div className="hd-hero-text">
-          <div className="hd-name">{rule.name}</div>
-          <div className="hd-since">Since {format(new Date(rule.start_date), "MMM d, yyyy")}</div>
-        </div>
-        {onClose && (
+      {onClose && (
+        <div style={{ display: "flex", justifyContent: "flex-end", padding: "12px 14px 0" }}>
           <button className="hd-close" onClick={onClose} aria-label="Close">
             <XIcon />
           </button>
-        )}
-      </div>
-
-      <div className="hd-stats">
-        <div className="hd-stat">
-          <span className="hd-stat-value">{streak > 0 ? streak : "—"}</span>
-          <span className="hd-stat-label">{streak > 0 ? "🔥 Streak" : "Streak"}</span>
         </div>
-        <div className="hd-stat">
-          <span className="hd-stat-value">{total}</span>
-          <span className="hd-stat-label">Total</span>
-        </div>
-        <div className="hd-stat">
-          <span className="hd-stat-value">{rate > 0 ? `${rate}%` : "—"}</span>
-          <span className="hd-stat-label">Rate</span>
-        </div>
-      </div>
-
+      )}
       <div className="hd-section">
-        <HabitDetailPanel habit={habitCompat} completions={completions} />
+        <PersonaDetailPanel habit={habitCompat} completions={completions} description={rule.description} />
       </div>
     </div>
   );
@@ -175,40 +146,64 @@ export default function PersonaShift() {
         .psp-handle-wrap { display: flex; justify-content: center; padding: 12px 0 6px; }
         .psp-handle-bar { width: 40px; height: 4px; border-radius: 99px; background: hsl(var(--muted-foreground) / 0.25); }
 
-        /* Shared detail styles (reused from Habits) */
+        /* Shared detail styles */
         .hd-inner { display: flex; flex-direction: column; }
+
         .hd-hero {
-          display: flex; align-items: center; gap: 14px;
-          padding: 18px 20px 16px; border-bottom: 1px solid hsl(var(--border));
+          display: flex; align-items: flex-start; gap: 14px;
+          padding: 20px 20px 18px;
+          border-bottom: 1px solid hsl(var(--border));
         }
         .hd-emoji {
-          width: 52px; height: 52px; border-radius: 14px;
-          background: hsl(var(--muted)); flex-shrink: 0;
-          display: flex; align-items: center; justify-content: center; font-size: 26px;
+          width: 56px; height: 56px; border-radius: 16px; flex-shrink: 0;
+          background: linear-gradient(135deg, hsl(var(--primary) / 0.22) 0%, hsl(var(--primary) / 0.06) 100%);
+          border: 1px solid hsl(var(--primary) / 0.18);
+          display: flex; align-items: center; justify-content: center; font-size: 28px;
         }
-        .hd-hero-text { flex: 1; min-width: 0; }
+        .hd-hero-text { flex: 1; min-width: 0; padding-top: 2px; }
         .hd-name {
-          font-size: 17px; font-weight: 700; letter-spacing: -0.025em;
-          color: hsl(var(--foreground)); line-height: 1.2;
-          overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+          font-size: 17px; font-weight: 800; letter-spacing: -0.03em;
+          color: hsl(var(--foreground)); line-height: 1.3;
         }
-        .hd-since { font-size: 12px; color: hsl(var(--muted-foreground)); margin-top: 2px; }
+        .hd-since {
+          font-size: 11.5px; color: hsl(var(--muted-foreground)); margin-top: 5px;
+          display: flex; align-items: center; gap: 5px;
+        }
+        .hd-since::before {
+          content: ''; display: inline-block;
+          width: 5px; height: 5px; border-radius: 50%;
+          background: hsl(var(--primary) / 0.5); flex-shrink: 0;
+        }
         .hd-close {
-          width: 32px; height: 32px; border-radius: 50%;
+          width: 30px; height: 30px; border-radius: 50%;
           border: none; background: hsl(var(--muted));
           color: hsl(var(--muted-foreground));
           display: flex; align-items: center; justify-content: center;
-          cursor: pointer; flex-shrink: 0; transition: background 0.15s, color 0.15s;
+          cursor: pointer; flex-shrink: 0; margin-top: 2px;
+          transition: background 0.15s, color 0.15s;
         }
         .hd-close:hover { background: hsl(var(--border)); color: hsl(var(--foreground)); }
-        .hd-stats { display: flex; border-bottom: 1px solid hsl(var(--border)); }
+
+        .hd-stats {
+          display: flex; gap: 8px;
+          padding: 14px 16px;
+          border-bottom: 1px solid hsl(var(--border));
+        }
         .hd-stat {
           flex: 1; display: flex; flex-direction: column;
-          align-items: center; gap: 3px; padding: 16px 8px;
+          align-items: center; gap: 4px; padding: 10px 6px;
+          background: hsl(var(--muted) / 0.5);
+          border-radius: 12px;
         }
-        .hd-stat + .hd-stat { border-left: 1px solid hsl(var(--border)); }
-        .hd-stat-value { font-size: 22px; font-weight: 700; letter-spacing: -0.04em; color: hsl(var(--foreground)); line-height: 1; }
-        .hd-stat-label { font-size: 10px; font-weight: 600; color: hsl(var(--muted-foreground)); text-transform: uppercase; letter-spacing: 0.07em; }
+        .hd-stat-value {
+          font-size: 20px; font-weight: 700; letter-spacing: -0.04em;
+          color: hsl(var(--foreground)); line-height: 1;
+        }
+        .hd-stat-label {
+          font-size: 9.5px; font-weight: 600; text-transform: uppercase;
+          letter-spacing: 0.07em; color: hsl(var(--muted-foreground)); text-align: center;
+        }
+
         .hd-section { padding: 16px 20px; border-bottom: 1px solid hsl(var(--border)); }
         .hd-section:last-child { border-bottom: none; padding-bottom: max(20px, env(safe-area-inset-bottom)); }
         .hd-section-title { font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.09em; color: hsl(var(--muted-foreground)); margin-bottom: 12px; }
