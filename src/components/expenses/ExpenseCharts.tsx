@@ -7,7 +7,7 @@ import {
   eachDayOfInterval, startOfMonth, endOfMonth,
   format, isBefore,
 } from "date-fns";
-import { Expense, getCategoryColor, getSubCategoryLabel } from "@/hooks/useExpenses";
+import { Expense, getCategoryColor, getSubCategoryLabel, getSubCategoryEmoji, getParentLabel } from "@/hooks/useExpenses";
 import { useCurrency } from "@/hooks/useCurrency";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { ChevronRight } from "lucide-react";
@@ -117,11 +117,11 @@ function CategoryBreakdownDialog({
                 >
                   <div className="flex items-center justify-between text-sm">
                     <div className="flex items-center gap-2">
-                      <span
-                        className="h-2.5 w-2.5 rounded-full shrink-0"
-                        style={{ backgroundColor: color }}
-                      />
-                      <span className="font-semibold text-foreground">{getSubCategoryLabel(cat.name) ?? cat.name}</span>
+                      {getSubCategoryEmoji(cat.name)
+                        ? <span className="text-sm leading-none shrink-0">{getSubCategoryEmoji(cat.name)}</span>
+                        : <span className="h-2.5 w-2.5 rounded-full shrink-0" style={{ backgroundColor: color }} />
+                      }
+                      <span className="font-semibold text-foreground">{getSubCategoryLabel(cat.name) ?? getParentLabel(cat.name)}</span>
                     </div>
                     <div className="flex items-center gap-2">
                       <span className="text-xs text-muted-foreground tabular-nums">
@@ -217,7 +217,8 @@ export function ExpenseCharts({ expenses, month }: Props) {
                 <div className="text-right">
                   <p className="text-[10px] text-muted-foreground uppercase tracking-widest">Top spend</p>
                   <p className="text-sm font-bold" style={{ color: getCategoryColor(topCategory.name) }}>
-                    {getSubCategoryLabel(topCategory.name) ?? topCategory.name} · {topPct}%
+                    {getSubCategoryEmoji(topCategory.name) ? `${getSubCategoryEmoji(topCategory.name)} ` : ""}
+                    {getSubCategoryLabel(topCategory.name) ?? getParentLabel(topCategory.name)} · {topPct}%
                   </p>
                 </div>
               )}
@@ -272,7 +273,10 @@ export function ExpenseCharts({ expenses, month }: Props) {
                       style={{ animation: "fadeSlideIn 0.3s ease both", animationDelay: `${i * 60}ms` }}
                     >
                       <div className="flex items-center justify-between text-[11px]">
-                        <span className="font-semibold text-foreground truncate">{getSubCategoryLabel(cat.name) ?? cat.name}</span>
+                        <span className="font-semibold text-foreground truncate flex items-center gap-1">
+                          {getSubCategoryEmoji(cat.name) && <span className="leading-none">{getSubCategoryEmoji(cat.name)}</span>}
+                          {getSubCategoryLabel(cat.name) ?? getParentLabel(cat.name)}
+                        </span>
                         <span className="tabular-nums font-bold shrink-0 ml-2" style={{ color }}>
                           {formatAmount(cat.value)}
                         </span>
