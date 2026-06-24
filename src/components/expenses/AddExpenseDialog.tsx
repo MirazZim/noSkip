@@ -12,7 +12,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Textarea } from "@/components/ui/textarea";
-import { useAddExpense, getCategoryColor, EXPENSE_CATEGORIES } from "@/hooks/useExpenses";
+import { useAddExpense, getCategoryColor, EXPENSE_CATEGORIES, parseCategoryValue, buildCategoryValue, getCategoryDisplayLabel } from "@/hooks/useExpenses";
 import { useCurrency } from "@/hooks/useCurrency";
 import {
   useCustomCategories,
@@ -203,7 +203,7 @@ interface CategorySelectorProps {
   onCategoryCreated: (cat: CustomCategory) => void;
 }
 
-function CategorySelector({
+export function CategorySelector({
   value,
   onChange,
   customCategories,
@@ -212,9 +212,15 @@ function CategorySelector({
 }: CategorySelectorProps) {
   const [open, setOpen] = useState(false);
   const [creating, setCreating] = useState(false);
+  const [expandedParentId, setExpandedParentId] = useState<string | null>(null);
   const deleteCategory = useDeleteCustomCategory();
 
   const selectedColor = value ? getCategoryColor(value, customCategories) : null;
+
+  useEffect(() => {
+    const { parentId } = parseCategoryValue(value);
+    setExpandedParentId(parentId || null);
+  }, [value]);
 
   const handleCreated = (cat: CustomCategory) => {
     onCategoryCreated(cat);
@@ -235,48 +241,40 @@ function CategorySelector({
   };
 
   return (
-    <Popover open={open} onOpenChange={(o) => { setOpen(o); if (!o) setCreating(false); }}>
-      <PopoverTrigger asChild>
-        <button
-          type="button"
-          className={cn(
-            "w-full h-11 flex items-center justify-between gap-2 px-3.5 rounded-xl border text-sm transition-all duration-200",
-            open
-              ? "border-primary/50 ring-2 ring-primary/10"
-              : "border-border/60 hover:border-border"
-          )}
-          style={selectedColor ? { borderColor: `${selectedColor}50` } : {}}
-        >
-          {value ? (
-            <span className="flex items-center gap-2.5 font-medium">
-              <span
-                className="h-2.5 w-2.5 rounded-full shrink-0"
-                style={{ backgroundColor: selectedColor ?? undefined }}
-              />
-              {value}
-            </span>
-          ) : (
-            <span className="text-muted-foreground">Choose a category</span>
-          )}
-          <ChevronDown
-            className={cn(
-              "h-4 w-4 text-muted-foreground transition-transform duration-200 shrink-0",
-              open && "rotate-180"
-            )}
-          />
-        </button>
-      </PopoverTrigger>
-
-      <PopoverContent
-        className="w-[--radix-popover-trigger-width] p-2 rounded-2xl shadow-xl border-border/60 overflow-hidden"
-        align="start"
-        side="bottom"
-        avoidCollisions={false}
-        sideOffset={6}
+    <div className="flex flex-col gap-1.5">
+      <button
+        type="button"
+        onClick={() => { if (open) { setOpen(false); setCreating(false); } else { setOpen(true); } }}
+        className={cn(
+          "w-full h-11 flex items-center justify-between gap-2 px-3.5 rounded-xl border text-sm transition-all duration-200",
+          open
+            ? "border-primary/50 ring-2 ring-primary/10"
+            : "border-border/60 hover:border-border"
+        )}
+        style={selectedColor ? { borderColor: `${selectedColor}50` } : {}}
       >
+        {value ? (
+          <span className="flex items-center gap-2.5 font-medium">
+            <span
+              className="h-2.5 w-2.5 rounded-full shrink-0"
+              style={{ backgroundColor: selectedColor ?? undefined }}
+            />
+            {getCategoryDisplayLabel(value)}
+          </span>
+        ) : (
+          <span className="text-muted-foreground">Choose a category</span>
+        )}
+        <ChevronDown
+          className={cn(
+            "h-4 w-4 text-muted-foreground transition-transform duration-200 shrink-0",
+            open && "rotate-180"
+          )}
+        />
+      </button>
+
+      {open && (
         <div
-          className="overflow-y-auto"
-          style={{ maxHeight: "min(320px, var(--radix-popover-available-height, 320px))" }}
+          className="rounded-2xl border border-border/60 p-2"
           onWheel={(e) => e.stopPropagation()}
           onTouchMove={(e) => e.stopPropagation()}
         >
@@ -286,30 +284,84 @@ function CategorySelector({
               onCancel={() => setCreating(false)}
               existingNames={allNames}
             />
-          ) : (
-            <div className="flex flex-col gap-0.5">
-              {EXPENSE_CATEGORIES.map((cat) => {
-                const color = getCategoryColor(cat.id, customCategories) ?? "#64748b";
-                const isSelected = value === cat.id;
-                return (
+          ) : expandedParentId ? (
+            (() => {
+              const parentCat = EXPENSE_CATEGORIES.find((c) => c.id === expandedParentId);
+              if (!parentCat) return null;
+              const color = getCategoryColor(parentCat.id, customCategories) ?? "#64748b";
+              const { parentId: selectedParent, subId: selectedSub } = parseCategoryValue(value);
+              const isParentSelected = selectedParent === parentCat.id;
+              return (
+                <div className="flex flex-col gap-0.5">
                   <button
-                    key={cat.id}
                     type="button"
-                    onClick={() => { onChange(cat.id); setOpen(false); }}
-                    className={cn(
-                      "flex items-center gap-2.5 px-3 py-2 rounded-xl text-sm text-left transition-colors w-full",
-                      isSelected
-                        ? "font-semibold"
-                        : "hover:bg-muted text-foreground/80 hover:text-foreground"
-                    )}
-                    style={isSelected ? { backgroundColor: `${color}15`, color } : {}}
+                    onClick={() => setExpandedParentId(null)}
+                    className="flex items-center gap-2 px-2 py-1.5 rounded-xl text-sm text-muted-foreground hover:text-foreground hover:bg-muted transition-colors w-full mb-0.5"
                   >
-                    <span className="h-2.5 w-2.5 rounded-full shrink-0" style={{ backgroundColor: color }} />
-                    <span className="flex-1">{cat.label}</span>
-                    {isSelected && <Check className="h-3.5 w-3.5 shrink-0" />}
+                    <ChevronDown className="h-3.5 w-3.5 rotate-90 shrink-0" />
+                    <span className="text-base">{parentCat.emoji}</span>
+                    <span className="font-semibold text-foreground text-sm">{parentCat.label}</span>
                   </button>
-                );
-              })}
+                  <div className="mx-2 mb-1 h-px bg-border/50" />
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
+                    {parentCat.subcategories.map((sub) => {
+                      const isSubSelected = isParentSelected && selectedSub === sub.id;
+                      return (
+                        <button
+                          key={sub.id}
+                          type="button"
+                          onClick={() => {
+                            onChange(buildCategoryValue(parentCat.id, sub.id));
+                            setOpen(false);
+                          }}
+                          className={cn(
+                            "flex flex-col items-center gap-1 px-1.5 py-2.5 rounded-xl text-xs text-center transition-all",
+                            isSubSelected
+                              ? "font-semibold"
+                              : "hover:bg-muted text-foreground/70 hover:text-foreground"
+                          )}
+                          style={isSubSelected
+                            ? { backgroundColor: `${color}15`, color, outline: `1.5px solid ${color}40` }
+                            : {}}
+                        >
+                          <span className="text-xl">{sub.emoji}</span>
+                          <span className="leading-tight">{sub.label}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })()
+          ) : (
+            <div className="flex flex-col gap-1.5">
+              <div className="grid grid-cols-3 sm:grid-cols-4 gap-1.5">
+                {EXPENSE_CATEGORIES.map((cat) => {
+                  const color = getCategoryColor(cat.id, customCategories) ?? "#64748b";
+                  const { parentId: selectedParent } = parseCategoryValue(value);
+                  const isParentSelected = selectedParent === cat.id;
+
+                  return (
+                    <button
+                      key={cat.id}
+                      type="button"
+                      onClick={() => setExpandedParentId(cat.id)}
+                      className={cn(
+                        "flex flex-col items-center gap-1 px-1.5 py-2.5 rounded-xl text-xs text-center transition-all",
+                        isParentSelected
+                          ? "font-semibold"
+                          : "hover:bg-muted text-foreground/70 hover:text-foreground"
+                      )}
+                      style={isParentSelected
+                        ? { backgroundColor: `${color}15`, color, outline: `1.5px solid ${color}40` }
+                        : {}}
+                    >
+                      <span className="text-xl">{cat.emoji}</span>
+                      <span className="leading-tight">{cat.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
 
               {customCategories.length > 0 && (
                 <>
@@ -369,8 +421,8 @@ function CategorySelector({
             </div>
           )}
         </div>
-      </PopoverContent>
-    </Popover>
+      )}
+    </div>
   );
 }
 
@@ -383,11 +435,15 @@ interface AddExpenseDialogProps {
 
 export function AddExpenseDialog({ defaultDate, onDateUsed }: AddExpenseDialogProps) {
   const [open, setOpen] = useState(false);
+  const [step, setStep] = useState<"category" | "form">("category");
+  const [expandedParentId, setExpandedParentId] = useState<string | null>(null);
+  const [creatingCategory, setCreatingCategory] = useState(false);
   const [displayAmount, setDisplayAmount] = useState("");
+
   const addExpense = useAddExpense();
   const { symbol } = useCurrency();
-
   const { data: customCategories = [], isLoading: categoriesLoading } = useCustomCategories();
+  const deleteCategory = useDeleteCustomCategory();
 
   const form = useForm<FormValues>({
     resolver: zodResolver(expenseSchema),
@@ -402,6 +458,17 @@ export function AddExpenseDialog({ defaultDate, onDateUsed }: AddExpenseDialogPr
     ...customCategories.map((c) => c.name),
   ];
 
+  const handleOpenChange = (o: boolean) => {
+    setOpen(o);
+    if (!o) {
+      setStep("category");
+      setExpandedParentId(null);
+      setCreatingCategory(false);
+      form.reset({ amount: undefined, category: "", date: new Date(), note: "" });
+      setDisplayAmount("");
+    }
+  };
+
   useEffect(() => {
     if (defaultDate) {
       form.setValue("date", new Date(defaultDate + "T00:00:00"));
@@ -410,22 +477,29 @@ export function AddExpenseDialog({ defaultDate, onDateUsed }: AddExpenseDialogPr
     }
   }, [defaultDate, form, onDateUsed]);
 
+  const handleCategorySelect = (value: string) => {
+    form.setValue("category", value);
+    setStep("form");
+  };
+
+  const handleDeleteCustomCategory = async (e: React.MouseEvent, cat: CustomCategory) => {
+    e.stopPropagation();
+    try {
+      await deleteCategory.mutateAsync(cat.id);
+      toast.success(`"${cat.name}" removed`);
+    } catch {
+      toast.error("Failed to delete category");
+    }
+  };
+
   const handleAmountChange = (
     e: React.ChangeEvent<HTMLInputElement>,
     fieldOnChange: (...event: unknown[]) => void
   ) => {
     const raw = e.target.value;
-
-    // Strip all commas to get the raw numeric string
     const stripped = raw.replace(/,/g, "");
-
-    // Allow only valid partial numeric input: digits, optional single dot, optional decimals
     if (stripped !== "" && !/^\d*\.?\d{0,2}$/.test(stripped)) return;
-
-    // Update the display value with comma formatting
     setDisplayAmount(formatWithCommas(stripped));
-
-    // Pass the raw numeric value to react-hook-form (zod coerces it)
     fieldOnChange(stripped === "" ? undefined : stripped);
   };
 
@@ -438,22 +512,17 @@ export function AddExpenseDialog({ defaultDate, onDateUsed }: AddExpenseDialogPr
         note: values.note || undefined,
       });
       toast.success("Expense added");
-      form.reset({ amount: undefined, category: "", date: new Date(), note: "" });
-      setDisplayAmount("");
-      setOpen(false);
+      handleOpenChange(false);
     } catch {
       toast.error("Failed to add expense");
     }
   };
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       {/* FAB */}
       <DialogTrigger asChild>
-        <button
-          className="fixed bottom-6 right-6 z-50 group"
-          aria-label="Add expense"
-        >
+        <button className="fixed bottom-6 right-6 z-50 group" aria-label="Add expense">
           <span className="absolute inset-0 rounded-2xl bg-foreground/10 scale-100 group-hover:scale-110 transition-transform duration-300" />
           <span className="relative flex h-14 w-14 items-center justify-center rounded-2xl bg-foreground text-background shadow-lg shadow-foreground/20 transition-all duration-200 group-hover:rounded-xl group-active:scale-95">
             <Plus className="h-5 w-5 transition-transform duration-300 group-hover:rotate-90" />
@@ -461,198 +530,275 @@ export function AddExpenseDialog({ defaultDate, onDateUsed }: AddExpenseDialogPr
         </button>
       </DialogTrigger>
 
-      <DialogContent className="sm:max-w-[390px] p-0 gap-0 overflow-hidden rounded-3xl border-border/40 shadow-2xl">
-        {/* Accent strip */}
+      <DialogContent className="sm:max-w-[460px] p-0 gap-0 overflow-y-auto max-h-[90dvh] rounded-3xl border-border/40 shadow-2xl">
         <div
           className="h-[3px] w-full transition-all duration-500"
           style={{ backgroundColor: accentColor ?? "hsl(var(--primary))" }}
         />
 
-        {/* Header */}
-        <div className="px-5 pt-5 pb-3">
-          <DialogHeader>
-            <DialogTitle className="text-lg font-bold tracking-tight leading-none flex items-center gap-2">
-              Add Expense
-              {accentColor && watchedCategory && (
-                <span
-                  className="text-[11px] font-semibold px-2 py-0.5 rounded-full"
-                  style={{ backgroundColor: `${accentColor}18`, color: accentColor }}
-                >
-                  {watchedCategory}
-                </span>
-              )}
-            </DialogTitle>
-            <p className="text-xs text-muted-foreground mt-1">Track where your money goes</p>
-          </DialogHeader>
-        </div>
-
-        <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="px-5 pb-5 space-y-3.5">
-
-            {/* Amount */}
-            <FormField
-              control={form.control}
-              name="amount"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
-                    Amount
-                  </FormLabel>
-                  <FormControl>
-                    <div className="relative">
-                      <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-muted-foreground font-semibold text-base select-none pointer-events-none">
-                        {symbol}
-                      </span>
-                      <Input
-                        // Use text + inputMode so we can display commas while keeping numeric keyboard on mobile
-                        type="text"
-                        inputMode="decimal"
-                        placeholder="0.00"
-                        value={displayAmount}
-                        onChange={(e) => handleAmountChange(e, field.onChange)}
-                        onBlur={field.onBlur}
-                        name={field.name}
-                        ref={field.ref}
-                        className="pl-8 h-12 text-2xl font-bold rounded-xl border-border/60 focus-visible:ring-1 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                        // font-size 16px prevents iOS auto-zoom on focus
-                        style={{
-                          fontSize: "24px",
-                          ...(accentColor
-                            ? { "--tw-ring-color": accentColor, borderColor: `${accentColor}40` } as React.CSSProperties
-                            : {}),
-                        }}
-                      />
-                    </div>
-                  </FormControl>
-                  <FormMessage className="text-xs" />
-                </FormItem>
-              )}
-            />
-
-            {/* Category */}
-            <FormField
-              control={form.control}
-              name="category"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
-                    Category
-                  </FormLabel>
-                  <FormControl>
-                    {categoriesLoading ? (
-                      <div className="h-11 rounded-xl border border-border/60 flex items-center px-3.5 gap-2 text-sm text-muted-foreground">
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                        Loading…
-                      </div>
-                    ) : (
-                      <CategorySelector
-                        value={field.value}
-                        onChange={field.onChange}
-                        customCategories={customCategories}
-                        allNames={allCategoryNames}
-                        onCategoryCreated={() => { }}
-                      />
-                    )}
-                  </FormControl>
-                  <FormMessage className="text-xs" />
-                </FormItem>
-              )}
-            />
-
-            {/* Date & Note */}
-            <div className="grid grid-cols-2 gap-3">
-              <FormField
-                control={form.control}
-                name="date"
-                render={({ field }) => (
-                  <FormItem className="flex flex-col">
-                    <FormLabel className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
-                      Date
-                    </FormLabel>
-                    <Popover>
-                      <PopoverTrigger asChild>
-                        <FormControl>
-                          <Button
-                            variant="outline"
-                            className={cn(
-                              "h-11 rounded-xl border-border/60 font-normal justify-start gap-2 text-sm w-full px-3",
-                              !field.value && "text-muted-foreground"
-                            )}
-                          >
-                            <CalendarIcon className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-                            <span className="truncate">
-                              {field.value ? format(field.value, "MMM d") : "Today"}
-                            </span>
-                          </Button>
-                        </FormControl>
-                      </PopoverTrigger>
-                      <PopoverContent className="w-auto p-0 rounded-2xl" align="start">
-                        <Calendar
-                          mode="single"
-                          selected={field.value}
-                          onSelect={field.onChange}
-                          disabled={(date) => date > new Date()}
-                          initialFocus
-                          className="p-3 pointer-events-auto"
-                        />
-                      </PopoverContent>
-                    </Popover>
-                    <FormMessage className="text-xs" />
-                  </FormItem>
-                )}
-              />
-
-              <FormField
-                control={form.control}
-                name="note"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
-                      Note
-                    </FormLabel>
-                    <FormControl>
-                      <Textarea
-                        placeholder="Optional…"
-                        className="resize-none rounded-xl border-border/60 h-11 min-h-[44px] py-3 leading-tight"
-                        rows={1}
-                        // font-size >= 16px prevents iOS auto-zoom on focus
-                        style={{ fontSize: "16px" }}
-                        {...field}
-                      />
-                    </FormControl>
-                    <FormMessage className="text-xs" />
-                  </FormItem>
-                )}
-              />
+        {step === "category" ? (
+          /* ── Step 1: Category picker ── */
+          <>
+            <div className="px-5 pt-5 pb-3">
+              <DialogHeader>
+                <DialogTitle className="text-lg font-bold tracking-tight">Choose Category</DialogTitle>
+                <p className="text-xs text-muted-foreground mt-1">What did you spend on?</p>
+              </DialogHeader>
             </div>
 
-            {/* Submit */}
-            <Button
-              type="submit"
-              className="w-full h-11 rounded-xl text-sm font-semibold tracking-wide transition-all duration-150 hover:opacity-90 active:scale-[0.98] mt-1"
-              disabled={addExpense.isPending}
-              style={
-                accentColor
-                  ? {
-                    backgroundColor: accentColor,
-                    color: "#fff",
-                    border: "none",
-                    boxShadow: `0 4px 16px ${accentColor}40`,
-                  }
-                  : {}
-              }
-            >
-              {addExpense.isPending ? (
-                <span className="flex items-center gap-2">
+            <div className="px-3 pb-5">
+              {categoriesLoading ? (
+                <div className="flex items-center gap-2 px-2 py-4 text-sm text-muted-foreground">
                   <Loader2 className="h-4 w-4 animate-spin" />
-                  Adding…
-                </span>
+                  Loading…
+                </div>
+              ) : creatingCategory ? (
+                <CreateCategoryPanel
+                  onCreated={(cat) => { setCreatingCategory(false); handleCategorySelect(cat.name); }}
+                  onCancel={() => setCreatingCategory(false)}
+                  existingNames={allCategoryNames}
+                />
+              ) : expandedParentId ? (
+                (() => {
+                  const parentCat = EXPENSE_CATEGORIES.find((c) => c.id === expandedParentId);
+                  if (!parentCat) return null;
+                  const color = getCategoryColor(parentCat.id, customCategories) ?? "#64748b";
+                  return (
+                    <div className="flex flex-col gap-0.5">
+                      <button
+                        type="button"
+                        onClick={() => setExpandedParentId(null)}
+                        className="flex items-center gap-2 px-2 py-1.5 rounded-xl text-sm text-muted-foreground hover:text-foreground hover:bg-muted transition-colors w-full mb-0.5"
+                      >
+                        <ChevronDown className="h-3.5 w-3.5 rotate-90 shrink-0" />
+                        <span className="text-base">{parentCat.emoji}</span>
+                        <span className="font-semibold text-foreground text-sm">{parentCat.label}</span>
+                      </button>
+                      <div className="mx-2 mb-2 h-px bg-border/50" />
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
+                        {parentCat.subcategories.map((sub) => (
+                          <button
+                            key={sub.id}
+                            type="button"
+                            onClick={() => handleCategorySelect(buildCategoryValue(parentCat.id, sub.id))}
+                            className="flex flex-col items-center gap-1 px-1.5 py-2.5 rounded-xl text-xs text-center hover:bg-muted text-foreground/70 hover:text-foreground transition-all"
+                            style={{ "--hover-color": color } as React.CSSProperties}
+                          >
+                            <span className="text-xl">{sub.emoji}</span>
+                            <span className="leading-tight">{sub.label}</span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })()
               ) : (
-                "Add Expense"
+                <div className="flex flex-col gap-2">
+                  <div className="grid grid-cols-3 sm:grid-cols-4 gap-1.5">
+                    {EXPENSE_CATEGORIES.map((cat) => (
+                      <button
+                        key={cat.id}
+                        type="button"
+                        onClick={() => setExpandedParentId(cat.id)}
+                        className="flex flex-col items-center gap-1 px-1.5 py-2.5 rounded-xl text-xs text-center hover:bg-muted text-foreground/70 hover:text-foreground transition-all"
+                      >
+                        <span className="text-xl">{cat.emoji}</span>
+                        <span className="leading-tight">{cat.label}</span>
+                      </button>
+                    ))}
+                  </div>
+
+                  {customCategories.length > 0 && (
+                    <>
+                      <div className="mx-2 h-px bg-border/50" />
+                      <p className="px-2 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Custom</p>
+                      {customCategories.map((cat) => (
+                        <div key={cat.id} className="group flex items-center gap-2.5 px-3 py-2 rounded-xl text-sm hover:bg-muted transition-colors">
+                          <button
+                            type="button"
+                            className="flex items-center gap-2.5 flex-1 text-left"
+                            onClick={() => handleCategorySelect(cat.name)}
+                          >
+                            <span className="h-2.5 w-2.5 rounded-full shrink-0" style={{ backgroundColor: cat.color }} />
+                            <span className="flex-1">{cat.name}</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={(e) => handleDeleteCustomCategory(e, cat)}
+                            disabled={deleteCategory.isPending}
+                            className="opacity-0 group-hover:opacity-100 flex h-6 w-6 items-center justify-center rounded-lg hover:bg-destructive/10 transition-all shrink-0"
+                            aria-label={`Delete ${cat.name}`}
+                          >
+                            <Trash2 className="h-3 w-3 text-destructive" />
+                          </button>
+                        </div>
+                      ))}
+                    </>
+                  )}
+
+                  <div className="mx-2 h-px bg-border/50" />
+                  <button
+                    type="button"
+                    onClick={() => setCreatingCategory(true)}
+                    className="flex items-center gap-2.5 px-3 py-2 rounded-xl text-sm text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+                  >
+                    <Plus className="h-3.5 w-3.5" />
+                    Create custom category…
+                  </button>
+                </div>
               )}
-            </Button>
-          </form>
-        </Form>
+            </div>
+          </>
+        ) : (
+          /* ── Step 2: Expense form ── */
+          <>
+            <div className="px-5 pt-5 pb-3">
+              <DialogHeader>
+                <DialogTitle className="text-lg font-bold tracking-tight leading-none flex items-center gap-2">
+                  Add Expense
+                  {accentColor && watchedCategory && (
+                    <button
+                      type="button"
+                      onClick={() => setStep("category")}
+                      className="text-[11px] font-semibold px-2 py-0.5 rounded-full transition-opacity hover:opacity-70"
+                      style={{ backgroundColor: `${accentColor}18`, color: accentColor }}
+                    >
+                      {getCategoryDisplayLabel(watchedCategory)}
+                    </button>
+                  )}
+                </DialogTitle>
+                <p className="text-xs text-muted-foreground mt-1">Track where your money goes</p>
+              </DialogHeader>
+            </div>
+
+            <Form {...form}>
+              <form onSubmit={form.handleSubmit(onSubmit)} className="px-5 pb-5 space-y-3.5">
+
+                <FormField
+                  control={form.control}
+                  name="amount"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+                        Amount
+                      </FormLabel>
+                      <FormControl>
+                        <div className="relative">
+                          <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-muted-foreground font-semibold text-base select-none pointer-events-none">
+                            {symbol}
+                          </span>
+                          <Input
+                            type="text"
+                            inputMode="decimal"
+                            placeholder="0.00"
+                            value={displayAmount}
+                            onChange={(e) => handleAmountChange(e, field.onChange)}
+                            onBlur={field.onBlur}
+                            name={field.name}
+                            ref={field.ref}
+                            className="pl-8 h-12 text-2xl font-bold rounded-xl border-border/60 focus-visible:ring-1 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                            style={{
+                              fontSize: "24px",
+                              ...(accentColor
+                                ? { "--tw-ring-color": accentColor, borderColor: `${accentColor}40` } as React.CSSProperties
+                                : {}),
+                            }}
+                          />
+                        </div>
+                      </FormControl>
+                      <FormMessage className="text-xs" />
+                    </FormItem>
+                  )}
+                />
+
+                <div className="grid grid-cols-2 gap-3">
+                  <FormField
+                    control={form.control}
+                    name="date"
+                    render={({ field }) => (
+                      <FormItem className="flex flex-col">
+                        <FormLabel className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+                          Date
+                        </FormLabel>
+                        <Popover>
+                          <PopoverTrigger asChild>
+                            <FormControl>
+                              <Button
+                                variant="outline"
+                                className={cn(
+                                  "h-11 rounded-xl border-border/60 font-normal justify-start gap-2 text-sm w-full px-3",
+                                  !field.value && "text-muted-foreground"
+                                )}
+                              >
+                                <CalendarIcon className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                                <span className="truncate">
+                                  {field.value ? format(field.value, "MMM d") : "Today"}
+                                </span>
+                              </Button>
+                            </FormControl>
+                          </PopoverTrigger>
+                          <PopoverContent className="w-auto p-0 rounded-2xl" align="start">
+                            <Calendar
+                              mode="single"
+                              selected={field.value}
+                              onSelect={field.onChange}
+                              disabled={(date) => date > new Date()}
+                              initialFocus
+                              className="p-3 pointer-events-auto"
+                            />
+                          </PopoverContent>
+                        </Popover>
+                        <FormMessage className="text-xs" />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={form.control}
+                    name="note"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+                          Note
+                        </FormLabel>
+                        <FormControl>
+                          <Textarea
+                            placeholder="Optional…"
+                            className="resize-none rounded-xl border-border/60 h-11 min-h-[44px] py-3 leading-tight"
+                            rows={1}
+                            style={{ fontSize: "16px" }}
+                            {...field}
+                          />
+                        </FormControl>
+                        <FormMessage className="text-xs" />
+                      </FormItem>
+                    )}
+                  />
+                </div>
+
+                <Button
+                  type="submit"
+                  className="w-full h-11 rounded-xl text-sm font-semibold tracking-wide transition-all duration-150 hover:opacity-90 active:scale-[0.98] mt-1"
+                  disabled={addExpense.isPending}
+                  style={
+                    accentColor
+                      ? { backgroundColor: accentColor, color: "#fff", border: "none", boxShadow: `0 4px 16px ${accentColor}40` }
+                      : {}
+                  }
+                >
+                  {addExpense.isPending ? (
+                    <span className="flex items-center gap-2">
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Adding…
+                    </span>
+                  ) : (
+                    "Add Expense"
+                  )}
+                </Button>
+              </form>
+            </Form>
+          </>
+        )}
       </DialogContent>
     </Dialog>
   );

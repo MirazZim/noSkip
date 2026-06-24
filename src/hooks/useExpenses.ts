@@ -7,6 +7,7 @@ import { CustomCategory } from "./useCustomCategories";
 export interface SubCategory {
   id: string;
   label: string;
+  emoji: string;
 }
 
 export interface ParentCategory {
@@ -24,12 +25,12 @@ export const EXPENSE_CATEGORIES: ParentCategory[] = [
     color: "hsl(25, 85%, 55%)",
     emoji: "🍽️",
     subcategories: [
-      { id: "groceries",      label: "Groceries" },
-      { id: "dining-out",     label: "Dining Out" },
-      { id: "street-food",    label: "Street Food / Snacks" },
-      { id: "coffee-tea",     label: "Coffee / Tea" },
-      { id: "meal-delivery",  label: "Meal Delivery" },
-      { id: "drinks",         label: "Drinks" },
+      { id: "groceries",      label: "Groceries",             emoji: "🛒" },
+      { id: "dining-out",     label: "Dining Out",            emoji: "🍜" },
+      { id: "street-food",    label: "Street Food / Snacks",  emoji: "🌮" },
+      { id: "coffee-tea",     label: "Coffee / Tea",          emoji: "☕" },
+      { id: "meal-delivery",  label: "Meal Delivery",         emoji: "🛵" },
+      { id: "drinks",         label: "Drinks",                emoji: "🥤" },
     ],
   },
   {
@@ -38,12 +39,12 @@ export const EXPENSE_CATEGORIES: ParentCategory[] = [
     color: "hsl(210, 75%, 50%)",
     emoji: "🚗",
     subcategories: [
-      { id: "rickshaw-cng",   label: "Rickshaw / CNG" },
-      { id: "ride-share",     label: "Ride-share" },
-      { id: "public-transit", label: "Bus / Public Transport" },
-      { id: "fuel",           label: "Fuel / Petrol" },
-      { id: "vehicle-maint",  label: "Vehicle Maintenance" },
-      { id: "parking",        label: "Parking" },
+      { id: "rickshaw-cng",   label: "Rickshaw / CNG",        emoji: "🛺" },
+      { id: "ride-share",     label: "Ride-share",            emoji: "🚖" },
+      { id: "public-transit", label: "Bus / Public Transport", emoji: "🚌" },
+      { id: "fuel",           label: "Fuel / Petrol",         emoji: "⛽" },
+      { id: "vehicle-maint",  label: "Vehicle Maintenance",   emoji: "🔧" },
+      { id: "parking",        label: "Parking",               emoji: "🅿️" },
     ],
   },
   {
@@ -52,11 +53,11 @@ export const EXPENSE_CATEGORIES: ParentCategory[] = [
     color: "hsl(160, 60%, 40%)",
     emoji: "🏠",
     subcategories: [
-      { id: "rent",           label: "Rent" },
-      { id: "electricity",    label: "Electricity / Gas / Water" },
-      { id: "internet",       label: "Internet / WiFi" },
-      { id: "home-maint",     label: "Home Maintenance" },
-      { id: "household-sup",  label: "Household Supplies" },
+      { id: "rent",           label: "Rent",                  emoji: "🏘️" },
+      { id: "electricity",    label: "Electricity / Gas / Water", emoji: "⚡" },
+      { id: "internet",       label: "Internet / WiFi",       emoji: "📶" },
+      { id: "home-maint",     label: "Home Maintenance",      emoji: "🪛" },
+      { id: "household-sup",  label: "Household Supplies",    emoji: "🧹" },
     ],
   },
   {
@@ -65,11 +66,11 @@ export const EXPENSE_CATEGORIES: ParentCategory[] = [
     color: "hsl(340, 70%, 55%)",
     emoji: "💊",
     subcategories: [
-      { id: "doctor",         label: "Doctor / Consultation" },
-      { id: "medicine",       label: "Medicine / Pharmacy" },
-      { id: "lab-tests",      label: "Lab Tests" },
-      { id: "gym",            label: "Gym / Fitness" },
-      { id: "mental-health",  label: "Mental Health" },
+      { id: "doctor",         label: "Doctor / Consultation", emoji: "🩺" },
+      { id: "medicine",       label: "Medicine / Pharmacy",   emoji: "💊" },
+      { id: "lab-tests",      label: "Lab Tests",             emoji: "🧪" },
+      { id: "gym",            label: "Gym / Fitness",         emoji: "🏋️" },
+      { id: "mental-health",  label: "Mental Health",         emoji: "🧠" },
     ],
   },
   {
@@ -78,11 +79,11 @@ export const EXPENSE_CATEGORIES: ParentCategory[] = [
     color: "hsl(280, 65%, 55%)",
     emoji: "🛍️",
     subcategories: [
-      { id: "clothing",       label: "Clothing / Apparel" },
-      { id: "gadgets",        label: "Electronics / Gadgets" },
-      { id: "personal-care",  label: "Personal Care / Grooming" },
-      { id: "books-stat",     label: "Books / Stationery" },
-      { id: "household-item", label: "Household Items" },
+      { id: "clothing",       label: "Clothing / Apparel",    emoji: "👕" },
+      { id: "gadgets",        label: "Electronics / Gadgets", emoji: "💻" },
+      { id: "personal-care",  label: "Personal Care / Grooming", emoji: "🪥" },
+      { id: "books-stat",     label: "Books / Stationery",    emoji: "📖" },
+      { id: "household-item", label: "Household Items",       emoji: "🪴" },
     ],
   },
   {
@@ -91,11 +92,11 @@ export const EXPENSE_CATEGORIES: ParentCategory[] = [
     color: "hsl(45, 90%, 50%)",
     emoji: "🎮",
     subcategories: [
-      { id: "streaming",      label: "Streaming Services" },
-      { id: "subscriptions",  label: "Subscriptions" },
-      { id: "games",          label: "Games" },
-      { id: "events",         label: "Events / Outings" },
-      { id: "hobbies",        label: "Hobbies" },
+      { id: "streaming",      label: "Streaming Services",    emoji: "📺" },
+      { id: "subscriptions",  label: "Subscriptions",         emoji: "🔔" },
+      { id: "games",          label: "Games",                 emoji: "🕹️" },
+      { id: "events",         label: "Events / Outings",      emoji: "🎟️" },
+      { id: "hobbies",        label: "Hobbies",               emoji: "🎨" },
     ],
   },
   {
@@ -104,10 +105,10 @@ export const EXPENSE_CATEGORIES: ParentCategory[] = [
     color: "hsl(140, 60%, 40%)",
     emoji: "💰",
     subcategories: [
-      { id: "savings",        label: "Savings / Investment" },
-      { id: "loan-repay",     label: "Loan Repayment" },
-      { id: "insurance",      label: "Insurance" },
-      { id: "tax-fees",       label: "Tax / Govt Fees" },
+      { id: "savings",        label: "Savings / Investment",  emoji: "🏦" },
+      { id: "loan-repay",     label: "Loan Repayment",        emoji: "💳" },
+      { id: "insurance",      label: "Insurance",             emoji: "🛡️" },
+      { id: "tax-fees",       label: "Tax / Govt Fees",       emoji: "🏛️" },
     ],
   },
   {
@@ -116,9 +117,9 @@ export const EXPENSE_CATEGORIES: ParentCategory[] = [
     color: "hsl(195, 70%, 45%)",
     emoji: "📚",
     subcategories: [
-      { id: "tuition",        label: "Tuition / Courses" },
-      { id: "edu-books",      label: "Books / Materials" },
-      { id: "exam-fees",      label: "Exam Fees" },
+      { id: "tuition",        label: "Tuition / Courses",     emoji: "🎓" },
+      { id: "edu-books",      label: "Books / Materials",     emoji: "📕" },
+      { id: "exam-fees",      label: "Exam Fees",             emoji: "📝" },
     ],
   },
   {
@@ -127,9 +128,9 @@ export const EXPENSE_CATEGORIES: ParentCategory[] = [
     color: "hsl(15, 80%, 55%)",
     emoji: "🤝",
     subcategories: [
-      { id: "gifts",          label: "Gifts" },
-      { id: "charity",        label: "Charity / Donations" },
-      { id: "social-outing",  label: "Social Outings" },
+      { id: "gifts",          label: "Gifts",                 emoji: "🎁" },
+      { id: "charity",        label: "Charity / Donations",   emoji: "❤️" },
+      { id: "social-outing",  label: "Social Outings",        emoji: "🥂" },
     ],
   },
   {
@@ -138,10 +139,10 @@ export const EXPENSE_CATEGORIES: ParentCategory[] = [
     color: "hsl(220, 60%, 50%)",
     emoji: "💼",
     subcategories: [
-      { id: "raw-materials",  label: "Raw Materials" },
-      { id: "delivery",       label: "Delivery / Shipping" },
-      { id: "marketing",      label: "Marketing" },
-      { id: "tools-software", label: "Tools / Software" },
+      { id: "raw-materials",  label: "Raw Materials",         emoji: "📦" },
+      { id: "delivery",       label: "Delivery / Shipping",   emoji: "🚚" },
+      { id: "marketing",      label: "Marketing",             emoji: "📣" },
+      { id: "tools-software", label: "Tools / Software",      emoji: "🖥️" },
     ],
   },
   {
@@ -150,8 +151,8 @@ export const EXPENSE_CATEGORIES: ParentCategory[] = [
     color: "hsl(185, 65%, 45%)",
     emoji: "📱",
     subcategories: [
-      { id: "mobile-data",    label: "Mobile Recharge / Data" },
-      { id: "broadband",      label: "Broadband" },
+      { id: "mobile-data",    label: "Mobile Recharge / Data", emoji: "📱" },
+      { id: "broadband",      label: "Broadband",             emoji: "🌐" },
     ],
   },
   {
@@ -160,12 +161,12 @@ export const EXPENSE_CATEGORIES: ParentCategory[] = [
     color: "hsl(0, 60%, 50%)",
     emoji: "🚬",
     subcategories: [
-      { id: "smoking",        label: "Smoking" },
-      { id: "alcohol",        label: "Alcohol / Drinking" },
-      { id: "weed",           label: "Weed" },
-      { id: "other-drugs",    label: "Other Substances" },
-      { id: "gambling",       label: "Gambling / Betting" },
-      { id: "other-habits",   label: "Other Habits" },
+      { id: "smoking",        label: "Smoking",               emoji: "🚬" },
+      { id: "alcohol",        label: "Alcohol / Drinking",    emoji: "🍺" },
+      { id: "weed",           label: "Weed",                  emoji: "🌿" },
+      { id: "other-drugs",    label: "Other Substances",      emoji: "💉" },
+      { id: "gambling",       label: "Gambling / Betting",    emoji: "🎰" },
+      { id: "other-habits",   label: "Other Habits",          emoji: "🔄" },
     ],
   },
   {
@@ -174,7 +175,7 @@ export const EXPENSE_CATEGORIES: ParentCategory[] = [
     color: "hsl(220, 15%, 55%)",
     emoji: "❓",
     subcategories: [
-      { id: "uncategorized",  label: "Uncategorized" },
+      { id: "uncategorized",  label: "Uncategorized",         emoji: "❔" },
     ],
   },
 ];
@@ -216,6 +217,14 @@ export function getSubCategoryLabel(compound: string): string | undefined {
   if (!subId) return undefined;
   const parent = getParentCategory(parentId);
   return parent?.subcategories.find((s) => s.id === subId)?.label;
+}
+
+export function getSubCategoryEmoji(compound: string): string | undefined {
+  const { parentId, subId } = parseCategoryValue(compound);
+  const parent = getParentCategory(parentId);
+  if (!parent) return undefined;
+  if (subId) return parent.subcategories.find((s) => s.id === subId)?.emoji;
+  return parent.emoji;
 }
 
 export function getCategoryDisplayLabel(compound: string): string {

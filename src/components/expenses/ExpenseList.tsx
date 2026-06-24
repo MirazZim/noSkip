@@ -4,7 +4,7 @@ import {
   Zap, Heart, Plane, Monitor, Music, BookOpen, Coffee, Gift, MoreHorizontal,
 } from "lucide-react";
 import {
-  Expense, useDeleteExpense, getCategoryColor,
+  Expense, useDeleteExpense, getCategoryColor, getSubCategoryLabel, getSubCategoryEmoji,
 } from "@/hooks/useExpenses";
 import { useCustomCategories } from "@/hooks/useCustomCategories";
 import { useCurrency } from "@/hooks/useCurrency";
@@ -41,13 +41,17 @@ const EASE = "cubic-bezier(0.25,1,0.5,1)";
 const DURATION = "0.28s";
 
 function CategoryIcon({ category, color }: { category: string; color: string }) {
+  const emoji = getSubCategoryEmoji(category);
   const Icon = CATEGORY_ICONS[category] ?? MoreHorizontal;
   return (
     <div
       className="flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl"
       style={{ backgroundColor: hslAlpha(color, 0.13) }}
     >
-      <Icon className="h-4 w-4" style={{ color }} strokeWidth={2} />
+      {emoji
+        ? <span className="text-lg leading-none">{emoji}</span>
+        : <Icon className="h-4 w-4" style={{ color }} strokeWidth={2} />
+      }
     </div>
   );
 }
@@ -161,7 +165,7 @@ function SwipeRow({ exp, color, formatAmount, onEdit, onDelete, openId, setOpenI
         <div ref={contentRef} className="flex items-center gap-3 px-4 py-3.5">
           <CategoryIcon category={exp.category} color={color} />
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-bold truncate leading-snug">{exp.category}</p>
+            <p className="text-sm font-bold truncate leading-snug">{getSubCategoryLabel(exp.category) ?? exp.category}</p>
             {exp.note && (
               <p className="text-xs text-muted-foreground truncate mt-0.5">{exp.note}</p>
             )}

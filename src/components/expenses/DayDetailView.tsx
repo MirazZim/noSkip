@@ -1,6 +1,6 @@
 import { format, isToday, isYesterday, parseISO } from "date-fns";
 import { Plus, Pencil, Trash2, TrendingUp, TrendingDown, Minus } from "lucide-react";
-import { Expense, getCategoryColor } from "@/hooks/useExpenses";
+import { Expense, getCategoryColor, getSubCategoryLabel, getSubCategoryEmoji } from "@/hooks/useExpenses";
 import { Income, INCOME_SOURCE_COLORS, type IncomeSource } from "@/hooks/useIncomes";
 import { useCurrency } from "@/hooks/useCurrency";
 import { useState, useRef, useCallback } from "react";
@@ -359,10 +359,13 @@ export function DayDetailView({
               {Object.entries(categoryBreakdown)
                 .sort((a, b) => b[1] - a[1])
                 .map(([cat, amount]) => (
-                  <div key={cat} className="flex items-center gap-1.5 rounded-full border border-border/50 bg-card px-2.5 py-1 shadow-sm">
-                    <div className="h-1.5 w-1.5 rounded-full shrink-0" style={{ backgroundColor: getCategoryColor(cat) }} />
-                    <span className="text-[11px] font-medium text-foreground">{cat}</span>
-                    <span className="text-[11px] text-muted-foreground">{formatAmount(amount)}</span>
+                  <div key={cat} className="flex items-center gap-1 rounded-full border border-border/50 bg-card px-2 py-1 shadow-sm">
+                    {getSubCategoryEmoji(cat)
+                      ? <span className="text-[11px] leading-none">{getSubCategoryEmoji(cat)}</span>
+                      : <div className="h-1.5 w-1.5 rounded-full shrink-0" style={{ backgroundColor: getCategoryColor(cat) }} />
+                    }
+                    <span className="text-[11px] font-medium text-foreground ml-0.5">{getSubCategoryLabel(cat) ?? cat}</span>
+                    <span className="text-[11px] text-muted-foreground ml-0.5">{formatAmount(amount)}</span>
                   </div>
                 ))}
             </div>
@@ -388,11 +391,14 @@ export function DayDetailView({
                       className="h-8 w-8 rounded-xl shrink-0 flex items-center justify-center"
                       style={{ backgroundColor: hslAlpha(getCategoryColor(exp.category), 0.09) }}
                     >
-                      <div className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: getCategoryColor(exp.category) }} />
+                      {getSubCategoryEmoji(exp.category)
+                        ? <span className="text-base leading-none">{getSubCategoryEmoji(exp.category)}</span>
+                        : <div className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: getCategoryColor(exp.category) }} />
+                      }
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center justify-between gap-2">
-                        <span className="text-sm font-medium text-foreground truncate">{exp.category}</span>
+                        <span className="text-sm font-medium text-foreground truncate">{getSubCategoryLabel(exp.category) ?? exp.category}</span>
                         <span className="text-sm font-semibold tabular-nums text-foreground shrink-0">{formatAmount(exp.amount)}</span>
                       </div>
                       {exp.note && <p className="text-xs text-muted-foreground truncate mt-0.5">{exp.note}</p>}

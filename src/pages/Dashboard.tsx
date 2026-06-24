@@ -4,7 +4,7 @@ import { Sparkles } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { AppLayout } from "@/components/AppLayout";
 import { useHabits, useHabitCompletions, calculateStreak } from "@/hooks/useHabits";
-import { useExpenses, getCategoryColor } from "@/hooks/useExpenses";
+import { useExpenses, getCategoryColor, getSubCategoryEmoji, getSubCategoryLabel, getParentLabel } from "@/hooks/useExpenses";
 import { useHabitReminders } from "@/hooks/useHabitReminders";
 import { useCurrency } from "@/hooks/useCurrency";
 import { DashboardExpenseCharts } from "@/components/dashboard/DashboardExpenseCharts";
@@ -965,18 +965,31 @@ export default function Dashboard() {
                         borderRadius: 8,
                         background: `${color}18`, border: `1px solid ${color}30`,
                         display: "flex", alignItems: "center", justifyContent: "center",
+                        fontSize: "clamp(11px,1.8vw,14px)",
                       }}>
-                        <div style={{ width: 7, height: 7, borderRadius: "50%", background: color }} />
+                        {getSubCategoryEmoji(e.category)
+                          ? <span style={{ lineHeight: 1 }}>{getSubCategoryEmoji(e.category)}</span>
+                          : <div style={{ width: 7, height: 7, borderRadius: "50%", background: color }} />
+                        }
                       </div>
 
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <p style={{
                           fontSize: "clamp(10px,1.8vw,13px)", fontWeight: 600,
                           color: "hsl(var(--foreground))",
-                          overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginBottom: 3,
+                          overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                          marginBottom: e.note ? 1 : 3,
                         }}>
-                          {e.note || e.category}
+                          {getSubCategoryLabel(e.category) ?? getParentLabel(e.category)}
                         </p>
+                        {e.note && (
+                          <p style={{
+                            fontSize: "clamp(8px,1.3vw,10px)", color: "hsl(var(--muted-foreground))",
+                            overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginBottom: 3,
+                          }}>
+                            {e.note}
+                          </p>
+                        )}
                         <div style={{ height: 2, borderRadius: 1, background: "hsl(var(--muted))", overflow: "hidden" }}>
                           <div style={{
                             height: "100%", width: `${pct * 100}%`, background: color,
@@ -1022,8 +1035,13 @@ export default function Dashboard() {
                         background: `${color}12`, border: `1px solid ${color}22`,
                         borderRadius: 7, padding: "2px 7px",
                       }}>
-                        <div style={{ width: 5, height: 5, borderRadius: "50%", background: color, flexShrink: 0 }} />
-                        <span className="hidden sm:inline" style={{ fontSize: 8, fontWeight: 700, color: "hsl(var(--muted-foreground))" }}>{cat}</span>
+                        {getSubCategoryEmoji(cat)
+                          ? <span style={{ fontSize: 10, lineHeight: 1 }}>{getSubCategoryEmoji(cat)}</span>
+                          : <div style={{ width: 5, height: 5, borderRadius: "50%", background: color, flexShrink: 0 }} />
+                        }
+                        <span className="hidden sm:inline" style={{ fontSize: 8, fontWeight: 700, color: "hsl(var(--muted-foreground))" }}>
+                          {getSubCategoryLabel(cat) ?? getParentLabel(cat)}
+                        </span>
                         <span style={{ fontSize: "clamp(8px,1.3vw,9px)", fontWeight: 700, color, fontFamily: "'DM Mono', monospace" }}>
                           {formatAmount(amt)}
                         </span>

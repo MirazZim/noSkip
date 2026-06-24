@@ -8,7 +8,7 @@ import {
   startOfMonth, endOfMonth, isBefore, isWithinInterval,
 } from "date-fns";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Expense, getCategoryColor } from "@/hooks/useExpenses";
+import { Expense, getCategoryColor, getSubCategoryEmoji, getSubCategoryLabel, getParentLabel } from "@/hooks/useExpenses";
 import { useCurrency } from "@/hooks/useCurrency";
 
 interface Props {
@@ -127,12 +127,14 @@ export function DashboardExpenseCharts({ expenses, month }: Props) {
               <div className="flex-1 space-y-1">
                 {categoryData.slice(0, 5).map((cat) => (
                   <div key={cat.name} className="flex items-center justify-between text-sm">
-                    <div className="flex items-center gap-2">
-                      <div
-                        className="h-2 w-2 rounded-full"
-                        style={{ backgroundColor: getCategoryColor(cat.name) }}
-                      />
-                      <span className="text-muted-foreground text-xs">{cat.name}</span>
+                    <div className="flex items-center gap-1.5">
+                      {getSubCategoryEmoji(cat.name)
+                        ? <span className="text-xs leading-none">{getSubCategoryEmoji(cat.name)}</span>
+                        : <div className="h-2 w-2 rounded-full shrink-0" style={{ backgroundColor: getCategoryColor(cat.name) }} />
+                      }
+                      <span className="text-muted-foreground text-xs">
+                        {getSubCategoryLabel(cat.name) ?? getParentLabel(cat.name)}
+                      </span>
                     </div>
                     <span className="font-medium text-xs tabular-nums">{formatAmount(cat.value)}</span>
                   </div>

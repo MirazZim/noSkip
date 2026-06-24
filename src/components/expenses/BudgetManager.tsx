@@ -6,7 +6,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   useUpsertBudget, useDeleteBudget, EXPENSE_CATEGORIES,
-  Budget, Expense, getCategoryColor,
+  Budget, Expense, getCategoryColor, getParentLabel, parseCategoryValue,
 } from "@/hooks/useExpenses";
 import { useCurrency } from "@/hooks/useCurrency";
 import { cn } from "@/lib/utils";
@@ -219,7 +219,7 @@ export function BudgetManager({ budgets, expenses, month, open: controlledOpen, 
           <div className="divide-y divide-border/40">
             {categoryBudgets.map((b, i) => {
               const spent = cycleExpenses
-                .filter((e) => e.category === b.category)
+                .filter((e) => parseCategoryValue(e.category).parentId === b.category)
                 .reduce((s, e) => s + e.amount, 0);
               const pct = Math.min((spent / b.amount) * 100, 100);
               const color = getCategoryColor(b.category);
@@ -236,7 +236,7 @@ export function BudgetManager({ budgets, expenses, month, open: controlledOpen, 
                         <div className="h-2 w-2 rounded-full" style={{ backgroundColor: color }} />
                       </div>
                       <div>
-                        <p className="text-sm font-semibold leading-none">{b.category}</p>
+                        <p className="text-sm font-semibold leading-none">{b.category === "Overall" ? "Overall" : getParentLabel(b.category)}</p>
                         <p className="text-[10px] text-muted-foreground mt-0.5 tabular-nums">
                           {formatAmount(spent)} of {formatAmount(b.amount)}
                         </p>
@@ -375,7 +375,7 @@ export function BudgetManager({ budgets, expenses, month, open: controlledOpen, 
                         <div className="flex items-center gap-2.5">
                           <div className="h-2 w-2 rounded-full"
                             style={{ backgroundColor: b.category === "Overall" ? "hsl(var(--primary))" : color }} />
-                          <span className="text-sm font-semibold">{b.category}</span>
+                          <span className="text-sm font-semibold">{b.category === "Overall" ? "Overall" : getParentLabel(b.category)}</span>
                         </div>
                         <div className="flex items-center gap-2">
                           <span className="text-sm tabular-nums font-bold text-muted-foreground">{formatAmount(b.amount)}</span>

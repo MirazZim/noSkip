@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { format } from "date-fns";
-import { CalendarIcon, Pencil } from "lucide-react";
+import { CalendarIcon } from "lucide-react";
 import { z } from "zod";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -9,12 +9,13 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Textarea } from "@/components/ui/textarea";
 import { Expense, EXPENSE_CATEGORIES } from "@/hooks/useExpenses";
 import { useUpdateExpense } from "@/hooks/useExpenses";
+import { useCustomCategories } from "@/hooks/useCustomCategories";
+import { CategorySelector } from "@/components/expenses/AddExpenseDialog";
 import { toast } from "sonner";
 
 const schema = z.object({
@@ -34,6 +35,11 @@ interface Props {
 
 export function EditExpenseDialog({ expense, open, onOpenChange }: Props) {
   const updateExpense = useUpdateExpense();
+  const { data: customCategories = [] } = useCustomCategories();
+  const allCategoryNames = [
+    ...EXPENSE_CATEGORIES.map((c) => c.id),
+    ...customCategories.map((c) => c.name),
+  ];
 
   const form = useForm<FormValues>({
     resolver: zodResolver(schema),
@@ -100,18 +106,13 @@ export function EditExpenseDialog({ expense, open, onOpenChange }: Props) {
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>Category</FormLabel>
-                  <Select onValueChange={field.onChange} value={field.value}>
-                    <FormControl>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select category" />
-                      </SelectTrigger>
-                    </FormControl>
-                    <SelectContent>
-                      {EXPENSE_CATEGORIES.map((cat) => (
-                        <SelectItem key={cat.id} value={cat.id}>{cat.label}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <CategorySelector
+                    value={field.value}
+                    onChange={field.onChange}
+                    customCategories={customCategories}
+                    allNames={allCategoryNames}
+                    onCategoryCreated={() => {}}
+                  />
                   <FormMessage />
                 </FormItem>
               )}
