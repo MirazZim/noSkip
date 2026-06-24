@@ -1,6 +1,6 @@
 import { format, isToday, isYesterday, parseISO } from "date-fns";
 import { Plus, Pencil, Trash2, TrendingUp, TrendingDown, Minus } from "lucide-react";
-import { Expense, CATEGORY_COLORS, type ExpenseCategory } from "@/hooks/useExpenses";
+import { Expense, getCategoryColor } from "@/hooks/useExpenses";
 import { Income, INCOME_SOURCE_COLORS, type IncomeSource } from "@/hooks/useIncomes";
 import { useCurrency } from "@/hooks/useCurrency";
 import { useState, useRef, useCallback } from "react";
@@ -360,7 +360,7 @@ export function DayDetailView({
                 .sort((a, b) => b[1] - a[1])
                 .map(([cat, amount]) => (
                   <div key={cat} className="flex items-center gap-1.5 rounded-full border border-border/50 bg-card px-2.5 py-1 shadow-sm">
-                    <div className="h-1.5 w-1.5 rounded-full shrink-0" style={{ backgroundColor: CATEGORY_COLORS[cat as ExpenseCategory] || CATEGORY_COLORS.Other }} />
+                    <div className="h-1.5 w-1.5 rounded-full shrink-0" style={{ backgroundColor: getCategoryColor(cat) }} />
                     <span className="text-[11px] font-medium text-foreground">{cat}</span>
                     <span className="text-[11px] text-muted-foreground">{formatAmount(amount)}</span>
                   </div>
@@ -386,9 +386,9 @@ export function DayDetailView({
                   <div className="flex items-center gap-3 px-4 py-3.5">
                     <div
                       className="h-8 w-8 rounded-xl shrink-0 flex items-center justify-center"
-                      style={{ backgroundColor: hslAlpha(CATEGORY_COLORS[exp.category as ExpenseCategory] || CATEGORY_COLORS.Other, 0.09) }}
+                      style={{ backgroundColor: hslAlpha(getCategoryColor(exp.category), 0.09) }}
                     >
-                      <div className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: CATEGORY_COLORS[exp.category as ExpenseCategory] || CATEGORY_COLORS.Other }} />
+                      <div className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: getCategoryColor(exp.category) }} />
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center justify-between gap-2">

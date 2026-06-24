@@ -7,7 +7,7 @@ import {
   eachDayOfInterval, startOfMonth, endOfMonth,
   format, isBefore,
 } from "date-fns";
-import { Expense, CATEGORY_COLORS, type ExpenseCategory } from "@/hooks/useExpenses";
+import { Expense, getCategoryColor } from "@/hooks/useExpenses";
 import { useCurrency } from "@/hooks/useCurrency";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { ChevronRight } from "lucide-react";
@@ -91,7 +91,7 @@ function CategoryBreakdownDialog({
                     {categoryData.map((entry) => (
                       <Cell
                         key={entry.name}
-                        fill={CATEGORY_COLORS[entry.name as ExpenseCategory] || CATEGORY_COLORS.Other}
+                        fill={getCategoryColor(entry.name)}
                       />
                     ))}
                   </Pie>
@@ -107,7 +107,7 @@ function CategoryBreakdownDialog({
           {/* Full list */}
           <div className="flex flex-col gap-2">
             {categoryData.map((cat, i) => {
-              const color = CATEGORY_COLORS[cat.name as ExpenseCategory] || CATEGORY_COLORS.Other;
+              const color = getCategoryColor(cat.name);
               const pct = total ? (cat.value / total) * 100 : 0;
               return (
                 <div
@@ -216,7 +216,7 @@ export function ExpenseCharts({ expenses, month }: Props) {
               {topCategory && (
                 <div className="text-right">
                   <p className="text-[10px] text-muted-foreground uppercase tracking-widest">Top spend</p>
-                  <p className="text-sm font-bold" style={{ color: CATEGORY_COLORS[topCategory.name as ExpenseCategory] || CATEGORY_COLORS.Other }}>
+                  <p className="text-sm font-bold" style={{ color: getCategoryColor(topCategory.name) }}>
                     {topCategory.name} · {topPct}%
                   </p>
                 </div>
@@ -247,7 +247,7 @@ export function ExpenseCharts({ expenses, month }: Props) {
                       {categoryData.map((entry) => (
                         <Cell
                           key={entry.name}
-                          fill={CATEGORY_COLORS[entry.name as ExpenseCategory] || CATEGORY_COLORS.Other}
+                          fill={getCategoryColor(entry.name)}
                         />
                       ))}
                     </Pie>
@@ -263,7 +263,7 @@ export function ExpenseCharts({ expenses, month }: Props) {
               {/* Category rows — preview top 5 */}
               <div className="flex-1 flex flex-col justify-center gap-2 min-w-0">
                 {categoryData.slice(0, 5).map((cat, i) => {
-                  const color = CATEGORY_COLORS[cat.name as ExpenseCategory] || CATEGORY_COLORS.Other;
+                  const color = getCategoryColor(cat.name);
                   const pct = total ? (cat.value / total) * 100 : 0;
                   return (
                     <div

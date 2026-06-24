@@ -8,7 +8,7 @@ import {
   startOfMonth, endOfMonth, isBefore, isWithinInterval,
 } from "date-fns";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Expense, CATEGORY_COLORS, type ExpenseCategory } from "@/hooks/useExpenses";
+import { Expense, getCategoryColor } from "@/hooks/useExpenses";
 import { useCurrency } from "@/hooks/useCurrency";
 
 interface Props {
@@ -117,7 +117,7 @@ export function DashboardExpenseCharts({ expenses, month }: Props) {
                       {categoryData.map((entry) => (
                         <Cell
                           key={entry.name}
-                          fill={CATEGORY_COLORS[entry.name as ExpenseCategory] || CATEGORY_COLORS.Other}
+                          fill={getCategoryColor(entry.name)}
                         />
                       ))}
                     </Pie>
@@ -130,7 +130,7 @@ export function DashboardExpenseCharts({ expenses, month }: Props) {
                     <div className="flex items-center gap-2">
                       <div
                         className="h-2 w-2 rounded-full"
-                        style={{ backgroundColor: CATEGORY_COLORS[cat.name as ExpenseCategory] || CATEGORY_COLORS.Other }}
+                        style={{ backgroundColor: getCategoryColor(cat.name) }}
                       />
                       <span className="text-muted-foreground text-xs">{cat.name}</span>
                     </div>

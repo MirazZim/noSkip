@@ -4,7 +4,7 @@ import { Sparkles } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { AppLayout } from "@/components/AppLayout";
 import { useHabits, useHabitCompletions, calculateStreak } from "@/hooks/useHabits";
-import { useExpenses, CATEGORY_COLORS, type ExpenseCategory } from "@/hooks/useExpenses";
+import { useExpenses, getCategoryColor } from "@/hooks/useExpenses";
 import { useHabitReminders } from "@/hooks/useHabitReminders";
 import { useCurrency } from "@/hooks/useCurrency";
 import { DashboardExpenseCharts } from "@/components/dashboard/DashboardExpenseCharts";
@@ -942,7 +942,7 @@ export default function Dashboard() {
             {todayExpenses.length > 0 ? (
               <div>
                 {todayExpenses.slice(0, 5).map((e, i) => {
-                  const color = CATEGORY_COLORS[e.category as ExpenseCategory] || CATEGORY_COLORS.Other;
+                  const color = getCategoryColor(e.category);
                   const pct = todayTotal > 0 ? e.amount / todayTotal : 0;
                   return (
                     <div
@@ -1015,7 +1015,7 @@ export default function Dashboard() {
                   borderTop: "1px solid hsl(var(--border))",
                 }}>
                   {Object.entries(cats).map(([cat, amt]) => {
-                    const color = CATEGORY_COLORS[cat as ExpenseCategory] || CATEGORY_COLORS.Other;
+                    const color = getCategoryColor(cat);
                     return (
                       <div key={cat} style={{
                         display: "flex", alignItems: "center", gap: 4,

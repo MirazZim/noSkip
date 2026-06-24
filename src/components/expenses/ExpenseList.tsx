@@ -4,7 +4,7 @@ import {
   Zap, Heart, Plane, Monitor, Music, BookOpen, Coffee, Gift, MoreHorizontal,
 } from "lucide-react";
 import {
-  Expense, useDeleteExpense, CATEGORY_COLORS, type ExpenseCategory,
+  Expense, useDeleteExpense, getCategoryColor,
 } from "@/hooks/useExpenses";
 import { useCustomCategories } from "@/hooks/useCustomCategories";
 import { useCurrency } from "@/hooks/useCurrency";
@@ -200,11 +200,7 @@ export function ExpenseList({ expenses, title }: ExpenseListProps) {
   const [openRowId, setOpenRowId] = useState<string | null>(null);
 
   function resolveColor(category: string): string {
-    return (
-      CATEGORY_COLORS[category as ExpenseCategory] ??
-      customCategories.find((c) => c.name === category)?.color ??
-      CATEGORY_COLORS.Other
-    );
+    return getCategoryColor(category, customCategories);
   }
 
   const dayTotal = expenses.reduce((sum, exp) => sum + exp.amount, 0);

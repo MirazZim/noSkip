@@ -6,7 +6,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   useUpsertBudget, useDeleteBudget, EXPENSE_CATEGORIES,
-  Budget, Expense, CATEGORY_COLORS, type ExpenseCategory,
+  Budget, Expense, getCategoryColor,
 } from "@/hooks/useExpenses";
 import { useCurrency } from "@/hooks/useCurrency";
 import { cn } from "@/lib/utils";
@@ -222,7 +222,7 @@ export function BudgetManager({ budgets, expenses, month, open: controlledOpen, 
                 .filter((e) => e.category === b.category)
                 .reduce((s, e) => s + e.amount, 0);
               const pct = Math.min((spent / b.amount) * 100, 100);
-              const color = CATEGORY_COLORS[b.category as ExpenseCategory] || CATEGORY_COLORS.Other;
+              const color = getCategoryColor(b.category);
               const sc = statusColor(pct);
               const remaining = b.amount - spent;
 
@@ -324,12 +324,12 @@ export function BudgetManager({ budgets, expenses, month, open: controlledOpen, 
                   <SelectContent className="rounded-2xl">
                     <SelectItem value="Overall">Overall</SelectItem>
                     {EXPENSE_CATEGORIES.map((cat) => {
-                      const color = CATEGORY_COLORS[cat as ExpenseCategory] || CATEGORY_COLORS.Other;
+                      const color = getCategoryColor(cat.id);
                       return (
-                        <SelectItem key={cat} value={cat} className="rounded-xl">
+                        <SelectItem key={cat.id} value={cat.id} className="rounded-xl">
                           <div className="flex items-center gap-2.5">
                             <div className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: color }} />
-                            {cat}
+                            {cat.label}
                           </div>
                         </SelectItem>
                       );
@@ -369,7 +369,7 @@ export function BudgetManager({ budgets, expenses, month, open: controlledOpen, 
                 <div className="pt-2 border-t border-border/50 space-y-1">
                   <p className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground pb-1">Active Budgets</p>
                   {budgets.map((b) => {
-                    const color = CATEGORY_COLORS[b.category as ExpenseCategory] || CATEGORY_COLORS.Other;
+                    const color = getCategoryColor(b.category);
                     return (
                       <div key={b.id} className="group flex items-center justify-between rounded-xl px-3 py-2 hover:bg-muted/40 transition-colors">
                         <div className="flex items-center gap-2.5">

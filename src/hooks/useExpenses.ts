@@ -4,46 +4,233 @@ import { useAuth } from "@/contexts/AuthContext";
 import { startOfMonth, endOfMonth, format, subMonths } from "date-fns";
 import { CustomCategory } from "./useCustomCategories";
 
-export const EXPENSE_CATEGORIES = [
-  "Food",
-  "Transport",
-  "Entertainment",
-  "Health",
-  "Shopping",
-  "Utilities",
-  "Bills",
-  "Subscriptions",
-  "Groceries",
-  "Dining Out",
-  "Rent",
-  "Education",
-  "Gifts",
-  "Smoking",
-  "Other",
-] as const;
+export interface SubCategory {
+  id: string;
+  label: string;
+}
 
-export type ExpenseCategory = (typeof EXPENSE_CATEGORIES)[number];
+export interface ParentCategory {
+  id: string;
+  label: string;
+  color: string;
+  emoji: string;
+  subcategories: SubCategory[];
+}
 
-export const CATEGORY_COLORS: Record<ExpenseCategory, string> = {
-  Food: "hsl(32, 95%, 54%)",
-  Transport: "hsl(210, 70%, 55%)",
-  Entertainment: "hsl(280, 60%, 55%)",
-  Health: "hsl(160, 84%, 39%)",
-  Shopping: "hsl(340, 70%, 55%)",
-  Utilities: "hsl(43, 96%, 56%)",
-  Other: "hsl(220, 10%, 55%)",
+export const EXPENSE_CATEGORIES: ParentCategory[] = [
+  {
+    id: "food-drinks",
+    label: "Food & Drinks",
+    color: "hsl(25, 85%, 55%)",
+    emoji: "🍽️",
+    subcategories: [
+      { id: "groceries",      label: "Groceries" },
+      { id: "dining-out",     label: "Dining Out" },
+      { id: "street-food",    label: "Street Food / Snacks" },
+      { id: "coffee-tea",     label: "Coffee / Tea" },
+      { id: "meal-delivery",  label: "Meal Delivery" },
+      { id: "drinks",         label: "Drinks" },
+    ],
+  },
+  {
+    id: "transport",
+    label: "Transport",
+    color: "hsl(210, 75%, 50%)",
+    emoji: "🚗",
+    subcategories: [
+      { id: "rickshaw-cng",   label: "Rickshaw / CNG" },
+      { id: "ride-share",     label: "Ride-share" },
+      { id: "public-transit", label: "Bus / Public Transport" },
+      { id: "fuel",           label: "Fuel / Petrol" },
+      { id: "vehicle-maint",  label: "Vehicle Maintenance" },
+      { id: "parking",        label: "Parking" },
+    ],
+  },
+  {
+    id: "housing",
+    label: "Housing",
+    color: "hsl(160, 60%, 40%)",
+    emoji: "🏠",
+    subcategories: [
+      { id: "rent",           label: "Rent" },
+      { id: "electricity",    label: "Electricity / Gas / Water" },
+      { id: "internet",       label: "Internet / WiFi" },
+      { id: "home-maint",     label: "Home Maintenance" },
+      { id: "household-sup",  label: "Household Supplies" },
+    ],
+  },
+  {
+    id: "health",
+    label: "Health",
+    color: "hsl(340, 70%, 55%)",
+    emoji: "💊",
+    subcategories: [
+      { id: "doctor",         label: "Doctor / Consultation" },
+      { id: "medicine",       label: "Medicine / Pharmacy" },
+      { id: "lab-tests",      label: "Lab Tests" },
+      { id: "gym",            label: "Gym / Fitness" },
+      { id: "mental-health",  label: "Mental Health" },
+    ],
+  },
+  {
+    id: "shopping",
+    label: "Shopping",
+    color: "hsl(280, 65%, 55%)",
+    emoji: "🛍️",
+    subcategories: [
+      { id: "clothing",       label: "Clothing / Apparel" },
+      { id: "gadgets",        label: "Electronics / Gadgets" },
+      { id: "personal-care",  label: "Personal Care / Grooming" },
+      { id: "books-stat",     label: "Books / Stationery" },
+      { id: "household-item", label: "Household Items" },
+    ],
+  },
+  {
+    id: "entertainment",
+    label: "Entertainment",
+    color: "hsl(45, 90%, 50%)",
+    emoji: "🎮",
+    subcategories: [
+      { id: "streaming",      label: "Streaming Services" },
+      { id: "subscriptions",  label: "Subscriptions" },
+      { id: "games",          label: "Games" },
+      { id: "events",         label: "Events / Outings" },
+      { id: "hobbies",        label: "Hobbies" },
+    ],
+  },
+  {
+    id: "finance",
+    label: "Finance",
+    color: "hsl(140, 60%, 40%)",
+    emoji: "💰",
+    subcategories: [
+      { id: "savings",        label: "Savings / Investment" },
+      { id: "loan-repay",     label: "Loan Repayment" },
+      { id: "insurance",      label: "Insurance" },
+      { id: "tax-fees",       label: "Tax / Govt Fees" },
+    ],
+  },
+  {
+    id: "education",
+    label: "Education",
+    color: "hsl(195, 70%, 45%)",
+    emoji: "📚",
+    subcategories: [
+      { id: "tuition",        label: "Tuition / Courses" },
+      { id: "edu-books",      label: "Books / Materials" },
+      { id: "exam-fees",      label: "Exam Fees" },
+    ],
+  },
+  {
+    id: "social",
+    label: "Social",
+    color: "hsl(15, 80%, 55%)",
+    emoji: "🤝",
+    subcategories: [
+      { id: "gifts",          label: "Gifts" },
+      { id: "charity",        label: "Charity / Donations" },
+      { id: "social-outing",  label: "Social Outings" },
+    ],
+  },
+  {
+    id: "business",
+    label: "Business",
+    color: "hsl(220, 60%, 50%)",
+    emoji: "💼",
+    subcategories: [
+      { id: "raw-materials",  label: "Raw Materials" },
+      { id: "delivery",       label: "Delivery / Shipping" },
+      { id: "marketing",      label: "Marketing" },
+      { id: "tools-software", label: "Tools / Software" },
+    ],
+  },
+  {
+    id: "communication",
+    label: "Communication",
+    color: "hsl(185, 65%, 45%)",
+    emoji: "📱",
+    subcategories: [
+      { id: "mobile-data",    label: "Mobile Recharge / Data" },
+      { id: "broadband",      label: "Broadband" },
+    ],
+  },
+  {
+    id: "personal-habits",
+    label: "Personal Habits",
+    color: "hsl(0, 60%, 50%)",
+    emoji: "🚬",
+    subcategories: [
+      { id: "smoking",        label: "Smoking" },
+      { id: "alcohol",        label: "Alcohol / Drinking" },
+      { id: "weed",           label: "Weed" },
+      { id: "other-drugs",    label: "Other Substances" },
+      { id: "gambling",       label: "Gambling / Betting" },
+      { id: "other-habits",   label: "Other Habits" },
+    ],
+  },
+  {
+    id: "other",
+    label: "Other",
+    color: "hsl(220, 15%, 55%)",
+    emoji: "❓",
+    subcategories: [
+      { id: "uncategorized",  label: "Uncategorized" },
+    ],
+  },
+];
 
+export function parseCategoryValue(compound: string): {
+  parentId: string;
+  subId?: string;
+} {
+  const [parentId, subId] = compound.split(":");
+  return { parentId, subId };
+}
 
-  // NEW categories with matching HSL colors
-  Bills: "hsl(0, 90%, 55%)",           // Red - urgent bills
-  Subscriptions: "hsl(210, 80%, 50%)", // Deep blue - recurring
-  Groceries: "hsl(40, 90%, 50%)",      // Warm orange - food shopping  
-  "Dining Out": "hsl(30, 85%, 55%)",   // Light orange - restaurants
-  Rent: "hsl(220, 60%, 45%)",          // Dark blue - housing
-  Education: "hsl(260, 70%, 55%)",     // Purple - learning
-  Gifts: "hsl(330, 75%, 55%)",
-  Smoking: "hsl(20, 40%, 45%)",     // Pink - presents
-};
+export function buildCategoryValue(parentId: string, subId?: string): string {
+  return subId ? `${parentId}:${subId}` : parentId;
+}
+
+export function getParentCategory(parentId: string): ParentCategory | undefined {
+  return EXPENSE_CATEGORIES.find((c) => c.id === parentId);
+}
+
+export function getCategoryColor(compound: string, customCategories?: CustomCategory[]): string {
+  const { parentId } = parseCategoryValue(compound);
+  const builtIn = getParentCategory(parentId)?.color;
+  if (builtIn) return builtIn;
+  if (customCategories) {
+    const custom = customCategories.find((c) => c.name === compound);
+    if (custom) return custom.color;
+  }
+  return "#64748b";
+}
+
+export function getParentLabel(compound: string): string {
+  const { parentId } = parseCategoryValue(compound);
+  return getParentCategory(parentId)?.label ?? compound;
+}
+
+export function getSubCategoryLabel(compound: string): string | undefined {
+  const { parentId, subId } = parseCategoryValue(compound);
+  if (!subId) return undefined;
+  const parent = getParentCategory(parentId);
+  return parent?.subcategories.find((s) => s.id === subId)?.label;
+}
+
+export function getCategoryDisplayLabel(compound: string): string {
+  const parentLabel = getParentLabel(compound);
+  const subLabel = getSubCategoryLabel(compound);
+  return subLabel ? `${parentLabel} · ${subLabel}` : parentLabel;
+}
+
+export function isValidCategory(compound: string): boolean {
+  const { parentId, subId } = parseCategoryValue(compound);
+  const parent = getParentCategory(parentId);
+  if (!parent) return false;
+  if (!subId) return true;
+  return parent.subcategories.some((s) => s.id === subId);
+}
 
 export interface Expense {
   id: string;
@@ -84,16 +271,6 @@ export function useExpenses(month: Date) {
     enabled: !!user,
   });
 }
-
-// Add this to useExpenses.ts
-export function getCategoryColor(category: string, customCategories: CustomCategory[] = []): string {
-  return (
-    (CATEGORY_COLORS as Record<string, string>)[category] ||
-    customCategories.find((c) => c.name === category)?.color ||
-    "#64748b"
-  );
-}
-
 
 export function usePrevMonthExpenses(month: Date) {
   const { user } = useAuth();

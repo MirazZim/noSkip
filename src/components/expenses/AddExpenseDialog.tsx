@@ -12,7 +12,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Textarea } from "@/components/ui/textarea";
-import { useAddExpense, getCategoryColor, EXPENSE_CATEGORIES, CATEGORY_COLORS, type ExpenseCategory } from "@/hooks/useExpenses";
+import { useAddExpense, getCategoryColor, EXPENSE_CATEGORIES } from "@/hooks/useExpenses";
 import { useCurrency } from "@/hooks/useCurrency";
 import {
   useCustomCategories,
@@ -289,13 +289,13 @@ function CategorySelector({
           ) : (
             <div className="flex flex-col gap-0.5">
               {EXPENSE_CATEGORIES.map((cat) => {
-                const color = getCategoryColor(cat, customCategories) ?? "#64748b";
-                const isSelected = value === cat;
+                const color = getCategoryColor(cat.id, customCategories) ?? "#64748b";
+                const isSelected = value === cat.id;
                 return (
                   <button
-                    key={cat}
+                    key={cat.id}
                     type="button"
-                    onClick={() => { onChange(cat); setOpen(false); }}
+                    onClick={() => { onChange(cat.id); setOpen(false); }}
                     className={cn(
                       "flex items-center gap-2.5 px-3 py-2 rounded-xl text-sm text-left transition-colors w-full",
                       isSelected
@@ -305,7 +305,7 @@ function CategorySelector({
                     style={isSelected ? { backgroundColor: `${color}15`, color } : {}}
                   >
                     <span className="h-2.5 w-2.5 rounded-full shrink-0" style={{ backgroundColor: color }} />
-                    <span className="flex-1">{cat}</span>
+                    <span className="flex-1">{cat.label}</span>
                     {isSelected && <Check className="h-3.5 w-3.5 shrink-0" />}
                   </button>
                 );
@@ -398,7 +398,7 @@ export function AddExpenseDialog({ defaultDate, onDateUsed }: AddExpenseDialogPr
   const accentColor = watchedCategory ? getCategoryColor(watchedCategory, customCategories) : null;
 
   const allCategoryNames = [
-    ...EXPENSE_CATEGORIES,
+    ...EXPENSE_CATEGORIES.map(c => c.id),
     ...customCategories.map((c) => c.name),
   ];
 

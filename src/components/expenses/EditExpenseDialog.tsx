@@ -108,7 +108,7 @@ export function EditExpenseDialog({ expense, open, onOpenChange }: Props) {
                     </FormControl>
                     <SelectContent>
                       {EXPENSE_CATEGORIES.map((cat) => (
-                        <SelectItem key={cat} value={cat}>{cat}</SelectItem>
+                        <SelectItem key={cat.id} value={cat.id}>{cat.label}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>

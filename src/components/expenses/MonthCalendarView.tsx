@@ -3,7 +3,7 @@ import {
   startOfMonth, endOfMonth, eachDayOfInterval,
   format, getDay, isToday, isFuture,
 } from "date-fns";
-import { Expense, CATEGORY_COLORS, type ExpenseCategory } from "@/hooks/useExpenses";
+import { Expense, getCategoryColor } from "@/hooks/useExpenses";
 import { Income } from "@/hooks/useIncomes";
 import { useCustomCategories } from "@/hooks/useCustomCategories";
 import { useCurrency } from "@/hooks/useCurrency";
@@ -25,11 +25,7 @@ export function MonthCalendarView({ expenses, incomes, month, onMonthChange, onD
   const { data: customCategories = [] } = useCustomCategories();
 
   function resolveColor(category: string): string {
-    return (
-      CATEGORY_COLORS[category as ExpenseCategory] ??
-      customCategories.find((c) => c.name === category)?.color ??
-      CATEGORY_COLORS.Other
-    );
+    return getCategoryColor(category, customCategories);
   }
 
   const { days, leadingBlanks, dayExpenseMap, dayIncomeMap } = useMemo(() => {
