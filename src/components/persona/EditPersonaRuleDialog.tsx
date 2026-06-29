@@ -6,10 +6,11 @@ import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { useUpdatePersonaRule, type CoachReaction, type PersonaRule } from "@/hooks/usePersonaRules";
 import { PersonaCoachNote } from "./PersonaCoachNote";
+import { DailyCheckForm, buildDescription, parseMindsetAndScenarios, type ScenarioInput } from "./DailyCheckForm";
 import { toast } from "sonner";
 
 const MAX_LEN = 120;
-const MAX_DESC_LEN = 1000;
+const MAX_MINDSET_LEN = 1000;
 
 interface Props {
   rule: PersonaRule;
@@ -19,15 +20,17 @@ interface Props {
 
 export function EditPersonaRuleDialog({ rule, open, onOpenChange }: Props) {
   const [text, setText] = useState(rule.name);
-  const [description, setDescription] = useState(rule.description ?? "");
+  const [mindsetText, setMindsetText] = useState("");
+  const [scenarios, setScenarios] = useState<ScenarioInput[]>([]);
   const [reaction, setReaction] = useState<CoachReaction | null>(null);
   const updateRule = useUpdatePersonaRule();
 
-  // Re-sync when a different rule is opened, and clear any prior reaction.
   useEffect(() => {
     if (open) {
       setText(rule.name);
-      setDescription(rule.description ?? "");
+      const parsed = parseMindsetAndScenarios(rule.description ?? "");
+      setMindsetText(parsed.mindset);
+      setScenarios(parsed.scenarios);
       setReaction(null);
     }
   }, [open, rule.id, rule.name, rule.description]);
@@ -35,12 +38,12 @@ export function EditPersonaRuleDialog({ rule, open, onOpenChange }: Props) {
   const handleSubmit = async () => {
     const trimmed = text.trim();
     if (!trimmed) return;
+    const description = buildDescription(mindsetText.trim(), scenarios);
     try {
-      // Editing re-runs the coach reaction (one round-trip).
       const result = await updateRule.mutateAsync({
         id: rule.id,
         text: trimmed,
-        description: description.trim() || undefined,
+        description: description || undefined,
       });
       setReaction(result);
     } catch {
@@ -52,7 +55,7 @@ export function EditPersonaRuleDialog({ rule, open, onOpenChange }: Props) {
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="font-display">Reframe your rule</DialogTitle>
           <DialogDescription>
@@ -61,6 +64,7 @@ export function EditPersonaRuleDialog({ rule, open, onOpenChange }: Props) {
         </DialogHeader>
 
         <div className="space-y-4">
+          {/* Rule name */}
           <div className="space-y-2">
             <Label htmlFor="persona-rule-edit">Your rule</Label>
             <Textarea
@@ -79,22 +83,35 @@ export function EditPersonaRuleDialog({ rule, open, onOpenChange }: Props) {
             <p className="text-right text-[11px] text-muted-foreground">{text.length}/{MAX_LEN}</p>
           </div>
 
+          {/* Mindset */}
           <div className="space-y-2">
-            <Label htmlFor="persona-desc-edit">
+            <Label htmlFor="persona-mindset-edit">
               Mindset & principles
               <span className="ml-2 text-[11px] font-normal text-muted-foreground">optional</span>
             </Label>
             <Textarea
-              id="persona-desc-edit"
-              value={description}
-              onChange={(e) => setDescription(e.target.value.slice(0, MAX_DESC_LEN))}
+              id="persona-mindset-edit"
+              value={mindsetText}
+              onChange={(e) => setMindsetText(e.target.value.slice(0, MAX_MINDSET_LEN))}
               placeholder={"Explain the mindset behind this rule — why it matters, what it looks like in practice.\n\nStart a line with > to make it a power statement.\n> Seal your lips. Open them only when the work is done."}
               rows={5}
               className="resize-none text-[13px] leading-relaxed"
             />
-            {description.length > 0 && (
-              <p className="text-right text-[11px] text-muted-foreground">{description.length}/{MAX_DESC_LEN}</p>
+            {mindsetText.length > 0 && (
+              <p className="text-right text-[11px] text-muted-foreground">{mindsetText.length}/{MAX_MINDSET_LEN}</p>
             )}
+          </div>
+
+          {/* Daily Check */}
+          <div className="space-y-2">
+            <Label>
+              Daily Check
+              <span className="ml-2 text-[11px] font-normal text-muted-foreground">optional</span>
+            </Label>
+            <p className="text-[11px] text-muted-foreground -mt-1">
+              Decision scenarios that appear inside the Mindset card.
+            </p>
+            <DailyCheckForm scenarios={scenarios} onChange={setScenarios} disabled={saved} />
           </div>
 
           {saved && reaction!.flag_level !== "none" && (

@@ -6,21 +6,24 @@ import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogTrigger } from "@/components/ui/dialog";
 import { useAddPersonaRule, type CoachReaction } from "@/hooks/usePersonaRules";
 import { PersonaCoachNote } from "./PersonaCoachNote";
+import { DailyCheckForm, buildDescription, type ScenarioInput } from "./DailyCheckForm";
 import { toast } from "sonner";
 
 const MAX_LEN = 120;
-const MAX_DESC_LEN = 1000;
+const MAX_MINDSET_LEN = 1000;
 
 export function AddPersonaRuleDialog() {
   const [open, setOpen] = useState(false);
   const [text, setText] = useState("");
-  const [description, setDescription] = useState("");
+  const [mindsetText, setMindsetText] = useState("");
+  const [scenarios, setScenarios] = useState<ScenarioInput[]>([]);
   const [reaction, setReaction] = useState<CoachReaction | null>(null);
   const addRule = useAddPersonaRule();
 
   const reset = () => {
     setText("");
-    setDescription("");
+    setMindsetText("");
+    setScenarios([]);
     setReaction(null);
   };
 
@@ -32,10 +35,11 @@ export function AddPersonaRuleDialog() {
   const handleSubmit = async () => {
     const trimmed = text.trim();
     if (!trimmed) return;
+    const description = buildDescription(mindsetText.trim(), scenarios);
     try {
       const result = await addRule.mutateAsync({
         text: trimmed,
-        description: description.trim() || undefined,
+        description: description || undefined,
       });
       setReaction(result);
     } catch {
@@ -53,7 +57,7 @@ export function AddPersonaRuleDialog() {
           New Rule
         </Button>
       </DialogTrigger>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="font-display">Define a persona rule</DialogTitle>
           <DialogDescription>
@@ -83,28 +87,44 @@ export function AddPersonaRuleDialog() {
             <p className="text-right text-[11px] text-muted-foreground">{text.length}/{MAX_LEN}</p>
           </div>
 
-          {/* Optional description */}
           {!saved && (
-            <div className="space-y-2">
-              <Label htmlFor="persona-desc">
-                Mindset & principles
-                <span className="ml-2 text-[11px] font-normal text-muted-foreground">optional</span>
-              </Label>
-              <Textarea
-                id="persona-desc"
-                value={description}
-                onChange={(e) => setDescription(e.target.value.slice(0, MAX_DESC_LEN))}
-                placeholder={"Explain the mindset behind this rule — why it matters, what it looks like in practice.\n\nStart a line with > to make it a power statement.\n> Seal your lips. Open them only when the work is done."}
-                rows={5}
-                className="resize-none text-[13px] leading-relaxed"
-              />
-              {description.length > 0 && (
-                <p className="text-right text-[11px] text-muted-foreground">{description.length}/{MAX_DESC_LEN}</p>
-              )}
-            </div>
+            <>
+              {/* Mindset */}
+              <div className="space-y-2">
+                <Label htmlFor="persona-mindset">
+                  Mindset & principles
+                  <span className="ml-2 text-[11px] font-normal text-muted-foreground">optional</span>
+                </Label>
+                <Textarea
+                  id="persona-mindset"
+                  value={mindsetText}
+                  onChange={(e) => setMindsetText(e.target.value.slice(0, MAX_MINDSET_LEN))}
+                  placeholder={"Explain the mindset behind this rule — why it matters, what it looks like in practice.\n\nStart a line with > to make it a power statement.\n> Seal your lips. Open them only when the work is done."}
+                  rows={5}
+                  className="resize-none text-[13px] leading-relaxed"
+                />
+                {mindsetText.length > 0 && (
+                  <p className="text-right text-[11px] text-muted-foreground">{mindsetText.length}/{MAX_MINDSET_LEN}</p>
+                )}
+              </div>
+
+              {/* Daily Check */}
+              <div className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <Label>
+                    Daily Check
+                    <span className="ml-2 text-[11px] font-normal text-muted-foreground">optional</span>
+                  </Label>
+                </div>
+                <p className="text-[11px] text-muted-foreground -mt-1">
+                  Decision scenarios that appear inside the Mindset card.
+                </p>
+                <DailyCheckForm scenarios={scenarios} onChange={setScenarios} />
+              </div>
+            </>
           )}
 
-          {/* Coach's read — shown the moment the rule is saved */}
+          {/* Coach reaction */}
           {saved && (
             <div className="space-y-2">
               {reaction!.flag_level === "none" ? (

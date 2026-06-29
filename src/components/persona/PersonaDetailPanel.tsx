@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, ReactNode } from "react";
 import {
   format,
   startOfMonth, endOfMonth, eachDayOfInterval,
@@ -14,6 +14,55 @@ interface Props {
   habit: Habit;
   completions: HabitCompletion[];
   description?: string | null;
+}
+
+interface DailyCheckScenario {
+  title: string;
+  prompt: string;
+  outcomes: { label: string; text: string }[];
+}
+
+function parseInline(text: string): ReactNode[] {
+  const nodes: ReactNode[] = [];
+  const regex = /(\*\*(.+?)\*\*|\*(.+?)\*)/g;
+  let last = 0;
+  let match: RegExpExecArray | null;
+  while ((match = regex.exec(text)) !== null) {
+    if (match.index > last) nodes.push(text.slice(last, match.index));
+    if (match[0].startsWith("**")) {
+      nodes.push(<strong key={match.index}>{match[2]}</strong>);
+    } else {
+      nodes.push(<em key={match.index}>{match[3]}</em>);
+    }
+    last = match.index + match[0].length;
+  }
+  if (last < text.length) nodes.push(text.slice(last));
+  return nodes;
+}
+
+function parseDailyCheck(content: string): DailyCheckScenario[] {
+  const scenarios: DailyCheckScenario[] = [];
+  const lines = content.split("\n").map((l) => l.trim()).filter(Boolean);
+  let current: Partial<DailyCheckScenario> | null = null;
+
+  for (const line of lines) {
+    if (line.startsWith("→")) {
+      if (current) current.prompt = line.slice(1).trim();
+    } else if (line.startsWith("* ")) {
+      if (current) {
+        if (!current.outcomes) current.outcomes = [];
+        const raw = line.slice(1).trim();
+        const m = raw.match(/^\*\*(.+?)\*\*[:\s]+(.+)/);
+        if (m) current.outcomes.push({ label: m[1], text: m[2] });
+        else current.outcomes.push({ label: "", text: raw });
+      }
+    } else {
+      if (current?.title) scenarios.push(current as DailyCheckScenario);
+      current = { title: line.replace(/\*\*/g, ""), outcomes: [] };
+    }
+  }
+  if (current?.title) scenarios.push(current as DailyCheckScenario);
+  return scenarios;
 }
 
 const TrendUp = () => (
@@ -205,6 +254,73 @@ export function PersonaDetailPanel({ habit, completions, description }: Props) {
           letter-spacing: 0.02em;
         }
 
+        /* Daily Check */
+        .pdp-dc-divider {
+          margin: 16px 0 14px;
+          border: none; border-top: 1px solid hsl(var(--border) / 0.5);
+        }
+        .pdp-dc-header {
+          display: flex; align-items: center; gap: 6px; margin-bottom: 10px;
+        }
+        .pdp-dc-label {
+          font-size: 9px; font-weight: 700; text-transform: uppercase;
+          letter-spacing: 0.12em; color: hsl(var(--muted-foreground) / 0.65);
+        }
+        .pdp-dc-inner {
+          background: hsl(var(--card) / 0.55);
+          border: 1px solid hsl(var(--border) / 0.5);
+          border-radius: 10px;
+          padding: 12px 14px;
+          display: flex; flex-direction: column; gap: 0;
+        }
+        .pdp-dc-scenario {
+          padding: 10px 0;
+        }
+        .pdp-dc-scenario + .pdp-dc-scenario {
+          border-top: 1px solid hsl(var(--border) / 0.35);
+        }
+        .pdp-dc-scenario-title {
+          font-size: 12.5px; font-weight: 700;
+          color: hsl(var(--foreground) / 0.88);
+          margin-bottom: 6px;
+        }
+        .pdp-dc-prompt {
+          display: flex; align-items: baseline; gap: 6px;
+          margin-bottom: 8px;
+        }
+        .pdp-dc-prompt-arrow {
+          font-size: 13px; font-weight: 800;
+          color: hsl(var(--primary) / 0.7); flex-shrink: 0;
+        }
+        .pdp-dc-prompt-text {
+          font-size: 12px; color: hsl(var(--muted-foreground));
+          line-height: 1.5;
+        }
+        .pdp-dc-outcomes {
+          display: flex; flex-direction: column; gap: 5px;
+          padding-left: 19px;
+        }
+        .pdp-dc-outcome {
+          display: flex; align-items: baseline; gap: 7px;
+          font-size: 12px; line-height: 1.45;
+        }
+        .pdp-dc-badge {
+          padding: 1px 6px; border-radius: 4px;
+          font-size: 9.5px; font-weight: 700; flex-shrink: 0;
+          text-transform: uppercase; letter-spacing: 0.04em;
+        }
+        .pdp-dc-badge--yes {
+          background: hsl(var(--primary) / 0.12);
+          color: hsl(var(--primary));
+        }
+        .pdp-dc-badge--no {
+          background: hsl(var(--muted));
+          color: hsl(var(--muted-foreground));
+        }
+        .pdp-dc-outcome-text {
+          color: hsl(var(--foreground) / 0.72);
+        }
+
         /* Calendar */
         .pdp-cal-nav {
           display: flex; align-items: center; justify-content: space-between;
@@ -295,15 +411,18 @@ export function PersonaDetailPanel({ habit, completions, description }: Props) {
 
       {/* ── 1. Description (if set) ─────────────────────────────────────────── */}
       {description && (() => {
-        const lines = description.split('\n');
+        const [mindsetPart, dailyCheckPart] = description.split(/\n---+\n/);
+        const lines = (mindsetPart || "").split("\n");
         const bodyLines: string[] = [];
         const powerLines: string[] = [];
         lines.forEach((line) => {
-          if (line.startsWith('>')) powerLines.push(line.slice(1).trim());
+          if (line.startsWith(">")) powerLines.push(line.slice(1).trim());
           else bodyLines.push(line);
         });
-        const body = bodyLines.join('\n').trim();
-        const power = powerLines.join('\n').trim();
+        const body = bodyLines.join("\n").trim();
+        const power = powerLines.join("\n").trim();
+        const dailyCheck = dailyCheckPart ? parseDailyCheck(dailyCheckPart) : null;
+
         return (
           <div className="pdp-desc-wrap">
             <span className="pdp-desc-label">Mindset</span>
@@ -313,6 +432,50 @@ export function PersonaDetailPanel({ habit, completions, description }: Props) {
                 <span className="pdp-desc-power-quote">"</span>
                 <p className="pdp-desc-power-text">{power}</p>
               </div>
+            )}
+
+            {dailyCheck && dailyCheck.length > 0 && (
+              <>
+                <hr className="pdp-dc-divider" />
+                <div className="pdp-dc-header">
+                  <span className="pdp-dc-label">Daily Check</span>
+                </div>
+                <div className="pdp-dc-inner">
+                  {dailyCheck.map((scenario, i) => (
+                    <div key={i} className="pdp-dc-scenario">
+                      <div className="pdp-dc-scenario-title">{scenario.title}</div>
+                      {scenario.prompt && (
+                        <div className="pdp-dc-prompt">
+                          <span className="pdp-dc-prompt-arrow">→</span>
+                          <span className="pdp-dc-prompt-text">{parseInline(scenario.prompt)}</span>
+                        </div>
+                      )}
+                      {scenario.outcomes?.length > 0 && (
+                        <div className="pdp-dc-outcomes">
+                          {scenario.outcomes.map((o, j) => {
+                            const isYes = /^yes$/i.test(o.label);
+                            const isNo = /^no$/i.test(o.label);
+                            return (
+                              <div key={j} className="pdp-dc-outcome">
+                                {o.label && (
+                                  <span className={cn(
+                                    "pdp-dc-badge",
+                                    isYes && "pdp-dc-badge--yes",
+                                    isNo && "pdp-dc-badge--no",
+                                  )}>
+                                    {o.label}
+                                  </span>
+                                )}
+                                <span className="pdp-dc-outcome-text">{parseInline(o.text)}</span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </>
             )}
           </div>
         );
