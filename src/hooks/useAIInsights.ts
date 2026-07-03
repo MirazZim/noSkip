@@ -94,7 +94,19 @@ export function useAIInsights() {
           payday:         config.payday,
         },
       });
-      if (error) throw new Error(error.message);
+      if (error) {
+        // FunctionsHttpError carries the response — surface the function's own
+        // error message instead of the generic "non-2xx status code" string.
+        let message = error.message;
+        const ctx = (error as { context?: Response }).context;
+        if (ctx && typeof ctx.json === "function") {
+          try {
+            const body = await ctx.json() as { error?: unknown };
+            if (typeof body.error === "string" && body.error) message = body.error;
+          } catch { /* body wasn't JSON — keep the generic message */ }
+        }
+        throw new Error(message);
+      }
       // Pull the freshly saved rows into the cache
       await queryClient.invalidateQueries({ queryKey: ["ai_insights", user.id] });
     } catch (err) {

@@ -1162,14 +1162,28 @@ Deno.serve(async (req) => {
     );
 
     // 4. Call OpenRouter ───────────────────────────────────────────────────────
-    const completion = await openrouter.chat.completions.create({
-      model: OPENROUTER_MODEL,
-      messages: [
-        { role: "system", content: systemPrompt },
-        { role: "user",   content: userPrompt   },
-      ],
-      response_format: { type: "json_object" },
-    });
+    let completion;
+    try {
+      completion = await openrouter.chat.completions.create({
+        model: OPENROUTER_MODEL,
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user",   content: userPrompt   },
+        ],
+        response_format: { type: "json_object" },
+      });
+    } catch (llmErr) {
+      const msg = llmErr instanceof Error ? llmErr.message : String(llmErr);
+      console.error("generate-insights LLM error:", msg);
+      const friendly =
+        /credit|402/.test(msg) ? "The AI provider is out of credits — check the OpenRouter account." :
+        /rate|429/.test(msg)   ? "The AI provider is rate-limited right now. Try again in a minute." :
+                                 "The AI provider is unavailable right now. Try again shortly.";
+      return Response.json(
+        { error: friendly },
+        { status: 502, headers: corsHeaders(origin) }
+      );
+    }
 
     const rawContent = completion.choices[0]?.message?.content ?? "{}";
 
