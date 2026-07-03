@@ -371,15 +371,6 @@ export function AIAnalystDialog({ open, onOpenChange }: Props) {
       const totalIncome   = incomes.reduce((s, r)  => s + Number(r.amount), 0);
       const loansTotal    = loans.reduce((s, r)    => s + Number(r.amount), 0);
 
-      // CORRECT FINANCIAL LOGIC: Calculate loan offsets for net savings
-      const unpaidLoansGiven = loans
-        .filter(l => l.direction === 'lent' && !l.is_paid)
-        .reduce((sum, l) => sum + Number(l.amount), 0);
-
-      const unpaidLoansBorrowed = loans
-        .filter(l => l.direction === 'borrowed' && !l.is_paid)
-        .reduce((sum, l) => sum + Number(l.amount), 0);
-
       const byCat: Record<string, number> = {};
       for (const r of expenses) {
         byCat[r.category] = (byCat[r.category] ?? 0) + Number(r.amount);
@@ -393,7 +384,7 @@ export function AIAnalystDialog({ open, onOpenChange }: Props) {
       return {
         total_income:              totalIncome,
         total_expenses:            totalExpenses,
-        net_savings:               totalIncome - totalExpenses - unpaidLoansGiven + unpaidLoansBorrowed,
+        net_savings:               totalIncome - totalExpenses,
         biggest_spending_category: biggest,
         active_loans_count:        loans.length,
         active_loans_total:        loansTotal,
@@ -503,6 +494,12 @@ export function AIAnalystDialog({ open, onOpenChange }: Props) {
                 )}
                 {memMap.expense_volatility && (
                   <Stat label="Volatility" value={memMap.expense_volatility} />
+                )}
+                {memMap.spending_persona && (
+                  <Stat label="Spending Persona" value={memMap.spending_persona} />
+                )}
+                {memMap.identity_alignment && (
+                  <Stat label="Identity Votes" value={memMap.identity_alignment} />
                 )}
               </div>
             ) : (

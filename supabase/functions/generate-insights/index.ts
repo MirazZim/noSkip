@@ -60,6 +60,49 @@ interface DerivedMetrics {
   habit_recovery_rate: { rate: number; label: "high" | "moderate" | "low" } | null;
 }
 
+// ─── Atomic Habits diagnostics ────────────────────────────────────────────────
+// One prescribed behavior-change lever per habit, computed deterministically.
+// The LLM applies the lever in coach voice; it never picks the lever itself.
+
+type HabitLever =
+  | "two_minute_rule"          // consistency so low the habit is oversized — shrink it
+  | "never_miss_twice"         // streak just broke / 2+ consecutive misses — recover, don't restart
+  | "habit_stacking"           // mid consistency — anchor to the strongest habit
+  | "implementation_intention" // decent but drifting — pin to a time and place
+  | "goldilocks"               // near-perfect — boredom is the risk, level it up
+  | "maintain";                // working — reinforce, name the compounding
+
+interface HabitDiagnostic {
+  habit_name:    string;
+  consistency:   number;
+  current_streak: number;
+  stage:         "starting" | "building" | "established";
+  trend:         "improving" | "steady" | "slipping" | "insufficient_data";
+  missed_twice:  boolean;       // 2+ consecutive missed days ending yesterday (daily habits)
+  weak_weekday:  string | null; // weekday where the habit reliably dies
+  lever:         HabitLever;
+  anchor:        string | null; // stacking anchor (strongest habit), only for habit_stacking
+}
+
+interface PersonaRuleRow {
+  id:         string;
+  name:       string;
+  flag_level: string;
+  start_date: string;
+}
+
+interface IdentityAlignment {
+  rules: Array<{ name: string; votes_last_7: number; votes_last_30: number }>;
+  votes_last_7:    number;
+  possible_last_7: number;
+  alignment_pct:   number | null; // votes cast / possible, last 7 days
+}
+
+interface SpendingPersona {
+  name:     string; // e.g. "The Weekender"
+  evidence: string; // one line, with real numbers
+}
+
 interface HealthScoreBreakdown {
   score: number;
   components: { savings: number; budget: number; habit: number; volatility: number };
@@ -161,6 +204,236 @@ function computeHabitRecoveryRate(
   const label: "high" | "moderate" | "low" =
     rate > 0.7 ? "high" : rate >= 0.4 ? "moderate" : "low";
   return { rate: Number(rate.toFixed(2)), label };
+}
+
+// ─── Atomic Habits engine (deterministic — the AI only phrases the coaching) ──
+
+const WEEKDAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+
+function lastNDays(n: number): string[] {
+  const days: string[] = [];
+  const today = new Date();
+  for (let i = n - 1; i >= 0; i--) {
+    const d = new Date(today);
+    d.setDate(d.getDate() - i);
+    days.push(d.toISOString().slice(0, 10));
+  }
+  return days;
+}
+
+function computeHabitDiagnostics(
+  habits: HabitSummaryRow[],
+  completions: Array<{ habit_id: string; date: string }>,
+): HabitDiagnostic[] {
+  if (habits.length === 0) return [];
+
+  const days = lastNDays(30);
+  const byHabit: Record<string, Set<string>> = {};
+  for (const c of completions) {
+    (byHabit[c.habit_id] ??= new Set()).add(c.date);
+  }
+
+  // Stacking anchor: the most reliable habit (≥85% consistency) — weak habits
+  // get attached AFTER this one ("After I X, I will Y").
+  const anchorHabit = habits
+    .filter(h => Number(h.consistency_score) >= 85)
+    .sort((a, b) => Number(b.consistency_score) - Number(a.consistency_score))[0] ?? null;
+
+  return habits.map((h) => {
+    const consistency = Number(h.consistency_score);
+    const possible    = Number(h.total_possible_completions);
+    const completed   = byHabit[h.habit_id] ?? new Set<string>();
+
+    const stage: HabitDiagnostic["stage"] =
+      possible < 14 ? "starting" : consistency >= 80 ? "established" : "building";
+
+    // Trend: first 15 days vs last 15 days of the window
+    let trend: HabitDiagnostic["trend"] = "insufficient_data";
+    if (possible >= 21) {
+      const firstHalf  = days.slice(0, 15).filter(d => completed.has(d)).length;
+      const secondHalf = days.slice(15).filter(d => completed.has(d)).length;
+      const diff = secondHalf - firstHalf;
+      trend = diff >= 2 ? "improving" : diff <= -2 ? "slipping" : "steady";
+    }
+
+    // Missed twice: yesterday AND the day before both missed (today doesn't
+    // count as missed yet). Only meaningful for daily habits with history.
+    const yesterday = days[days.length - 2];
+    const dayBefore = days[days.length - 3];
+    const missed_twice =
+      h.frequency === "daily" &&
+      Number(h.actual_completions) > 0 &&
+      !completed.has(yesterday) &&
+      !completed.has(dayBefore);
+
+    // Weak weekday: a day of the week where the habit reliably dies
+    // (rate ≤ 40% and clearly below the habit's own average).
+    let weak_weekday: string | null = null;
+    if (h.frequency === "daily" && possible >= 21) {
+      const done:  number[] = [0, 0, 0, 0, 0, 0, 0];
+      const total: number[] = [0, 0, 0, 0, 0, 0, 0];
+      for (const d of days) {
+        const dow = new Date(d + "T00:00:00Z").getUTCDay();
+        total[dow]++;
+        if (completed.has(d)) done[dow]++;
+      }
+      const avgRate = days.filter(d => completed.has(d)).length / days.length;
+      let worstDow = -1, worstRate = 1;
+      for (let dow = 0; dow < 7; dow++) {
+        if (total[dow] === 0) continue;
+        const rate = done[dow] / total[dow];
+        if (rate < worstRate) { worstRate = rate; worstDow = dow; }
+      }
+      if (worstDow >= 0 && worstRate <= 0.4 && avgRate - worstRate >= 0.3) {
+        weak_weekday = WEEKDAY_NAMES[worstDow];
+      }
+    }
+
+    // One lever per habit, priority-ordered
+    let lever: HabitLever;
+    if (consistency < 30) {
+      lever = "two_minute_rule";
+    } else if (missed_twice || (Number(h.current_streak) === 0 && Number(h.longest_streak_last_30_days) >= 5)) {
+      lever = "never_miss_twice";
+    } else if (consistency < 65) {
+      lever = "habit_stacking";
+    } else if (trend === "slipping") {
+      lever = "implementation_intention";
+    } else if (consistency >= 95 && stage === "established") {
+      lever = "goldilocks";
+    } else {
+      lever = "maintain";
+    }
+
+    const anchor =
+      lever === "habit_stacking" && anchorHabit && anchorHabit.habit_id !== h.habit_id
+        ? anchorHabit.habit_name
+        : null;
+
+    return {
+      habit_name:     h.habit_name,
+      consistency,
+      current_streak: Number(h.current_streak),
+      stage,
+      trend,
+      missed_twice,
+      weak_weekday,
+      lever,
+      anchor,
+    };
+  });
+}
+
+// Persona rules are identity votes: each completion is a vote for the person
+// the user is becoming (Atomic Habits' identity-based habit model).
+function computeIdentityAlignment(
+  rules: PersonaRuleRow[],
+  completions: Array<{ habit_id: string; date: string }>,
+): IdentityAlignment | null {
+  if (rules.length === 0) return null;
+
+  const last7  = new Set(lastNDays(7));
+  const last30 = new Set(lastNDays(30));
+  const byRule: Record<string, string[]> = {};
+  for (const c of completions) {
+    (byRule[c.habit_id] ??= []).push(c.date);
+  }
+
+  const todayMs = new Date(lastNDays(1)[0] + "T00:00:00Z").getTime();
+  let votes7 = 0, possible7 = 0;
+
+  const ruleStats = rules.map((r) => {
+    const dates = byRule[r.id] ?? [];
+    const v7  = dates.filter(d => last7.has(d)).length;
+    const v30 = dates.filter(d => last30.has(d)).length;
+    const startMs  = new Date(r.start_date + "T00:00:00Z").getTime();
+    const daysLive = Math.floor((todayMs - startMs) / 86_400_000) + 1;
+    votes7    += v7;
+    possible7 += Math.max(0, Math.min(7, daysLive));
+    return { name: r.name, votes_last_7: v7, votes_last_30: v30 };
+  });
+
+  return {
+    rules:           ruleStats,
+    votes_last_7:    votes7,
+    possible_last_7: possible7,
+    alignment_pct:   possible7 > 0 ? Math.round((votes7 / possible7) * 100) : null,
+  };
+}
+
+// Deterministic spending archetype — a mirror, not a horoscope. Priority-ordered
+// decision tree over real cycle signals; the LLM addresses it, never invents it.
+function computeSpendingPersona(
+  snap:          FinancialSnapshotRow,
+  budgets:       BudgetPerformanceRow[],
+  derived:       DerivedMetrics,
+  cycleExpenses: Array<{ amount: number | string; category: string; date: string }>,
+  currency:      string,
+): SpendingPersona | null {
+  if (cycleExpenses.length < 5) return null; // not enough signal to name a pattern
+
+  const total = cycleExpenses.reduce((s, r) => s + Number(r.amount), 0);
+  if (total <= 0) return null;
+
+  const fmt = (n: number) => `${currency} ${Math.round(n)}`;
+
+  // Weekend share: Fri + Sat + Sun (covers both Fri–Sat and Sat–Sun weekends)
+  let weekendSpend = 0;
+  const byCat: Record<string, { amt: number; count: number }> = {};
+  for (const r of cycleExpenses) {
+    const dow = new Date(r.date + "T00:00:00Z").getUTCDay();
+    if (dow === 0 || dow === 5 || dow === 6) weekendSpend += Number(r.amount);
+    const c = (byCat[r.category] ??= { amt: 0, count: 0 });
+    c.amt   += Number(r.amount);
+    c.count += 1;
+  }
+  const weekendShare = weekendSpend / total;
+  const avgTxn       = total / cycleExpenses.length;
+  const topCat = Object.entries(byCat).sort((a, b) => b[1].amt - a[1].amt)[0];
+
+  const savingsRate = snap.total_income > 0 ? snap.net_savings / snap.total_income : null;
+  const exceeded    = budgets.filter(b => b.status === "exceeded").length;
+  const onTrackPct  = budgets.length > 0 ? budgets.filter(b => b.status === "on_track").length / budgets.length : null;
+
+  if ((savingsRate !== null && savingsRate < 0) || (budgets.length > 0 && exceeded / budgets.length >= 0.5)) {
+    return {
+      name: "The Firefighter",
+      evidence: savingsRate !== null && savingsRate < 0
+        ? `spending (${fmt(snap.total_expenses)}) outran income (${fmt(snap.total_income)}) this cycle`
+        : `${exceeded} of ${budgets.length} budgets blown this cycle`,
+    };
+  }
+  if (savingsRate !== null && savingsRate >= 0.25 && (onTrackPct === null || onTrackPct >= 0.7)
+      && derived.expense_volatility?.label !== "erratic") {
+    return {
+      name: "The Architect",
+      evidence: `saved ${Math.round(savingsRate * 100)}% of income with budgets holding`,
+    };
+  }
+  if (weekendShare >= 0.55) {
+    return {
+      name: "The Weekender",
+      evidence: `${Math.round(weekendShare * 100)}% of spending lands Fri–Sun (${fmt(weekendSpend)} of ${fmt(total)})`,
+    };
+  }
+  if (topCat && topCat[1].count >= 12 && topCat[1].amt / topCat[1].count < avgTxn) {
+    return {
+      name: "The Drip Spender",
+      evidence: `${topCat[1].count} small ${topCat[0]} purchases (avg ${fmt(topCat[1].amt / topCat[1].count)}) quietly added up to ${fmt(topCat[1].amt)}`,
+    };
+  }
+  if (derived.spending_concentration >= 70) {
+    return {
+      name: "The Big-Ticket Spender",
+      evidence: `top 2 categories drive ${derived.spending_concentration}% of all spending`,
+    };
+  }
+  return {
+    name: "The Balancer",
+    evidence: savingsRate !== null
+      ? `spending spread across categories, saving ${Math.round(savingsRate * 100)}% of income`
+      : `spending spread across categories, no single runaway pattern`,
+  };
 }
 
 function computeDerivedMetrics(
@@ -269,6 +542,8 @@ function extractMemories(
   userId:    string,
   currency:  string,
   cycleType: "calendar" | "payday",
+  persona:   SpendingPersona | null,
+  identity:  IdentityAlignment | null,
 ): Array<{ user_id: string; memory_key: string; memory_value: string; confidence: number; last_updated: string }> {
   const now = new Date().toISOString();
   const out: Array<{ user_id: string; memory_key: string; memory_value: string; confidence: number; last_updated: string }> = [];
@@ -305,6 +580,15 @@ function extractMemories(
   // expense_volatility (replaces the old, mislabeled income_stability key)
   if (derived.expense_volatility) {
     push("expense_volatility", derived.expense_volatility.label);
+  }
+
+  if (persona) {
+    push("spending_persona", `${persona.name} — ${persona.evidence}`);
+  }
+
+  if (identity?.alignment_pct !== null && identity?.alignment_pct !== undefined) {
+    push("identity_alignment",
+      `${identity.alignment_pct}% (${identity.votes_last_7} of ${identity.possible_last_7} identity votes cast this week)`);
   }
 
   return out;
@@ -354,6 +638,49 @@ COMPARATIVE PRESSURE: Compare the user only to their PAST SELF — never to
 other people. "Last month-you saved BDT 12k. This month-you is on track
 for BDT 8k. Where did the BDT 4k go?"
 
+HABIT COACHING PLAYBOOK — habit_coaching runs on these behavior-change
+principles. The data includes a "Habit Diagnostics" section that prescribes
+ONE lever per habit; apply that lever with the user's real numbers. Never pick
+a different lever, never lecture theory, never name a book or a "law" — speak
+the principle in plain coach language.
+
+IDENTITY VOTES: Every completion is a vote for the person the user is becoming;
+every skip is a vote for the old self. When Identity Rules are listed, quote the
+user's own rule text back at them — those are their words about who they want
+to be. "You wrote 'stay calm under pressure' — 5 votes this week says you meant it."
+
+THE FOUR LAWS: A habit sticks when it's obvious (visible cue), attractive
+(paired with something wanted), easy (low friction), and satisfying (immediate
+reward). Diagnose the ONE that's missing; fix that one, not all four.
+
+NEVER MISS TWICE: Missing once is an accident. Missing twice is the start of a
+new (worse) habit. When a streak just broke, the target is ONE completion
+tomorrow — not a perfect week, not guilt about the miss.
+
+TWO-MINUTE RULE: A habit under 30% isn't a discipline problem, it's oversized.
+Shrink it until it's almost silly to skip ("read one page", "put on your shoes")
+and prescribe that exact starter version.
+
+HABIT STACKING: Attach a weak habit to a reliable one, in this exact shape:
+"After I [anchor habit], I will [new habit]." Use the anchor named in the
+diagnostics; if none exists, anchor to a fixed daily event (after breakfast,
+after locking the door).
+
+GOLDILOCKS RULE: A habit at ~100% is at risk of boredom, not failure.
+Prescribe a just-manageable step up so it stays alive.
+
+PLATEAU OF LATENT POTENTIAL: When effort is up but results lag, say the work
+is being stored, not wasted — like ice melting at 31°F, nothing visible until 32.
+
+EXPENSE PERSONA: When a "Spending Persona" is given, it was computed from this
+cycle's real numbers. Address it by name once ("That's a classic Weekender
+move"), aim advice at its defining pattern, and frame it as this cycle's
+identity, not a life sentence — name who they could become instead. Connect
+money and habits through identity: budgets fail, identities don't.
+
+EVIDENCE RULE: Every claim must be traceable to a number in the data. If the
+data doesn't show it, don't say it.
+
 HARD LINES — never cross these:
 - No shame tactics around body, weight, gym performance, eating, or appearance
 - No self-worth attacks ("you're lazy", "you have no discipline")
@@ -384,11 +711,16 @@ this month. When one habit takes off, another usually pays the price. Block 20 m
 after dinner three nights a week and you'll get reading back without losing the run."
 
 Return a JSON object with exactly these 5 keys:
-- "spending_summary": 4-6 sentences in coach voice — what shifted, what it means, why it matters
-- "habit_coaching": 4-6 sentences in coach voice — what's working, what's slipping, what to do
+- "spending_summary": 4-6 sentences in coach voice — what shifted, what it means, why it
+  matters. If a Spending Persona is given, address it by name once.
+- "habit_coaching": 4-6 sentences in coach voice covering at most 2 habits: the biggest
+  win (with its streak or consistency number) and the most fixable slip — fixed with its
+  prescribed lever from Habit Diagnostics as one concrete, doable prescription. When
+  Identity Rules exist, tie one point to the user's own rule text.
 - "anomaly": 1-2 sentences flagging anything unusual ("Nothing weird this period." if clean)
 - "financial_health": object with "verdict" only — 1-2 sentences in plain language. Score is computed externally.
-- "top_action": one specific thing to do this week, with a number
+- "top_action": one specific thing to do this week, with a number, aimed at the Spending
+  Persona's defining pattern when one is given
   (e.g. "Cap food spending at BDT 7,500 next week — that's 20% below your current pace")
 
 Respond with valid JSON only. No markdown code fences. No text outside the JSON object.`;
@@ -401,6 +733,27 @@ Avoid repeating that style of analysis. Be more specific and actionable.`;
   return base;
 }
 
+// Plain-language rendering of each lever so the LLM applies it instead of
+// interpreting a slug.
+function leverInstruction(d: HabitDiagnostic): string {
+  switch (d.lever) {
+    case "two_minute_rule":
+      return "TWO-MINUTE RULE — the habit is oversized; prescribe an exact scaled-down starter version";
+    case "never_miss_twice":
+      return "NEVER MISS TWICE — streak recovery mode; the target is one completion tomorrow, not a perfect week";
+    case "habit_stacking":
+      return d.anchor
+        ? `HABIT STACKING — prescribe: "After I ${d.anchor}, I will [this habit]"`
+        : `HABIT STACKING — anchor it to a fixed daily event (after breakfast, after locking the door)`;
+    case "implementation_intention":
+      return "IMPLEMENTATION INTENTION — pin it to a time and place: 'I will [habit] at [time] in [place]'";
+    case "goldilocks":
+      return "GOLDILOCKS — near-perfect; boredom is the risk, prescribe a just-manageable step up";
+    case "maintain":
+      return "MAINTAIN — it's working; reinforce the compounding, don't prescribe changes";
+  }
+}
+
 function buildUserPrompt(
   snap:        FinancialSnapshotRow | null,
   expenses:    ExpenseSummaryRow[],
@@ -411,6 +764,9 @@ function buildUserPrompt(
   cycle:       CycleBounds,
   derived:     DerivedMetrics,
   health:      HealthScoreBreakdown,
+  diagnostics: HabitDiagnostic[],
+  identity:    IdentityAlignment | null,
+  persona:     SpendingPersona | null,
 ): string {
   const cycleLabel = cycle.cycleType === "payday"
     ? `Current Pay Cycle (${cycle.cycleStart} → ${cycle.cycleEnd}, payday on the ${cycle.payday})`
@@ -422,7 +778,8 @@ function buildUserPrompt(
   // ── What I know about you (Part B) ───────────────────────────────────────
   const savingsMemKey = cycle.cycleType === "payday" ? "current_cycle_savings" : "current_month_savings";
   const knownKeys = ["biggest_spending_category", "weakest_habit", "strongest_habit",
-                     savingsMemKey, "most_exceeded_budget_category", "expense_volatility"];
+                     savingsMemKey, "most_exceeded_budget_category", "expense_volatility",
+                     "spending_persona", "identity_alignment"];
   if (knownKeys.some(k => memoriesMap[k])) {
     lines.push("## What I know about you");
     if (memoriesMap.biggest_spending_category)
@@ -437,6 +794,10 @@ function buildUserPrompt(
       lines.push(`- Most exceeded budget category: ${memoriesMap.most_exceeded_budget_category}`);
     if (memoriesMap.expense_volatility)
       lines.push(`- Expense volatility: ${memoriesMap.expense_volatility}`);
+    if (memoriesMap.spending_persona)
+      lines.push(`- Spending persona last cycle: ${memoriesMap.spending_persona}`);
+    if (memoriesMap.identity_alignment)
+      lines.push(`- Identity alignment last analysis: ${memoriesMap.identity_alignment}`);
     lines.push("");
   }
 
@@ -509,6 +870,47 @@ function buildUserPrompt(
         `longest streak this period ${h.longest_streak_last_30_days}d`
       );
     }
+    lines.push("");
+  }
+
+  // ── Habit diagnostics (precomputed levers — the AI applies, never picks) ──
+  if (diagnostics.length > 0) {
+    lines.push("## Habit Diagnostics (computed — one prescribed lever per habit)");
+    for (const d of diagnostics) {
+      const facts: string[] = [
+        `${d.consistency}% consistent`,
+        `streak ${d.current_streak}d`,
+        `stage ${d.stage}`,
+      ];
+      if (d.trend !== "insufficient_data") facts.push(`trend ${d.trend}`);
+      if (d.missed_twice)                  facts.push("missed 2+ days running");
+      if (d.weak_weekday)                  facts.push(`reliably dies on ${d.weak_weekday}s`);
+      lines.push(`  ${d.habit_name}: ${facts.join(", ")}.`);
+      lines.push(`    LEVER: ${leverInstruction(d)}`);
+    }
+    lines.push("");
+  }
+
+  // ── Identity rules (Persona Shift — every completion is an identity vote) ─
+  if (identity) {
+    lines.push("## Identity Rules — who the user says they're becoming");
+    lines.push("These are the user's own words. Each daily completion is a vote for that identity.");
+    for (const r of identity.rules) {
+      lines.push(`  "${r.name}": ${r.votes_last_7}/7 votes this week, ${r.votes_last_30} in the last 30 days`);
+    }
+    if (identity.alignment_pct !== null) {
+      lines.push(
+        `Identity alignment this week: ${identity.alignment_pct}% ` +
+        `(${identity.votes_last_7} of ${identity.possible_last_7} possible votes cast)`
+      );
+    }
+    lines.push("");
+  }
+
+  // ── Spending persona (deterministic archetype for this cycle) ─────────────
+  if (persona) {
+    lines.push(`## Spending Persona (computed from this cycle's data)`);
+    lines.push(`${persona.name} — ${persona.evidence}`);
     lines.push("");
   }
 
@@ -617,6 +1019,7 @@ Deno.serve(async (req) => {
       { data: storedMemories,      error: memErr   },
       { data: existingInsights,    error: insErr   },
       { data: habitCompletionRows, error: hcErr    },
+      { data: personaRuleRows,     error: prErr    },
     ] = await Promise.all([
       userClient.from("ai_expense_summary").select("*").eq("user_id", userId).gte("month", startMonth),
       userClient.from("ai_habit_summary").select("*").eq("user_id", userId),
@@ -634,6 +1037,8 @@ Deno.serve(async (req) => {
       serviceClient.from("ai_insights").select("id, insight_type, was_useful").eq("user_id", userId),
       userClient.from("habit_completions").select("habit_id, date")
         .eq("user_id", userId).gte("date", thirtyDaysAgoStr),
+      userClient.from("habits").select("id, name, flag_level, start_date")
+        .eq("user_id", userId).eq("category", "persona_shift").eq("is_active", true),
     ]);
 
     if (expErr)  console.error("ai_expense_summary:", expErr.message);
@@ -647,6 +1052,7 @@ Deno.serve(async (req) => {
     if (memErr)  console.error("ai_memories:",        memErr.message);
     if (insErr)  console.error("ai_insights:",        insErr.message);
     if (hcErr)   console.error("habit_completions:",  hcErr.message);
+    if (prErr)   console.error("persona rules:",      prErr.message);
 
     const currency = profile?.currency_preference ?? "INR";
 
@@ -715,6 +1121,13 @@ Deno.serve(async (req) => {
     const derived         = computeDerivedMetrics(cycleExpenses, monthlyExpenses, habitsTyped, habitCompletions);
     const health          = computeFinancialHealthScore(snapshot, budgets, habitsTyped, derived);
 
+    // Atomic Habits engine: per-habit levers, identity votes, spending persona.
+    // All deterministic — the AI only phrases what these computed.
+    const personaRules    = (personaRuleRows ?? []) as PersonaRuleRow[];
+    const diagnostics     = computeHabitDiagnostics(habitsTyped, habitCompletions);
+    const identity        = computeIdentityAlignment(personaRules, habitCompletions);
+    const spendingPersona = computeSpendingPersona(snapshot, budgets, derived, cycleExpenses, currency);
+
     // Memories map (Part B prompt context)
     const memoriesMap: Record<string, string> = {};
     for (const m of storedMemories ?? []) {
@@ -743,6 +1156,9 @@ Deno.serve(async (req) => {
       cycle,
       derived,
       health,
+      diagnostics,
+      identity,
+      spendingPersona,
     );
 
     // 4. Call OpenRouter ───────────────────────────────────────────────────────
@@ -817,6 +1233,8 @@ Deno.serve(async (req) => {
       userId,
       currency,
       cycle.cycleType,
+      spendingPersona,
+      identity,
     );
 
     if (memoryRows.length > 0) {
