@@ -23,7 +23,7 @@ Run a single test file: `npx vitest run src/path/to/file.test.ts`. Tests live ne
 Edge functions (Deno) deploy via the Supabase CLI, not the Vite build:
 ```bash
 supabase functions deploy generate-insights
-supabase secrets set OPENROUTER_API_KEY=...   # function secrets live on Supabase, never in the bundle
+supabase secrets set GEMINI_API_KEY=...   # function secrets live on Supabase, never in the bundle
 ```
 
 ## Environment
@@ -54,8 +54,8 @@ Frontend reads these from `.env` (Vite `import.meta.env`):
 ### Backend (Supabase)
 
 - **Migrations:** `supabase/migrations/*.sql` (timestamp-prefixed). The DB enforces per-user isolation through Row Level Security on all tables.
-- **Edge functions:** `supabase/functions/*/index.ts` (Deno). `_shared/` holds `cors.ts`, `openrouter.ts` (LLM client + model), and `adminAuth.ts` (`verifyAdminToken`, SHA-256 token hashing). Admin functions (`admin-users`, `admin-audit`, `admin-flags`) all verify the admin session token first.
-- **`generate-insights`** is the AI Finance Analyst: it reads cycle-bound expenses/habits/budgets/memories, computes a **deterministic** financial-health score in code, asks the LLM (OpenRouter) only for the prose verdict, then overwrites the AI's score with the computed value and upserts `ai_insights` + `ai_memories`. The math stays in code; the AI only writes the words.
+- **Edge functions:** `supabase/functions/*/index.ts` (Deno). `_shared/` holds `cors.ts`, `llm.ts` (LLM client + model — Gemini via Google's OpenAI-compatible endpoint), and `adminAuth.ts` (`verifyAdminToken`, SHA-256 token hashing). Admin functions (`admin-users`, `admin-audit`, `admin-flags`) all verify the admin session token first.
+- **`generate-insights`** is the AI Finance Analyst: it reads cycle-bound expenses/habits/budgets/memories, computes a **deterministic** financial-health score in code, asks the LLM (Gemini) only for the prose verdict, then overwrites the AI's score with the computed value and upserts `ai_insights` + `ai_memories`. The math stays in code; the AI only writes the words.
 
 ## Conventions
 

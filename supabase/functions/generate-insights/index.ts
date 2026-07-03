@@ -1,6 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { corsHeaders }   from "../_shared/cors.ts";
-import { openrouter, OPENROUTER_MODEL } from "../_shared/openrouter.ts";
+import { llm, LLM_MODEL } from "../_shared/llm.ts";
 
 // ─── Env ──────────────────────────────────────────────────────────────────────
 
@@ -1161,11 +1161,11 @@ Deno.serve(async (req) => {
       spendingPersona,
     );
 
-    // 4. Call OpenRouter ───────────────────────────────────────────────────────
+    // 4. Call the LLM ──────────────────────────────────────────────────────────
     let completion;
     try {
-      completion = await openrouter.chat.completions.create({
-        model: OPENROUTER_MODEL,
+      completion = await llm.chat.completions.create({
+        model: LLM_MODEL,
         messages: [
           { role: "system", content: systemPrompt },
           { role: "user",   content: userPrompt   },
@@ -1176,7 +1176,7 @@ Deno.serve(async (req) => {
       const msg = llmErr instanceof Error ? llmErr.message : String(llmErr);
       console.error("generate-insights LLM error:", msg);
       const friendly =
-        /credit|402/.test(msg) ? "The AI provider is out of credits — check the OpenRouter account." :
+        /credit|quota|402/i.test(msg) ? "The AI provider quota is exhausted — check the Gemini API account." :
         /rate|429/.test(msg)   ? "The AI provider is rate-limited right now. Try again in a minute." :
                                  "The AI provider is unavailable right now. Try again shortly.";
       return Response.json(

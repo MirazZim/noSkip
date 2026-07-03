@@ -1,6 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { corsHeaders }   from "../_shared/cors.ts";
-import { openrouter, OPENROUTER_MODEL } from "../_shared/openrouter.ts";
+import { llm, LLM_MODEL } from "../_shared/llm.ts";
 
 // ─── Env ──────────────────────────────────────────────────────────────────────
 
@@ -111,8 +111,8 @@ Deno.serve(async (req) => {
     // 3. One LLM round-trip. On ANY failure we return a 'none' reaction with 200
     //    so the client always saves the rule — the coach never blocks creation.
     try {
-      const completion = await openrouter.chat.completions.create({
-        model: OPENROUTER_MODEL,
+      const completion = await llm.chat.completions.create({
+        model: LLM_MODEL,
         messages: [
           { role: "system", content: SYSTEM_PROMPT },
           { role: "user",   content: ruleText.trim().slice(0, 500) },
