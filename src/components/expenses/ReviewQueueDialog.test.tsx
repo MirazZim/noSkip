@@ -106,11 +106,28 @@ describe("ReviewQueueDialog", () => {
       pendingExpense("e2", "PATHAO LTD", "pathao", "transport:ride-share", 230),
     ];
     renderDialog();
-    expect(screen.getByText("1 of 2")).toBeInTheDocument();
+    // Both cards are in the stack, but only the top one is interactive
+    expect(screen.getByText("FOODPANDA LIMITED")).toBeInTheDocument();
+    expect(screen.getByText("PATHAO LTD")).toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: /^Confirm$/ })).toHaveLength(1);
     fireEvent.click(screen.getByRole("button", { name: /^Confirm$/ }));
     await waitFor(() => expect(confirm).toHaveBeenCalledWith({ expenseId: "e1", category: "food-drinks:meal-delivery" }));
-    await waitFor(() => expect(screen.getByText("PATHAO LTD")).toBeInTheDocument());
-    expect(screen.getByText("1 of 1")).toBeInTheDocument();
+    // The confirmed card is flung off; Pathao is now the top card
+    await waitFor(() => expect(screen.queryByText("FOODPANDA LIMITED")).not.toBeInTheDocument());
+    expect(screen.getByText("PATHAO LTD")).toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: /^Confirm$/ })).toHaveLength(1);
+  });
+
+  it("cards under the top one are inert", () => {
+    state.pending = [
+      pendingExpense("e1", "FOODPANDA LIMITED", "foodpanda", "food-drinks:meal-delivery"),
+      pendingExpense("e2", "PATHAO LTD", "pathao", "transport:ride-share", 230),
+    ];
+    renderDialog();
+    const behind = screen.getByText("PATHAO LTD").closest("[aria-hidden]");
+    expect(behind).toHaveAttribute("inert");
+    expect(screen.getByText("FOODPANDA LIMITED").closest("[inert]")).toBeNull();
+    expect(screen.getByText(/Swipe a card to skip it/)).toBeInTheDocument();
   });
 
   it("Confirm all confirms every pending payment with its category", async () => {

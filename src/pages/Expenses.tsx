@@ -30,9 +30,9 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { LoanOverviewWidget } from "@/components/expenses/LoanOverviewWidget";
 import {
   List, CalendarDays, LayoutGrid, ChevronLeft, ChevronRight,
-  HandCoins, X, TrendingUp, AlertTriangle, Sparkles, Smartphone,
+  HandCoins, X, TrendingUp, AlertTriangle, Sparkles,
 } from "lucide-react";
-import { openReviewQueue } from "@/hooks/useSmsImport";
+import { SmsInboxButton } from "@/components/expenses/SmsInboxButton";
 import { cn } from "@/lib/utils";
 import { loadCycleConfig, CYCLE_CHANGE_EVENT } from "@/components/expenses/BudgetManager";
 import { SavingsTracker } from "@/components/expenses/SavingsTracker";
@@ -300,7 +300,7 @@ export default function Expenses() {
             </div>
 
             {/* Right actions */}
-            <div className="exp-header-actions flex items-center gap-1.5 flex-nowrap shrink-0">
+            <div className="exp-header-actions flex items-center gap-1.5 flex-nowrap shrink-0 pt-1.5">
               <BudgetManager
                 budgets={allBudgets}
                 expenses={cycleExpenses}
@@ -308,19 +308,7 @@ export default function Expenses() {
                 open={budgetDialogOpen}
                 onOpenChange={setBudgetDialogOpen}
               />
-              <button
-                onClick={openReviewQueue}
-                title="SMS payments: confirm or paste"
-                aria-label="SMS payments"
-                className="flex h-9 w-9 items-center justify-center rounded-2xl transition-all active:scale-95"
-                style={{
-                  background: "hsl(var(--muted) / 0.6)",
-                  border: "1px solid hsl(var(--border) / 0.5)",
-                  color: "hsl(var(--muted-foreground))",
-                }}
-              >
-                <Smartphone size={15} />
-              </button>
+              <SmsInboxButton />
               <div className="hidden sm:block h-5 w-px" style={{ background: "hsl(var(--border) / 0.6)" }} />
               <AddIncomeDialog
                 defaultDate={activeTab === "transactions" ? addIncomeDialogDate : undefined}

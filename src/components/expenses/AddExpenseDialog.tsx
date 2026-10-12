@@ -254,12 +254,12 @@ export function CategorySelector({
         style={selectedColor ? { borderColor: `${selectedColor}50` } : {}}
       >
         {value ? (
-          <span className="flex items-center gap-2.5 font-medium">
+          <span className="flex min-w-0 items-center gap-2.5 font-medium">
             <span
               className="h-2.5 w-2.5 rounded-full shrink-0"
               style={{ backgroundColor: selectedColor ?? undefined }}
             />
-            {getCategoryDisplayLabel(value)}
+            <span className="truncate">{getCategoryDisplayLabel(value)}</span>
           </span>
         ) : (
           <span className="text-muted-foreground">Choose a category</span>
@@ -303,7 +303,7 @@ export function CategorySelector({
                     <span className="font-semibold text-foreground text-sm">{parentCat.label}</span>
                   </button>
                   <div className="mx-2 mb-1 h-px bg-border/50" />
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
+                  <div className="grid grid-cols-[repeat(auto-fill,minmax(5.25rem,1fr))] gap-1.5">
                     {parentCat.subcategories.map((sub) => {
                       const isSubSelected = isParentSelected && selectedSub === sub.id;
                       return (
@@ -335,7 +335,7 @@ export function CategorySelector({
             })()
           ) : (
             <div className="flex flex-col gap-1.5">
-              <div className="grid grid-cols-3 sm:grid-cols-4 gap-1.5">
+              <div className="grid grid-cols-[repeat(auto-fill,minmax(5.25rem,1fr))] gap-1.5">
                 {EXPENSE_CATEGORIES.map((cat) => {
                   const color = getCategoryColor(cat.id, customCategories) ?? "#64748b";
                   const { parentId: selectedParent } = parseCategoryValue(value);
@@ -575,7 +575,7 @@ export function AddExpenseDialog({ defaultDate, onDateUsed }: AddExpenseDialogPr
                         <span className="font-semibold text-foreground text-sm">{parentCat.label}</span>
                       </button>
                       <div className="mx-2 mb-2 h-px bg-border/50" />
-                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
+                      <div className="grid grid-cols-[repeat(auto-fill,minmax(5.25rem,1fr))] gap-1.5">
                         {parentCat.subcategories.map((sub) => (
                           <button
                             key={sub.id}
@@ -594,7 +594,7 @@ export function AddExpenseDialog({ defaultDate, onDateUsed }: AddExpenseDialogPr
                 })()
               ) : (
                 <div className="flex flex-col gap-2">
-                  <div className="grid grid-cols-3 sm:grid-cols-4 gap-1.5">
+                  <div className="grid grid-cols-[repeat(auto-fill,minmax(5.25rem,1fr))] gap-1.5">
                     {EXPENSE_CATEGORIES.map((cat) => (
                       <button
                         key={cat.id}
