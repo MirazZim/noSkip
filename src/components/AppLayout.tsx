@@ -4,6 +4,7 @@ import { LogOut, Zap, LayoutDashboard, Wallet, Target, Compass, Settings } from 
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
+import { ReviewQueueLauncher } from "@/components/expenses/ReviewQueueLauncher";
 
 const navItems = [
   { path: "/", label: "Dashboard" },
@@ -310,6 +311,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
       {/* ── Page content ── */}
       <main className="pt-24 pb-32 md:pb-10 px-3 sm:px-10 md:px-20 lg:px-32 xl:px-48">
         <div className="max-w-4xl mx-auto">
+          <ReviewQueueLauncher />
           {children}
         </div>
       </main>

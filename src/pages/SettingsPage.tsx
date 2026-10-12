@@ -10,6 +10,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { Check, LogOut } from "lucide-react";
+import { SmsImportSettings } from "@/components/expenses/SmsImportSettings";
 
 export default function SettingsPage() {
   const { user, signOut } = useAuth();
@@ -102,6 +103,10 @@ export default function SettingsPage() {
             </div>
           </CardContent>
         </Card>
+
+        {/* SMS auto-import + learned merchant rules */}
+        <SmsImportSettings />
+
         {/* Account */}
         <Card>
           <CardHeader>

@@ -16,6 +16,7 @@ import { Expense, EXPENSE_CATEGORIES } from "@/hooks/useExpenses";
 import { useUpdateExpense } from "@/hooks/useExpenses";
 import { useCustomCategories } from "@/hooks/useCustomCategories";
 import { CategorySelector } from "@/components/expenses/AddExpenseDialog";
+import { useConfirmSmsExpense } from "@/hooks/useSmsImport";
 import { toast } from "sonner";
 
 const schema = z.object({
@@ -35,6 +36,7 @@ interface Props {
 
 export function EditExpenseDialog({ expense, open, onOpenChange }: Props) {
   const updateExpense = useUpdateExpense();
+  const confirmSms = useConfirmSmsExpense();
   const { data: customCategories = [] } = useCustomCategories();
   const allCategoryNames = [
     ...EXPENSE_CATEGORIES.map((c) => c.id),
@@ -72,6 +74,11 @@ export function EditExpenseDialog({ expense, open, onOpenChange }: Props) {
         date: format(values.date, "yyyy-MM-dd"),
         note: values.note || null,
       });
+      // An edited SMS expense counts as a confirmation — and a category
+      // change re-teaches that merchant's rule
+      if (expense.origin === "sms" && (values.category !== expense.category || expense.review_status === "pending")) {
+        await confirmSms.mutateAsync({ expenseId: expense.id, category: values.category });
+      }
       toast.success("Expense updated");
       onOpenChange(false);
     } catch {

@@ -317,6 +317,11 @@ export interface Expense {
   note: string | null;
   user_id: string;
   created_at: string;
+  /** 'sms' rows come from the ingest-sms edge function (see useSmsImport). */
+  origin?: "manual" | "sms";
+  /** 'pending' = SMS-filed, category not yet confirmed. Still counts in totals. */
+  review_status?: "pending" | "confirmed";
+  sms_message_id?: string | null;
 }
 
 export interface Budget {

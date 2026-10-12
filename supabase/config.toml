@@ -1,2 +1,6 @@
 #project_id = "apsmuzvxmzeclthvbkto"
 project_id = "ruclkyjuvqmomwdfidet"
+# The phone forwards SMS without a Supabase session — the function checks
+# SMS_INGEST_SECRET (or a user JWT for the in-app paste path) itself.
+[functions.ingest-sms]
+verify_jwt = false

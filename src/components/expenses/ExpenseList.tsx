@@ -8,6 +8,7 @@ import {
 } from "@/hooks/useExpenses";
 import { useCustomCategories } from "@/hooks/useCustomCategories";
 import { useCurrency } from "@/hooks/useCurrency";
+import { openReviewQueue } from "@/hooks/useSmsImport";
 import { Button } from "@/components/ui/button";
 import { EditExpenseDialog } from "./EditExpenseDialog";
 import { toast } from "sonner";
@@ -165,7 +166,21 @@ function SwipeRow({ exp, color, formatAmount, onEdit, onDelete, openId, setOpenI
         <div ref={contentRef} className="flex items-center gap-3 px-4 py-3.5">
           <CategoryIcon category={exp.category} color={color} />
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-bold truncate leading-snug">{getSubCategoryLabel(exp.category) ?? exp.category}</p>
+            <div className="flex items-center gap-1.5 min-w-0">
+              <p className="text-sm font-bold truncate leading-snug">{getSubCategoryLabel(exp.category) ?? exp.category}</p>
+              {exp.review_status === "pending" ? (
+                <button
+                  onClick={(e) => { e.stopPropagation(); openReviewQueue(); }}
+                  className="shrink-0 rounded-full bg-amber-500/15 px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wider text-amber-600 dark:text-amber-400"
+                >
+                  Confirm
+                </button>
+              ) : exp.origin === "sms" && (
+                <span className="shrink-0 rounded-full bg-muted px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-muted-foreground">
+                  SMS
+                </span>
+              )}
+            </div>
             {exp.note && (
               <p className="text-xs text-muted-foreground truncate mt-0.5">{exp.note}</p>
             )}
