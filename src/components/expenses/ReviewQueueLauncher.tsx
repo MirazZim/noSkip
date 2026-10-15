@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { ChevronRight, Smartphone } from "lucide-react";
 import { ReviewQueueDialog } from "./ReviewQueueDialog";
-import { OPEN_REVIEW_EVENT, usePendingExpenses, useReviewSms } from "@/hooks/useSmsImport";
+import { OPEN_REVIEW_EVENT, usePendingExpenses, useReviewSms, useSmsRealtime } from "@/hooks/useSmsImport";
 
 // Mounted once in AppLayout, so the confirm queue is reachable from every page:
 //  • a pill above the page content while anything is waiting
@@ -19,6 +19,7 @@ function rememberAutoOpened() {
 
 export function ReviewQueueLauncher() {
   const [open, setOpen] = useState(false);
+  useSmsRealtime();
   const { data: pending = [], isSuccess: pendingLoaded } = usePendingExpenses();
   const { data: reviewSms = [], isSuccess: reviewLoaded } = useReviewSms();
   const count = pending.length + reviewSms.length;

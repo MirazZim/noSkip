@@ -1,4 +1,6 @@
+import { useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
@@ -166,6 +168,53 @@ export function useMerchantRules() {
     },
     enabled: !!user,
   });
+}
+
+// ─── Realtime ─────────────────────────────────────────────────────────────────
+
+/**
+ * Keeps SMS-driven queries live while the app is open. ingest-sms writes
+ * sms_messages → expenses → sms_messages (expense_id) in quick succession, so
+ * refetches are debounced until the burst settles. Mount once (ReviewQueueLauncher).
+ */
+export function useSmsRealtime() {
+  const { user } = useAuth();
+  const invalidate = useInvalidateSms();
+
+  useEffect(() => {
+    if (!user) return;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const refresh = () => {
+      clearTimeout(timer);
+      timer = setTimeout(invalidate, 400);
+    };
+    const announce = () =>
+      toast("New payment from SMS", {
+        description: "Waiting for you to confirm",
+        action: { label: "Review", onClick: openReviewQueue },
+      });
+
+    const filter = `user_id=eq.${user.id}`;
+    const channel = supabase
+      .channel(`sms-import:${user.id}`)
+      .on("postgres_changes", { event: "*", schema: "public", table: "sms_messages", filter }, (payload) => {
+        refresh();
+        if (payload.eventType === "INSERT" && (payload.new as SmsMessage).status === "review") announce();
+      })
+      .on("postgres_changes", { event: "*", schema: "public", table: "expenses", filter }, (payload) => {
+        refresh();
+        const row = payload.new as { origin?: string; review_status?: string };
+        if (payload.eventType === "INSERT" && row.origin === "sms" && row.review_status === "pending") announce();
+      })
+      .subscribe();
+
+    return () => {
+      clearTimeout(timer);
+      supabase.removeChannel(channel);
+    };
+    // invalidate is a fresh closure each render; the channel only depends on the user
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id]);
 }
 
 // ─── Confirm / dismiss pending expenses ───────────────────────────────────────
