@@ -81,8 +81,12 @@ function dhakaDateString(d: Date): string {
 
 // The SMS's own timestamp, when it's plausible; otherwise "now". Pasted
 // old SMS keep their date, a mis-parsed date can't land in the future.
+// A date-only SMS for today was just forwarded, so arrival time is the real time.
 function resolveTxnAt(parsed: ParsedSms): Date {
   const now = Date.now();
+  if (parsed.txnAt && !parsed.txnHasTime && dhakaDateString(parsed.txnAt) === dhakaDateString(new Date(now))) {
+    return new Date(now);
+  }
   const t = parsed.txnAt?.getTime();
   if (t && t <= now + 10 * 60_000 && t >= now - MAX_BACKDATE_MS) return parsed.txnAt!;
   return new Date(now);

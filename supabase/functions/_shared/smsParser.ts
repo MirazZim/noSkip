@@ -34,6 +34,8 @@ export interface ParsedSms {
   trxId: string | null;
   /** Transaction time stated in the SMS, if any (interpreted as Asia/Dhaka). */
   txnAt: Date | null;
+  /** false when the SMS gives only a date (City Bank) — txnAt is then noon that day. */
+  txnHasTime: boolean;
 }
 
 // ─── Money ────────────────────────────────────────────────────────────────────
@@ -52,8 +54,9 @@ const CURRENCY_TOKENS: [RegExp, string][] = [
 const CUR = String.raw`(?:Tk\.?|Taka|BDT|৳|USD|US\$|\$|EUR|€|GBP|£|INR|₹|SGD|AED|MYR)`;
 const NUM = String.raw`(\d{1,3}(?:,\d{2,3})+(?:\.\d+)?|\d+(?:\.\d+)?)`;
 // "Tk 1,200.00", "BDT1200", "Amount: Tk 120"  |  "1,200.00 BDT"
-const MONEY_BEFORE = new RegExp(String.raw`(?<![A-Za-z])(${CUR})\s*:?\s*${NUM}`, "gi");
-const MONEY_AFTER = new RegExp(String.raw`(?<![\d.,])${NUM}\s*(${CUR})(?![A-Za-z])`, "gi");
+// Never across a line break: "08-Oct-2026\nTk. 34,933" is not "2026 Tk".
+const MONEY_BEFORE = new RegExp(String.raw`(?<![A-Za-z])(${CUR})[ \t]*:?[ \t]*${NUM}`, "gi");
+const MONEY_AFTER = new RegExp(String.raw`(?<![\d.,])${NUM}[ \t]*(${CUR})(?![A-Za-z])`, "gi");
 
 interface MoneyMatch {
   start: number;
@@ -117,7 +120,7 @@ const PROMO_RE =
   /(?:\boffer\b|\benjoy\b|\bget up ?to\b|\bupto\b|\bup to\b|\bwin\b|\bdiscount\b|%\s*off|\d+\s*%|\bhurry\b|\bvalid (?:till|until)\b|\bdial \*|\bt&c\b|\bcampaign\b|\bchance\b|\bcoupon\b|\bpromo\b)/i;
 
 const KEYWORDS: { re: RegExp; kind: SmsKind; direction: SmsDirection }[] = [
-  { re: /\bcash ?out\b/i, kind: "cash_out", direction: "debit" },
+  { re: /\bcash ?out\b|\batm\b|\bcash withdrawal\b/i, kind: "cash_out", direction: "debit" },
   { re: /\bcash ?in\b/i, kind: "cash_in", direction: "credit" },
   { re: /\bsend money\b|\bmoney sent\b|\byou have sent\b|\bsent (?:tk|bdt)/i, kind: "send_money", direction: "debit" },
   { re: /\b(?:mobile )?recharge\b|\btop-?up\b/i, kind: "recharge", direction: "debit" },
@@ -153,6 +156,10 @@ function detectProvider(text: string, sender: string | null): string {
   if (/\bTrxID\b/.test(text)) return "bkash";
   // Banks before the generic card check — their account masks look like card masks
   if (/citytouch|city ?bank|\bcbl\b|cbl\.fyi/i.test(hay)) return "city_bank";
+  // City Bank's layout, for when the cbl.fyi link is missing: a header line
+  // ("E-COMM/POS TXN"), or "Tk. 34,933 Deposit" lines above an "A/C:" line
+  if (/^[A-Z][A-Z-]*(?:\/[A-Z-]+)* TXN$/m.test(text)) return "city_bank";
+  if (/^Tk\. [\d,.]+ [A-Z][a-z]+$/m.test(text) && /^A\/C: /m.test(text)) return "city_bank";
   if (/\bcard\b|\bending\s*(?:with\s*)?[\dX*]{4}|\*{2,}\d{3,4}|\b(?:visa|master ?card|amex)\b/i.test(hay)) return "card";
   if (sender && sender.trim()) return sender.trim().toLowerCase().slice(0, 32);
   return "bank";
@@ -215,19 +222,24 @@ function dhakaDate(y: number, mo: number, d: number, h: number, mi: number): Dat
   return new Date(Date.UTC(y, mo, d, h - 6, mi));
 }
 
-function parseDate(text: string): Date | null {
+/** A date with no time ("16-Oct-2026") is placed at noon and flagged. */
+function parseDate(text: string): { at: Date | null; hasTime: boolean } {
+  const at = (y: number, mo: number, d: number, h?: string, mi?: string) => ({
+    at: dhakaDate(y, mo, d, h ? +h : 12, mi ? +mi : 0),
+    hasTime: h !== undefined,
+  });
   // 12/10/2026 14:14  ·  12-10-2026  ·  12.10.26 (day first, as BD banks write it)
   let m = /\b(\d{1,2})[/.-](\d{1,2})[/.-](\d{2,4})(?:[\s,]+(\d{1,2}):(\d{2}))?/.exec(text);
-  if (m) return dhakaDate(+m[3], +m[2] - 1, +m[1], +(m[4] ?? 12), +(m[5] ?? 0));
+  if (m) return at(+m[3], +m[2] - 1, +m[1], m[4], m[5]);
   // 12-Oct-26 14:14  ·  12 Oct 2026
   m = /\b(\d{1,2})[\s-]([A-Za-z]{3})[a-z]*[\s-](\d{2,4})(?:[\s,]+(\d{1,2}):(\d{2}))?/.exec(text);
   if (m && MONTHS[m[2].toLowerCase()] !== undefined) {
-    return dhakaDate(+m[3], MONTHS[m[2].toLowerCase()], +m[1], +(m[4] ?? 12), +(m[5] ?? 0));
+    return at(+m[3], MONTHS[m[2].toLowerCase()], +m[1], m[4], m[5]);
   }
   // 2026-10-12 14:14
   m = /\b(\d{4})-(\d{2})-(\d{2})(?:[T\s]+(\d{1,2}):(\d{2}))?/.exec(text);
-  if (m) return dhakaDate(+m[1], +m[2] - 1, +m[3], +(m[4] ?? 12), +(m[5] ?? 0));
-  return null;
+  if (m) return at(+m[1], +m[2] - 1, +m[3], m[4], m[5]);
+  return { at: null, hasTime: false };
 }
 
 function extractCounterparty(text: string, direction: SmsDirection) {
@@ -252,6 +264,7 @@ export function parseSms(rawText: string, sender: string | null = null): ParsedS
     isTransaction: false, skipReason: null, provider: detectProvider(text, sender),
     kind: "unknown", direction: "unknown", amount: null, currency: "BDT", fee: 0,
     balance: null, merchant: null, merchantKey: null, isPerson: false, trxId: null, txnAt: null,
+    txnHasTime: false,
   };
 
   if (OTP_RE.test(text)) return { ...base, skipReason: "otp" };
@@ -270,6 +283,7 @@ export function parseSms(rawText: string, sender: string | null = null): ParsedS
   const counterparty = extractCounterparty(text, direction);
   const isPerson =
     counterparty?.isPerson ?? (kind === "send_money" || kind === "cash_in" || kind === "cash_out");
+  const date = parseDate(text);
 
   return {
     ...base,
@@ -284,6 +298,7 @@ export function parseSms(rawText: string, sender: string | null = null): ParsedS
     merchantKey: counterparty ? merchantKeyOf(counterparty.merchant, counterparty.isPerson) || null : null,
     isPerson,
     trxId,
-    txnAt: parseDate(text),
+    txnAt: date.at,
+    txnHasTime: date.at !== null && date.hasTime,
   };
 }

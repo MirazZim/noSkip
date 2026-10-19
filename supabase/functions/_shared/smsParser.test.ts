@@ -21,6 +21,7 @@ describe("parseSms — bKash", () => {
     expect(p.merchantKey).toBe("foodpanda");
     expect(p.isPerson).toBe(false);
     expect(p.txnAt?.toISOString()).toBe("2026-10-12T08:14:00.000Z");
+    expect(p.txnHasTime).toBe(true);
   });
 
   it("tags Send Money to a phone number as a person", () => {
@@ -170,6 +171,50 @@ describe("parseSms — real messages (anonymized)", () => {
     expect(p.balance).toBe(33204);
     expect(p.merchant).toBeNull();
     expect(p.txnAt?.toISOString()).toBe("2026-10-10T06:00:00.000Z");
+  });
+
+  it.each([
+    ["with the rate-us link", "\nPlease rate us: https://s.cbl.fyi/s/R62AtuZ"],
+    ["with the link cut off", "\nPlease rate us:"],
+  ])("City Bank E-COMM/POS purchase (%s)", (_label, tail) => {
+    const p = parseSms(
+      "16-Oct-2026\nE-COMM/POS TXN\nTk. 210 Purchased\nTk. 6,767 Balance\nA/C: 2304***0000" + tail,
+    );
+    expect(p.isTransaction).toBe(true);
+    expect(p.provider).toBe("city_bank");
+    expect(p.kind).toBe("payment");
+    expect(p.direction).toBe("debit");
+    expect(p.amount).toBe(210);
+    expect(p.balance).toBe(6767);
+    expect(p.merchant).toBeNull();
+    expect(p.trxId).toBeNull();
+    expect(p.txnAt?.toISOString()).toBe("2026-10-16T06:00:00.000Z");
+    expect(p.txnHasTime).toBe(false);
+  });
+
+  it("City Bank ATM withdrawal is a cash-out", () => {
+    const p = parseSms(
+      "14-Sep-2026\nATM TXN\nTk. 500 Withdrawal\nTk. 27,646 Balance\nA/C: 23040000\nPlease rate us: https://s.cbl.fyi/s/CUdLX7l",
+    );
+    expect(p.isTransaction).toBe(true);
+    expect(p.provider).toBe("city_bank");
+    expect(p.kind).toBe("cash_out");
+    expect(p.direction).toBe("debit");
+    expect(p.amount).toBe(500);
+    expect(p.balance).toBe(27646);
+    expect(p.txnAt?.toISOString()).toBe("2026-09-14T06:00:00.000Z");
+  });
+
+  it("City Bank deposit (no header, no link) is a credit", () => {
+    const p = parseSms("08-Oct-2026\nTk. 34,933 Deposit\nTk. 34,985 Balance\nA/C: 23040000");
+    expect(p.isTransaction).toBe(true);
+    expect(p.provider).toBe("city_bank");
+    expect(p.kind).toBe("received");
+    expect(p.direction).toBe("credit");
+    expect(p.amount).toBe(34933);
+    expect(p.balance).toBe(34985);
+    expect(p.merchant).toBeNull();
+    expect(p.txnAt?.toISOString()).toBe("2026-10-08T06:00:00.000Z");
   });
 });
 

@@ -81,7 +81,7 @@ There's one automation per keyword. iOS matches one exact phrase per automation.
 | Keyword | Catches |
 |---|---|
 | `TrxID` | every bKash SMS (payments, received, cash out, recharge) |
-| `CITYTOUCH` | City Bank account / card SMS |
+| `A/C:` | every City Bank SMS: `CITYTOUCH TXN`, `E-COMM/POS TXN`, `ATM TXN`, deposits (`CITYTOUCH` alone misses all but the first) |
 | `TxnID` | Nagad (only if I start using it) |
 
 Each automation is built the same way:
@@ -180,6 +180,6 @@ Supabase secret `SMS_INGEST_SECRET`. Never put it in `.env`, the repo or a scree
       (`npx supabase gen types typescript --linked`) and remove the temporary untyped client
       in `useSmsImport.ts`.
 - [ ] Commit and push to `main` so Vercel ships the confirm dialog to the live site.
-- [ ] Add the `CITYTOUCH` automation if it isn't set up yet, and `TxnID` if I start using Nagad.
+- [ ] Change the `CITYTOUCH` automation's keyword to `A/C:`, and add `TxnID` if I start using Nagad.
 - [ ] If City Bank sends a separate purchase SMS that names the shop, add that format so
       card payments can be learned too.
