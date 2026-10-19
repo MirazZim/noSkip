@@ -7,13 +7,15 @@ export const OAUTH_PROVIDERS: { id: OAuthProvider; label: string }[] = [
 ];
 
 // A failed or cancelled provider redirect lands back on our page with the
-// reason in the query string or hash. Returns it once and strips it from the URL.
+// reason in the query string or hash. Returns it once and strips the error from
+// the URL, keeping any other query params (e.g. ?tab=accounts).
 export function consumeAuthRedirectError(): string | null {
-  const params = new URLSearchParams(
-    window.location.search || window.location.hash.replace(/^#/, "")
-  );
-  const description = params.get("error_description");
+  const search = new URLSearchParams(window.location.search);
+  const hash = new URLSearchParams(window.location.hash.replace(/^#/, ""));
+  const description = search.get("error_description") ?? hash.get("error_description");
   if (!description) return null;
-  window.history.replaceState(null, "", window.location.pathname);
+  ["error", "error_code", "error_description"].forEach((k) => search.delete(k));
+  const query = search.toString();
+  window.history.replaceState(null, "", window.location.pathname + (query ? `?${query}` : ""));
   return description.replace(/\+/g, " ");
 }

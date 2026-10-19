@@ -18,14 +18,14 @@ export function useIdentities() {
   });
 }
 
-// Redirects to the provider; it returns to /settings with the identity attached
+// Redirects to the provider; it returns to the Settings Accounts tab with the identity attached
 // to this account. Needs "Allow manual linking" on in Supabase Auth settings.
 export function useLinkIdentity() {
   return useMutation({
     mutationFn: async (provider: OAuthProvider) => {
       const { error } = await supabase.auth.linkIdentity({
         provider,
-        options: { redirectTo: `${window.location.origin}/settings` },
+        options: { redirectTo: `${window.location.origin}/settings?tab=accounts` },
       });
       if (error) throw error;
     },
