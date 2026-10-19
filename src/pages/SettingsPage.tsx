@@ -116,42 +116,47 @@ function AppearanceTab() {
   const { theme, setTheme } = useTheme();
   return (
     <SettingsSection id="appearance" title="Theme" description="Pick the look that suits you.">
-      <SettingsGroup className="p-3">
-        <div className="grid grid-cols-3 gap-2 sm:grid-cols-6">
-          {THEMES.map((t) => {
-            const selected = theme === t.id;
-            const ink = t.dark ? "255,255,255" : "0,0,0";
-            return (
-              <button
-                key={t.id}
-                onClick={() => setTheme(t.id)}
-                aria-pressed={selected}
-                className={cn(
-                  "rounded-xl border-2 p-1 text-left transition-all",
-                  selected ? "border-primary shadow-lg shadow-primary/15" : "border-transparent hover:border-border"
-                )}
-              >
-                {/* Mini window preview */}
-                <div className="relative h-11 overflow-hidden rounded-lg border border-black/10 p-1.5" style={{ background: t.color }}>
-                  <div className="h-1 w-8 rounded-full" style={{ background: `rgba(${ink},0.35)` }} />
-                  <div className="mt-1 h-1 w-12 max-w-full rounded-full" style={{ background: `rgba(${ink},0.15)` }} />
-                  <div className="absolute bottom-1.5 left-1.5 right-1.5 flex gap-1">
-                    <div className="h-2.5 flex-1 rounded" style={{ background: `rgba(${ink},0.08)` }} />
-                    <div className="h-2.5 flex-1 rounded" style={{ background: `rgba(${ink},0.08)` }} />
-                  </div>
-                </div>
-                <div className="flex items-center justify-between px-1 pb-0.5 pt-1.5">
-                  <span className="text-xs font-medium">{t.label}</span>
-                  {selected && (
-                    <span className="flex h-4 w-4 items-center justify-center rounded-full bg-primary">
-                      <Check className="h-2.5 w-2.5 text-primary-foreground" />
-                    </span>
-                  )}
-                </div>
-              </button>
-            );
-          })}
-        </div>
+      <SettingsGroup className="space-y-3 p-3">
+        {(["Modern", "Classic"] as const).map((group) => (
+          <div key={group} className="space-y-1.5">
+            <p className="px-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">{group}</p>
+            <div className="grid grid-cols-3 gap-2 sm:grid-cols-4 lg:grid-cols-8">
+              {THEMES.filter((t) => t.group === group).map((t) => {
+                const selected = theme === t.id;
+                const ink = t.dark ? "255,255,255" : "0,0,0";
+                return (
+                  <button
+                    key={t.id}
+                    onClick={() => setTheme(t.id)}
+                    aria-pressed={selected}
+                    className={cn(
+                      "min-w-0 rounded-xl border-2 p-1 text-left transition-all",
+                      selected ? "border-primary shadow-lg shadow-primary/15" : "border-transparent hover:border-border"
+                    )}
+                  >
+                    {/* Mini window preview, accent bar in the theme's primary */}
+                    <div className="relative h-11 overflow-hidden rounded-lg border border-black/10 p-1.5" style={{ background: t.color }}>
+                      <div className="h-1 w-6 rounded-full" style={{ background: t.accent }} />
+                      <div className="mt-1 h-1 w-10 max-w-full rounded-full" style={{ background: `rgba(${ink},0.18)` }} />
+                      <div className="absolute bottom-1.5 left-1.5 right-1.5 flex gap-1">
+                        <div className="h-2.5 flex-1 rounded" style={{ background: `rgba(${ink},0.08)` }} />
+                        <div className="h-2.5 w-2.5 rounded-full" style={{ background: t.accent }} />
+                      </div>
+                    </div>
+                    <div className="flex items-center justify-between gap-1 px-1 pb-0.5 pt-1.5">
+                      <span className="truncate text-xs font-medium">{t.label}</span>
+                      {selected && (
+                        <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-primary">
+                          <Check className="h-2.5 w-2.5 text-primary-foreground" />
+                        </span>
+                      )}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        ))}
       </SettingsGroup>
     </SettingsSection>
   );
