@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
@@ -13,6 +13,8 @@ import {
 } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import { Zap, Eye, EyeOff } from "lucide-react";
+import { SocialAuthButtons } from "@/components/auth/SocialAuthButtons";
+import { consumeAuthRedirectError } from "@/lib/oauthProviders";
 
 export default function Auth() {
   const [isLogin, setIsLogin] = useState(true);
@@ -27,6 +29,13 @@ export default function Auth() {
   const { signIn, signUp } = useAuth();
   const navigate = useNavigate();
   const { toast } = useToast();
+
+  useEffect(() => {
+    const description = consumeAuthRedirectError();
+    if (description) {
+      toast({ title: "Sign in failed", description, variant: "destructive" });
+    }
+  }, [toast]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -195,7 +204,9 @@ export default function Auth() {
             </div>
           </CardHeader>
 
-          <CardContent>
+          <CardContent className="space-y-4">
+            <SocialAuthButtons />
+
             <form onSubmit={handleSubmit} className="space-y-4">
               {!isLogin && (
                 <>

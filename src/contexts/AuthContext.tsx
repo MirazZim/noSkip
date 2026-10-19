@@ -3,6 +3,7 @@ import { Session, User } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
 import { useNavigate } from "react-router-dom";
 import { auditLog } from "@/lib/auditLog";
+import type { OAuthProvider } from "@/lib/oauthProviders";
 
 interface AuthContextType {
   session: Session | null;
@@ -10,6 +11,7 @@ interface AuthContextType {
   loading: boolean;
   signUp: (email: string, password: string) => Promise<{ error: Error | null }>;
   signIn: (email: string, password: string) => Promise<{ error: Error | null }>;
+  signInWithProvider: (provider: OAuthProvider) => Promise<{ error: Error | null }>;
   signOut: () => Promise<void>;
 }
 
@@ -58,13 +60,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return { error: error as Error | null };
   };
 
+  // Redirects away to the provider. Sign-in and sign-up are the same call: a new
+  // identity creates the account, an existing one logs in. The provider sends the
+  // user back to /auth, where PublicRoute forwards them to the dashboard.
+  const signInWithProvider = async (provider: OAuthProvider) => {
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider,
+      options: { redirectTo: `${window.location.origin}/auth` },
+    });
+    return { error: error as Error | null };
+  };
+
   const signOut = async () => {
     await supabase.auth.signOut();
     auditLog({ action: "user.logout" });
   };
 
   return (
-    <AuthContext.Provider value={{ session, user, loading, signUp, signIn, signOut }}>
+    <AuthContext.Provider value={{ session, user, loading, signUp, signIn, signInWithProvider, signOut }}>
       {children}
     </AuthContext.Provider>
   );
