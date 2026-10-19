@@ -262,7 +262,18 @@ export function useConfirmAllSmsExpenses() {
   });
 }
 
-async function upsertIgnoreRule(userId: string, pattern: string, label: string | null) {
+/**
+ * What an ignore/dismiss overwrote, so Undo can put it back. `rule` is only
+ * set when "always ignore" replaced a merchant rule (null = there was none).
+ */
+export interface IgnoreUndo {
+  rule?: { pattern: string; before: MerchantRule | null };
+}
+
+async function upsertIgnoreRule(userId: string, pattern: string, label: string | null): Promise<IgnoreUndo> {
+  const { data: before, error: readErr } = await db
+    .from("merchant_rules").select("*").eq("user_id", userId).eq("pattern", pattern).maybeSingle();
+  if (readErr) throw readErr;
   const { error } = await db.from("merchant_rules").upsert(
     {
       user_id: userId, pattern, label, action: "ignore",
@@ -271,6 +282,20 @@ async function upsertIgnoreRule(userId: string, pattern: string, label: string |
     { onConflict: "user_id,pattern" },
   );
   if (error) throw error;
+  return { rule: { pattern, before: before as MerchantRule | null } };
+}
+
+async function restoreRule(userId: string, undo: IgnoreUndo) {
+  if (!undo.rule) return;
+  const { pattern, before } = undo.rule;
+  if (before) {
+    const { id, user_id: _owner, ...fields } = before;
+    const { error } = await db.from("merchant_rules").update(fields).eq("id", id);
+    if (error) throw error;
+  } else {
+    const { error } = await db.from("merchant_rules").delete().eq("user_id", userId).eq("pattern", pattern);
+    if (error) throw error;
+  }
 }
 
 /** "Not an expense": removes the expense, keeps the SMS as ignored. */
@@ -278,16 +303,39 @@ export function useDismissSmsExpense() {
   const invalidate = useInvalidateSms();
   const { user } = useAuth();
   return useMutation({
-    mutationFn: async ({ expense, alwaysIgnore }: { expense: PendingExpense; alwaysIgnore?: boolean }) => {
+    mutationFn: async ({ expense, alwaysIgnore }: { expense: PendingExpense; alwaysIgnore?: boolean }): Promise<IgnoreUndo> => {
       const { error } = await db.from("expenses").delete().eq("id", expense.id);
       if (error) throw error;
       if (expense.sms) {
         const { error: smsErr } = await db.from("sms_messages").update({ status: "ignored" }).eq("id", expense.sms.id);
         if (smsErr) throw smsErr;
         if (alwaysIgnore && expense.sms.merchant_key) {
-          await upsertIgnoreRule(user!.id, expense.sms.merchant_key, expense.sms.merchant);
+          return upsertIgnoreRule(user!.id, expense.sms.merchant_key, expense.sms.merchant);
         }
       }
+      return {};
+    },
+    onSuccess: invalidate,
+  });
+}
+
+/** Undo for useDismissSmsExpense: re-inserts the same expense row (same id) and relinks its SMS. */
+export function useUndoDismissSmsExpense() {
+  const invalidate = useInvalidateSms();
+  const { user } = useAuth();
+  return useMutation({
+    mutationFn: async ({ expense, undo }: { expense: PendingExpense; undo: IgnoreUndo }) => {
+      const { sms, ...row } = expense;
+      const { error } = await db.from("expenses").insert(row);
+      if (error) throw error;
+      if (sms) {
+        const { error: smsErr } = await db
+          .from("sms_messages")
+          .update({ status: "expense", expense_id: expense.id })
+          .eq("id", sms.id);
+        if (smsErr) throw smsErr;
+      }
+      await restoreRule(user!.id, undo);
     },
     onSuccess: invalidate,
   });
@@ -352,10 +400,25 @@ export function useIgnoreSms() {
   const invalidate = useInvalidateSms();
   const { user } = useAuth();
   return useMutation({
-    mutationFn: async ({ sms, alwaysIgnore }: { sms: SmsMessage; alwaysIgnore?: boolean }) => {
+    mutationFn: async ({ sms, alwaysIgnore }: { sms: SmsMessage; alwaysIgnore?: boolean }): Promise<IgnoreUndo> => {
       const { error } = await db.from("sms_messages").update({ status: "ignored" }).eq("id", sms.id);
       if (error) throw error;
-      if (alwaysIgnore && sms.merchant_key) await upsertIgnoreRule(user!.id, sms.merchant_key, sms.merchant);
+      if (alwaysIgnore && sms.merchant_key) return upsertIgnoreRule(user!.id, sms.merchant_key, sms.merchant);
+      return {};
+    },
+    onSuccess: invalidate,
+  });
+}
+
+/** Undo for useIgnoreSms: back into the review inbox. */
+export function useUndoIgnoreSms() {
+  const invalidate = useInvalidateSms();
+  const { user } = useAuth();
+  return useMutation({
+    mutationFn: async ({ sms, undo }: { sms: SmsMessage; undo: IgnoreUndo }) => {
+      const { error } = await db.from("sms_messages").update({ status: "review" }).eq("id", sms.id);
+      if (error) throw error;
+      await restoreRule(user!.id, undo);
     },
     onSuccess: invalidate,
   });

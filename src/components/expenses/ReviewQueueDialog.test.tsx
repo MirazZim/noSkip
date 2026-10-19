@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor, act, within } from "@testing-library/react";
 import type { MerchantRule, PendingExpense, SmsMessage } from "@/hooks/useSmsImport";
 
 // ─── Mocks: data hooks return fixtures, mutations are spies ───────────────────
@@ -15,6 +15,8 @@ const dismiss = vi.fn().mockResolvedValue(undefined);
 const logExpense = vi.fn().mockResolvedValue(undefined);
 const logIncome = vi.fn().mockResolvedValue(undefined);
 const ignore = vi.fn().mockResolvedValue(undefined);
+const undoDismiss = vi.fn().mockResolvedValue(undefined);
+const undoIgnore = vi.fn().mockResolvedValue(undefined);
 const mutation = (fn: ReturnType<typeof vi.fn>) => () => ({ mutateAsync: fn, isPending: false });
 
 vi.mock("@/hooks/useSmsImport", async (importOriginal) => {
@@ -30,6 +32,8 @@ vi.mock("@/hooks/useSmsImport", async (importOriginal) => {
     useLogSmsAsExpense: mutation(logExpense),
     useLogSmsAsIncome: mutation(logIncome),
     useIgnoreSms: mutation(ignore),
+    useUndoDismissSmsExpense: mutation(undoDismiss),
+    useUndoIgnoreSms: mutation(undoIgnore),
     useIngestSms: mutation(vi.fn()),
   };
 });
@@ -41,9 +45,22 @@ vi.mock("@/hooks/useCustomCategories", () => ({
   useCreateCustomCategory: () => ({ mutateAsync: vi.fn(), isPending: false }),
   useDeleteCustomCategory: () => ({ mutateAsync: vi.fn(), isPending: false }),
 }));
-vi.mock("sonner", () => ({ toast: Object.assign(vi.fn(), { success: vi.fn(), error: vi.fn(), info: vi.fn() }) }));
+vi.mock("sonner", () => ({
+  toast: Object.assign(vi.fn(), {
+    success: vi.fn(), error: vi.fn(), info: vi.fn(),
+  }),
+}));
 
 const { ReviewQueueDialog } = await import("./ReviewQueueDialog");
+const { toast } = await import("sonner");
+
+/** Finds the Undo bar inside the dialog, checks what it says, and taps Undo. */
+async function clickUndo(title: string, detail: string) {
+  const bar = within(await screen.findByRole("status"));
+  expect(bar.getByText(title)).toBeInTheDocument();
+  expect(bar.getByText(detail)).toBeInTheDocument();
+  await act(async () => { fireEvent.click(bar.getByRole("button", { name: /Undo/ })); });
+}
 
 // ─── Fixtures ─────────────────────────────────────────────────────────────────
 
@@ -149,6 +166,83 @@ describe("ReviewQueueDialog", () => {
     renderDialog();
     fireEvent.click(screen.getByRole("button", { name: /Never track payments to BKASH AGENT/ }));
     await waitFor(() => expect(dismiss).toHaveBeenCalledWith(expect.objectContaining({ alwaysIgnore: true })));
+  });
+
+  it("Confirm is the only full-size button; removing is a quiet link below it", () => {
+    state.pending = [pendingExpense("e1", "FOODPANDA LIMITED", "foodpanda", "food-drinks:meal-delivery")];
+    renderDialog();
+    const confirmBtn = screen.getByRole("button", { name: /^Confirm$/ });
+    const notExpense = screen.getByRole("button", { name: "Not an expense" });
+    expect(confirmBtn).toHaveClass("w-full");
+    // Not side by side any more: the link comes after Confirm in its own row
+    expect(confirmBtn.parentElement).not.toBe(notExpense.parentElement);
+    expect(confirmBtn.compareDocumentPosition(notExpense) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("Not an expense can be undone, and the card comes back", async () => {
+    const snapshot = { rule: undefined };
+    dismiss.mockResolvedValueOnce(snapshot);
+    const e1 = pendingExpense("e1", "FOODPANDA LIMITED", "foodpanda", "food-drinks:meal-delivery");
+    state.pending = [e1];
+    renderDialog();
+    fireEvent.click(screen.getByRole("button", { name: "Not an expense" }));
+    await waitFor(() => expect(dismiss).toHaveBeenCalledWith({ expense: e1, alwaysIgnore: false }));
+    await waitFor(() => expect(screen.getByText("All caught up")).toBeInTheDocument());
+
+    await clickUndo("Removed — not an expense", "৳120 · FOODPANDA LIMITED");
+    expect(undoDismiss).toHaveBeenCalledWith({ expense: e1, undo: snapshot });
+    await waitFor(() => expect(screen.getByText("FOODPANDA LIMITED")).toBeInTheDocument());
+    // The bar goes away once used, and no toast was needed
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    expect(toast.success).not.toHaveBeenCalled();
+  });
+
+  it("the Undo bar expires after a few seconds", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      state.pending = [pendingExpense("e1", "FOODPANDA LIMITED", "foodpanda", "food-drinks:meal-delivery")];
+      renderDialog();
+      fireEvent.click(screen.getByRole("button", { name: "Not an expense" }));
+      expect(await screen.findByRole("status")).toBeInTheDocument();
+      await act(async () => { vi.advanceTimersByTime(6000); });
+      expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("Never track passes the old rule to Undo so it can be put back", async () => {
+    const before = rule("agent", "finance:cash-withdrawal", 2);
+    const snapshot = { rule: { pattern: "agent", before } };
+    dismiss.mockResolvedValueOnce(snapshot);
+    state.pending = [pendingExpense("e1", "BKASH AGENT", "agent", "other:uncategorized")];
+    renderDialog();
+    fireEvent.click(screen.getByRole("button", { name: /Never track payments to BKASH AGENT/ }));
+    await waitFor(() => expect(dismiss).toHaveBeenCalled());
+    await clickUndo("BKASH AGENT will be ignored from now on", "৳120 · BKASH AGENT");
+    expect(undoDismiss).toHaveBeenCalledWith(expect.objectContaining({ undo: snapshot }));
+  });
+
+  it("Ignore on an SMS card can be undone", async () => {
+    state.reviewSms = [credit];
+    renderDialog();
+    fireEvent.click(screen.getByRole("button", { name: "Ignore" }));
+    await waitFor(() => expect(ignore).toHaveBeenCalledWith({ sms: credit, alwaysIgnore: false }));
+    await clickUndo("Ignored", "BDT 2,500 · 01912345678");
+    expect(undoIgnore).toHaveBeenCalledWith({ sms: credit, undo: {} });
+    await waitFor(() => expect(screen.getByText("Money in")).toBeInTheDocument());
+  });
+
+  it("a failed undo says so instead of pretending", async () => {
+    undoDismiss.mockRejectedValueOnce(new Error("offline"));
+    state.pending = [pendingExpense("e1", "FOODPANDA LIMITED", "foodpanda", "food-drinks:meal-delivery")];
+    renderDialog();
+    fireEvent.click(screen.getByRole("button", { name: "Not an expense" }));
+    await waitFor(() => expect(screen.getByText("All caught up")).toBeInTheDocument());
+    await clickUndo("Removed — not an expense", "৳120 · FOODPANDA LIMITED");
+    expect(toast.error).toHaveBeenCalledWith("Couldn't undo");
+    expect(screen.getByRole("status")).toBeInTheDocument(); // still there to retry
+    expect(screen.queryByText("FOODPANDA LIMITED")).not.toBeInTheDocument();
   });
 
   it("money received defaults to Income and saves the SMS amount", async () => {

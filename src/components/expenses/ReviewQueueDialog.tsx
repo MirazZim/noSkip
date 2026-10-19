@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { format, parseISO } from "date-fns";
-import { Check, ClipboardPaste, Hand, Loader2, PartyPopper, Smartphone, X } from "lucide-react";
+import { Check, ClipboardPaste, Hand, Loader2, PartyPopper, Smartphone, Trash2, Undo2 } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -15,9 +15,9 @@ import { useCurrency } from "@/hooks/useCurrency";
 import {
   AUTO_CONFIRM_AFTER, findRule, providerLabel,
   usePendingExpenses, useReviewSms, useMerchantRules,
-  useConfirmSmsExpense, useConfirmAllSmsExpenses, useDismissSmsExpense,
-  useLogSmsAsExpense, useLogSmsAsIncome, useIgnoreSms, useIngestSms,
-  type MerchantRule, type PendingExpense, type SmsMessage,
+  useConfirmSmsExpense, useConfirmAllSmsExpenses, useDismissSmsExpense, useUndoDismissSmsExpense,
+  useLogSmsAsExpense, useLogSmsAsIncome, useIgnoreSms, useUndoIgnoreSms, useIngestSms,
+  type IgnoreUndo, type MerchantRule, type PendingExpense, type SmsMessage,
 } from "@/hooks/useSmsImport";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
@@ -29,6 +29,15 @@ import { toast } from "sonner";
 type Item =
   | { type: "expense"; id: string; expense: PendingExpense }
   | { type: "sms"; id: string; sms: SmsMessage };
+
+interface Removed {
+  id: string;
+  title: string;
+  detail: string;
+  undo: () => Promise<unknown>;
+  /** Restarts the countdown when the same card is removed again. */
+  at: number;
+}
 
 type Direction = [number, number];
 const KEEP: Direction = [0.9, -0.5];    // confirmed / saved — flies up and away
@@ -46,6 +55,12 @@ const GLASS_BTN =
   "rounded-full border border-foreground/10 bg-foreground/[0.06] text-foreground backdrop-blur-xl hover:bg-foreground/[0.12] shadow-[inset_0_1px_0_hsl(0_0%_100%/0.25)]";
 const PRIMARY_BTN =
   "rounded-full shadow-[0_8px_24px_-8px_hsl(var(--primary)/0.7),inset_0_1px_0_hsl(0_0%_100%/0.3)]";
+// Removing is the rare action: a quiet text link under the big primary button,
+// never a twin button beside it (that's where mis-taps came from). Undo backs it up.
+const QUIET_LINK =
+  "w-full py-1.5 text-center text-xs text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50";
+const DANGER_LINK = cn(QUIET_LINK, "font-medium text-destructive hover:text-destructive/80");
+const UNDO_MS = 6000;
 const CARD_SHADOW = "0 24px 48px -18px rgba(0, 0, 0, 0.45), 0 8px 18px -10px rgba(0, 0, 0, 0.25)";
 
 // Works for hex and hsl() alike (category colours come in both)
@@ -101,6 +116,40 @@ export function ReviewQueueDialog({ open, onOpenChange }: Props) {
   useEffect(() => { if (!open) setDone(new Set()); }, [open]);
 
   const markDone = (id: string) => setDone((prev) => new Set(prev).add(id));
+  const unmarkDone = (id: string) => setDone((prev) => {
+    const next = new Set(prev);
+    next.delete(id);
+    return next;
+  });
+
+  // Removal is instant; the Undo bar inside the dialog restores the row and
+  // brings the card back. Inside, not a toast: toasts sit under the modal
+  // overlay, so the first tap on one only closed the dialog.
+  const { formatAmount } = useCurrency();
+  const undoDismiss = useUndoDismissSmsExpense();
+  const undoIgnore = useUndoIgnoreSms();
+  const [removed, setRemoved] = useState<Removed | null>(null);
+  const offerUndo = (id: string, title: string, detail: string, undo: () => Promise<unknown>) =>
+    setRemoved({ id, title, detail, undo, at: Date.now() });
+
+  // Only the latest removal can be undone; it expires after UNDO_MS
+  useEffect(() => {
+    if (!removed) return;
+    const t = setTimeout(() => setRemoved((r) => (r === removed ? null : r)), UNDO_MS);
+    return () => clearTimeout(t);
+  }, [removed]);
+  useEffect(() => { if (!open) setRemoved(null); }, [open]);
+
+  const handleUndo = async () => {
+    if (!removed) return;
+    try {
+      await removed.undo();
+      unmarkDone(removed.id);
+      setRemoved(null);
+    } catch {
+      toast.error("Couldn't undo");
+    }
+  };
 
   // Throw the top card off the stack, then drop it from the queue
   const finish = async (id: string, direction: Direction) => {
@@ -145,9 +194,29 @@ export function ReviewQueueDialog({ open, onOpenChange }: Props) {
         onCategoryChange={(c) => setChoices((prev) => ({ ...prev, [item.id]: c }))}
         rule={findRule(rules, item.expense.sms?.merchant_key)}
         onDone={(direction) => finish(item.id, direction)}
+        onDismissed={(message, undo) =>
+          offerUndo(
+            item.id, message,
+            `${formatAmount(item.expense.amount)} · ${item.expense.sms?.merchant ?? item.expense.note ?? "Payment"}`,
+            () => undoDismiss.mutateAsync({ expense: item.expense, undo }),
+          )}
       />
     ) : (
-      <SmsReviewCard sms={item.sms} onDone={(direction) => finish(item.id, direction)} />
+      <SmsReviewCard
+        sms={item.sms}
+        onDone={(direction) => finish(item.id, direction)}
+        onIgnored={(message, undo) =>
+          offerUndo(
+            item.id, message,
+            [
+              item.sms.amount !== null
+                ? `${item.sms.currency} ${item.sms.amount.toLocaleString("en-US", { maximumFractionDigits: 2 })}`
+                : null,
+              item.sms.merchant ?? providerLabel(item.sms.provider),
+            ].filter(Boolean).join(" · "),
+            () => undoIgnore.mutateAsync({ sms: item.sms, undo }),
+          )}
+      />
     ),
   }));
 
@@ -208,6 +277,8 @@ export function ReviewQueueDialog({ open, onOpenChange }: Props) {
           </div>
         )}
 
+        {removed && <UndoBar key={removed.at}removed={removed} onUndo={handleUndo} />}
+
         {items.length > 0 && (
           <div className="flex items-center justify-between gap-2">
             <span className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
@@ -227,6 +298,51 @@ export function ReviewQueueDialog({ open, onOpenChange }: Props) {
         <PasteSms />
       </DialogContent>
     </Dialog>
+  );
+}
+
+// ─── Undo bar ─────────────────────────────────────────────────────────────────
+// Lives inside the dialog, under the stack. Same glass as the cards; says what
+// was removed, gives Undo a real button, and drains a bar to show the time left.
+
+function UndoBar({ removed, onUndo }: { removed: Removed; onUndo: () => Promise<void> }) {
+  const [busy, setBusy] = useState(false);
+  const { title, detail } = removed;
+  return (
+    <div
+      role="status"
+      className="relative flex items-center gap-3 overflow-hidden rounded-[22px] border border-foreground/10 bg-foreground/[0.05] py-2.5 pl-2.5 pr-2 backdrop-blur-xl"
+      style={{ boxShadow: GLASS_EDGE, animation: "undoIn 0.25s ease both" }}
+    >
+      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-destructive/10 text-destructive">
+        <Trash2 className="h-4 w-4" />
+      </div>
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-sm font-semibold">{title}</p>
+        {detail && <p className="truncate text-xs text-muted-foreground tabular-nums">{detail}</p>}
+      </div>
+      <button
+        onClick={async () => {
+          setBusy(true);
+          try { await onUndo(); } finally { setBusy(false); }
+        }}
+        disabled={busy}
+        className="flex h-10 shrink-0 items-center gap-1.5 rounded-full bg-foreground px-4 text-sm font-bold text-background transition-transform active:scale-95 disabled:opacity-70"
+      >
+        {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Undo2 className="h-4 w-4" />}
+        Undo
+      </button>
+      <div
+        aria-hidden
+        className="undo-toast-bar absolute bottom-0 left-0 h-[3px] w-full origin-left bg-destructive/70"
+        style={{ animation: `undoDrain ${UNDO_MS}ms linear forwards` }}
+      />
+      <style>{`
+        @keyframes undoDrain { from { transform: scaleX(1); } to { transform: scaleX(0); } }
+        @keyframes undoIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+        @media (prefers-reduced-motion: reduce) { .undo-toast-bar { animation: none !important; } }
+      `}</style>
+    </div>
   );
 }
 
@@ -320,13 +436,14 @@ function CardHeader({ chip, chipColor, when }: { chip: string; chipColor: string
 // ─── Pending expense ──────────────────────────────────────────────────────────
 
 function ExpenseCard({
-  expense, category, onCategoryChange, rule, onDone,
+  expense, category, onCategoryChange, rule, onDone, onDismissed,
 }: {
   expense: PendingExpense;
   category: string;
   onCategoryChange: (c: string) => void;
   rule: MerchantRule | null;
   onDone: (direction: Direction) => Promise<void>;
+  onDismissed: (message: string, undo: IgnoreUndo) => void;
 }) {
   const { formatAmount } = useCurrency();
   const { data: customCategories = [] } = useCustomCategories();
@@ -358,8 +475,8 @@ function ExpenseCard({
 
   const handleDismiss = async (alwaysIgnore: boolean) => {
     try {
-      await dismiss.mutateAsync({ expense, alwaysIgnore });
-      toast.success(alwaysIgnore ? `${merchant} will be ignored from now on` : "Removed — not an expense");
+      const undo = await dismiss.mutateAsync({ expense, alwaysIgnore });
+      onDismissed(alwaysIgnore ? `${merchant} will be ignored from now on` : "Removed — not an expense", undo ?? {});
       await onDone(DISCARD);
     } catch {
       toast.error("Couldn't remove it");
@@ -394,25 +511,21 @@ function ExpenseCard({
         <p className="text-xs text-muted-foreground">{learningHint(rule, expense.sms?.merchant ?? null, category, isPerson)}</p>
       </div>
 
-      <div className="space-y-2">
-        <div className="grid grid-cols-[1fr_1.4fr] gap-2">
-          <Button variant="ghost" className={GLASS_BTN} onClick={() => handleDismiss(false)} disabled={busy}>
-            <X className="h-4 w-4" /> Not an expense
-          </Button>
-          <Button className={PRIMARY_BTN} onClick={handleConfirm} disabled={busy || !category}>
-            {confirm.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
-            Confirm
-          </Button>
-        </div>
-        {expense.sms?.merchant_key && (
-          <button
-            className="w-full text-center text-[11px] text-muted-foreground hover:text-foreground transition-colors"
-            onClick={() => handleDismiss(true)}
-            disabled={busy}
-          >
-            Never track payments to {merchant}
+      <div>
+        <Button className={cn(PRIMARY_BTN, "h-12 w-full text-base")} onClick={handleConfirm} disabled={busy || !category}>
+          {confirm.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+          Confirm
+        </Button>
+        <div className="mt-2">
+          <button className={DANGER_LINK} onClick={() => handleDismiss(false)} disabled={busy}>
+            Not an expense
           </button>
-        )}
+          {expense.sms?.merchant_key && (
+            <button className={cn(QUIET_LINK, "text-[11px]")} onClick={() => handleDismiss(true)} disabled={busy}>
+              Never track payments to {merchant}
+            </button>
+          )}
+        </div>
       </div>
     </CardFace>
   );
@@ -420,7 +533,13 @@ function ExpenseCard({
 
 // ─── SMS that needs a decision ────────────────────────────────────────────────
 
-function SmsReviewCard({ sms, onDone }: { sms: SmsMessage; onDone: (direction: Direction) => Promise<void> }) {
+function SmsReviewCard({
+  sms, onDone, onIgnored,
+}: {
+  sms: SmsMessage;
+  onDone: (direction: Direction) => Promise<void>;
+  onIgnored: (message: string, undo: IgnoreUndo) => void;
+}) {
   const { data: customCategories = [] } = useCustomCategories();
   const logExpense = useLogSmsAsExpense();
   const logIncome = useLogSmsAsIncome();
@@ -455,8 +574,8 @@ function SmsReviewCard({ sms, onDone }: { sms: SmsMessage; onDone: (direction: D
 
   const handleIgnore = async (alwaysIgnore: boolean) => {
     try {
-      await ignore.mutateAsync({ sms, alwaysIgnore });
-      toast.success(alwaysIgnore ? `${who} will be ignored from now on` : "Ignored");
+      const undo = await ignore.mutateAsync({ sms, alwaysIgnore });
+      onIgnored(alwaysIgnore ? `${who} will be ignored from now on` : "Ignored", undo ?? {});
       await onDone(DISCARD);
     } catch {
       toast.error("Couldn't ignore it");
@@ -533,25 +652,21 @@ function SmsReviewCard({ sms, onDone }: { sms: SmsMessage; onDone: (direction: D
         )}
       </div>
 
-      <div className="space-y-2">
-        <div className="grid grid-cols-[1fr_1.4fr] gap-2">
-          <Button variant="ghost" className={GLASS_BTN} onClick={() => handleIgnore(false)} disabled={busy}>
-            <X className="h-4 w-4" /> Ignore
-          </Button>
-          <Button className={PRIMARY_BTN} onClick={handleSave} disabled={busy}>
-            {(logExpense.isPending || logIncome.isPending) ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
-            Save {mode}
-          </Button>
-        </div>
-        {sms.merchant_key && (
-          <button
-            className="w-full text-center text-[11px] text-muted-foreground hover:text-foreground transition-colors"
-            onClick={() => handleIgnore(true)}
-            disabled={busy}
-          >
-            Always ignore {isCredit ? "money from" : "payments to"} {who}
+      <div>
+        <Button className={cn(PRIMARY_BTN, "h-12 w-full text-base")} onClick={handleSave} disabled={busy}>
+          {(logExpense.isPending || logIncome.isPending) ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+          Save {mode}
+        </Button>
+        <div className="mt-2">
+          <button className={DANGER_LINK} onClick={() => handleIgnore(false)} disabled={busy}>
+            Ignore
           </button>
-        )}
+          {sms.merchant_key && (
+            <button className={cn(QUIET_LINK, "text-[11px]")} onClick={() => handleIgnore(true)} disabled={busy}>
+              Always ignore {isCredit ? "money from" : "payments to"} {who}
+            </button>
+          )}
+        </div>
       </div>
     </CardFace>
   );
