@@ -75,6 +75,17 @@ export default {
         md: "calc(var(--radius) - 2px)",
         sm: "calc(var(--radius) - 4px)",
       },
+      transitionTimingFunction: {
+        // Slight overshoot, for sliding tab highlights
+        spring: "cubic-bezier(0.34, 1.56, 0.64, 1)",
+        // Quick settle, no overshoot, for swipe snap-back
+        swift: "cubic-bezier(0.25, 1, 0.5, 1)",
+      },
+      // Named, not arbitrary: tailwindcss-animate also defines duration-*/ease-*,
+      // so `duration-[280ms]` is ambiguous and Tailwind warns on every build
+      transitionDuration: {
+        280: "280ms",
+      },
       keyframes: {
         "accordion-down": {
           from: { height: "0" },

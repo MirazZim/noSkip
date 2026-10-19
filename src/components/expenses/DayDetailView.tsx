@@ -292,7 +292,7 @@ export function DayDetailView({
       <div className="relative flex rounded-2xl bg-muted/40 border border-border/40 p-1 gap-1">
         <div
           className={cn(
-            "absolute top-1 bottom-1 w-[calc(50%-6px)] rounded-xl transition-all duration-300 ease-[cubic-bezier(0.34,1.56,0.64,1)]",
+            "absolute top-1 bottom-1 w-[calc(50%-6px)] rounded-xl transition-all duration-300 ease-spring",
             activeTab === "expenses"
               ? "left-1 bg-card shadow-sm"
               : "left-[calc(50%+2px)] bg-emerald-500 shadow-md shadow-emerald-500/25"

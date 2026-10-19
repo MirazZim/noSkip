@@ -700,7 +700,7 @@ export function HabitListItem({ habit, completions, isSelected, onSelect }: Prop
           className={cn(
             "relative z-[1] flex items-center gap-[13px] px-4 py-[15px] pl-3 cursor-pointer",
             "bg-card rounded-[18px] border border-border/60 touch-pan-y",
-            !isActiveSwipe && "transition-transform duration-[280ms] ease-[cubic-bezier(0.25,1,0.5,1)]",
+            !isActiveSwipe && "transition-transform duration-280 ease-swift",
             "hover:bg-muted/60 hover:border-border",
             isSelected && "bg-primary/[0.04] border-primary/25",
             isDragging && "opacity-[0.97]"
