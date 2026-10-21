@@ -204,6 +204,13 @@ const TIERS: {
   },
 ];
 
+/** A stable hue per habit, so every card has its own color identity. */
+function habitHue(id: string) {
+  let h = 0;
+  for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) >>> 0;
+  return h % 360;
+}
+
 function getTier(streak: number) {
   return [...TIERS].reverse().find((t) => streak >= t.min) ?? TIERS[0];
 }
@@ -369,13 +376,12 @@ const CheckIcon = ({ size = 16 }: { size?: number }) => (
     <polyline points="20 6 9 17 4 12" />
   </svg>
 );
-const CalendarIcon = () => (
-  <svg width="12" height="12" viewBox="0 0 24 24" fill="none"
+const YesterdayIcon = ({ size = 14 }: { size?: number }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none"
     stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-    <rect x="3" y="4" width="18" height="18" rx="2" />
-    <line x1="16" y1="2" x2="16" y2="6" />
-    <line x1="8" y1="2" x2="8" y2="6" />
-    <line x1="3" y1="10" x2="21" y2="10" />
+    <path d="M3 12a9 9 0 1 0 3-6.7" />
+    <polyline points="3 3 3 8 8 8" />
+    <polyline points="12 7 12 12 15 14" />
   </svg>
 );
 const TrashIcon = () => (
@@ -408,42 +414,50 @@ const GripIcon = () => (
   </svg>
 );
 
-// ── 7-day pip row ──────────────────────────────────────────────────────────────
-function SevenDayRow({ completions, habitId }: { completions: HabitCompletion[]; habitId: string }) {
-  const days = Array.from({ length: 7 }, (_, i) => {
-    const date = subDays(new Date(), 6 - i);
-    return {
-      label: format(date, "EEEEE"),
-      isToday: i === 6,
-      done: completions.some(
-        (c) => c.habit_id === habitId && c.date === format(date, "yyyy-MM-dd")
-      ),
-    };
-  });
+// ── 7-day chain: consecutive done days are linked; backfilled days are striped ──
+type ChainDay = { name: string; isToday: boolean; isYesterday: boolean; done: boolean; retro: boolean };
+
+function ChainRow({ days }: { days: ChainDay[] }) {
   return (
-    <div className="flex items-end gap-[5px]">
-      {days.map(({ done, isToday, label }, i) => (
-        <div key={i} className="flex flex-col items-center gap-1">
-          <div className={cn(
-            "w-[18px] h-[5px] rounded-full transition-all duration-300 origin-bottom",
-            done ? "bg-primary scale-y-[1.5]" : isToday ? "bg-primary/30 scale-y-[1.2]" : "bg-muted-foreground/15"
-          )} />
-          <span className={cn(
-            "text-[8px] font-semibold uppercase tracking-[0.05em]",
-            isToday ? "text-primary font-extrabold" : "text-muted-foreground/45"
-          )}>
-            {label}
-          </span>
-        </div>
-      ))}
+    <div className="flex items-start" aria-label="Last 7 days">
+      {days.map(({ done, retro, isToday, name }, i) => {
+        const linked = i > 0 && done && days[i - 1].done;
+        return (
+          <div key={i} className="flex items-start">
+            {i > 0 && (
+              <span className={cn("mt-[6.5px] h-[3px] w-[4px] transition-colors duration-300", linked ? "bg-primary" : "bg-transparent")} />
+            )}
+            <div className="flex flex-col items-center gap-[3px]">
+              <span
+                title={`${isToday ? "Today" : name}: ${done ? (retro ? "logged later" : "done") : "missed"}`}
+                className={cn(
+                  "block rounded-[4px] transition-all duration-300",
+                  isToday ? "w-[16px] h-[16px]" : "w-[14px] h-[14px] mt-[1px]",
+                  done && !retro && "bg-primary shadow-[0_0_8px_-1px_hsl(var(--primary)/0.55)]",
+                  done && retro && "bg-[repeating-linear-gradient(135deg,hsl(var(--primary))_0_2px,hsl(var(--primary)/0.45)_2px_4px)]",
+                  !done && isToday && "bg-transparent ring-[1.5px] ring-inset ring-primary/60",
+                  !done && !isToday && "bg-muted-foreground/[0.14]",
+                )}
+              />
+              <span className={cn(
+                "text-[10.5px] leading-none font-semibold uppercase select-none",
+                isToday ? "text-primary font-extrabold" : "text-muted-foreground"
+              )}>
+                {name[0]}
+              </span>
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }
 
 // ── Desktop context menu ───────────────────────────────────────────────────────
-function ContextMenu({ onEdit, onDelete, onClose, style }: {
+function ContextMenu({ onEdit, onDelete, onClose, style, yesterday }: {
   onEdit: () => void; onDelete: () => void; onClose: () => void;
   style?: React.CSSProperties;
+  yesterday?: { done: boolean; onToggle: () => void };
 }) {
   return createPortal(
     <>
@@ -459,6 +473,14 @@ function ContextMenu({ onEdit, onDelete, onClose, style }: {
         >
           <PencilIcon /> Edit habit
         </button>
+        {yesterday && (
+          <button
+            className="flex items-center gap-[9px] w-full px-[11px] py-[9px] rounded-[10px] border-none bg-transparent text-foreground cursor-pointer text-[13px] font-medium font-[inherit] hover:bg-muted/80 transition-colors duration-100"
+            onClick={() => { yesterday.onToggle(); onClose(); }}
+          >
+            <YesterdayIcon /> {yesterday.done ? "Unmark yesterday" : "Mark yesterday done"}
+          </button>
+        )}
         <div className="h-px bg-border/60 my-[3px]" />
         <button
           className="flex items-center gap-[9px] w-full px-[11px] py-[9px] rounded-[10px] border-none bg-transparent text-destructive cursor-pointer text-[13px] font-medium font-[inherit] hover:bg-destructive/[0.08] transition-colors duration-100"
@@ -478,25 +500,77 @@ const SWIPE_OPEN_AT = 50;
 const SWIPE_OPEN_WIDTH = 124;
 
 // ── CheckButton ────────────────────────────────────────────────────────────────
-function CheckButton({ done, pending, onToggle }: {
+const LONG_PRESS_MS = 480;
+
+function CheckButton({ done, pending, onToggle, onLongPress }: {
   done: boolean; pending: boolean; onToggle: () => void;
+  /** Long-press (touch or mouse) or right-click — opens the habit's quick menu. */
+  onLongPress?: (rect: DOMRect) => void;
 }) {
   const [pressing, setPressing] = useState(false);
   const touchMoved = useRef(false);
+  const btnRef     = useRef<HTMLButtonElement>(null);
+  const pressTimer = useRef<ReturnType<typeof setTimeout>>();
+  const longFired  = useRef(false);
 
-  const handleTouchStart  = (e: React.TouchEvent) => { e.stopPropagation(); touchMoved.current = false; setPressing(true); };
-  const handleTouchMove   = () => { touchMoved.current = true; };
+  const startPress = () => {
+    longFired.current = false;
+    if (!onLongPress) return;
+    clearTimeout(pressTimer.current);
+    pressTimer.current = setTimeout(() => {
+      longFired.current = true;
+      setPressing(false);
+      navigator.vibrate?.(12);
+      const rect = btnRef.current?.getBoundingClientRect();
+      if (rect) onLongPress(rect);
+    }, LONG_PRESS_MS);
+  };
+  const cancelPress = () => clearTimeout(pressTimer.current);
+  useEffect(() => () => clearTimeout(pressTimer.current), []);
+
+  const handleTouchStart  = (e: React.TouchEvent) => { e.stopPropagation(); touchMoved.current = false; setPressing(true); startPress(); };
+  const handleTouchMove   = () => { touchMoved.current = true; cancelPress(); };
   const handleTouchEnd    = (e: React.TouchEvent) => {
-    e.stopPropagation(); e.preventDefault(); setPressing(false);
-    if (!touchMoved.current && !pending) onToggle();
+    e.stopPropagation(); e.preventDefault(); setPressing(false); cancelPress();
+    if (!touchMoved.current && !longFired.current && !pending) onToggle();
     touchMoved.current = false;
   };
-  const handleTouchCancel = () => { setPressing(false); touchMoved.current = false; };
+  const handleTouchCancel = () => { setPressing(false); touchMoved.current = false; cancelPress(); };
 
   return (
     <>
       <style>{`
         .habit-check-pop { animation: checkPop 0.35s cubic-bezier(0.34,1.56,0.64,1); }
+        .hli-tile {
+          background:
+            linear-gradient(160deg, hsl(0 0% 100% / 0.22), transparent 45%),
+            linear-gradient(145deg, hsl(var(--hh) 80% 62% / 0.30), hsl(var(--hh) 70% 42% / 0.14));
+          border: 1px solid hsl(var(--hh) 70% 60% / 0.30);
+          box-shadow: inset 0 1px 0 hsl(0 0% 100% / 0.18), 0 6px 14px -8px hsl(var(--hh) 80% 45% / 0.7);
+          filter: saturate(0.75);
+        }
+        .hli-tile--done { filter: none; border-color: hsl(var(--hh) 75% 60% / 0.55);
+          box-shadow: inset 0 1px 0 hsl(0 0% 100% / 0.22), 0 8px 18px -8px hsl(var(--hh) 85% 50% / 0.9); }
+        @keyframes hliEmber { 0%, 100% { opacity: 0.55; } 50% { opacity: 1; } }
+        .hli-ember {
+          background: radial-gradient(120% 90% at 100% 50%, rgb(245 158 11 / 0.16), transparent 65%);
+          animation: hliEmber 3.2s ease-in-out infinite;
+        }
+        .hli-burst i {
+          position: absolute; left: 50%; top: 50%; width: 5px; height: 5px; margin: -2.5px;
+          border-radius: 99px; background: var(--c);
+          animation: hliFly 0.7s cubic-bezier(0.2, 0.8, 0.3, 1) forwards;
+        }
+        @keyframes hliFly {
+          0%   { transform: rotate(var(--a)) translateY(-14px) scale(1); opacity: 1; }
+          100% { transform: rotate(var(--a)) translateY(-34px) scale(0.2); opacity: 0; }
+        }
+        .hli-ripple {
+          position: absolute; inset: 5px; border-radius: 99px; border: 2px solid hsl(var(--primary));
+          animation: hliRipple 0.6s ease-out forwards;
+        }
+        @keyframes hliRipple { to { transform: scale(1.7); opacity: 0; } }
+        @media (prefers-reduced-motion: reduce) { .hli-ember, .hli-burst { animation: none; display: none; } }
         .habit-icon-in   { animation: iconIn  0.22s ease 0.08s both; }
         @keyframes checkPop {
           0%   { transform: scale(0.65); }
@@ -510,17 +584,27 @@ function CheckButton({ done, pending, onToggle }: {
       `}</style>
       <button
         className={cn(
-          "w-9 h-9 rounded-full border-2 border-border bg-transparent cursor-pointer",
+          "w-[34px] h-[34px] rounded-full border-2 border-border bg-transparent cursor-pointer",
           "flex items-center justify-center shrink-0 p-0 select-none isolate",
           "transition-[border-color,background-color,box-shadow] duration-200",
           "[-webkit-tap-highlight-color:transparent] touch-manipulation",
           "hover:border-primary/50 hover:bg-primary/[0.06]",
           "active:scale-[0.86]",
           pressing && !done && "scale-[0.86]",
-          done && "border-primary bg-primary shadow-[0_0_0_5px_hsl(var(--primary)/0.12)] habit-check-pop",
+          done && "border-primary bg-primary shadow-[0_4px_14px_-4px_hsl(var(--primary)/0.8)] habit-check-pop",
           "disabled:opacity-35 disabled:cursor-default"
         )}
-        onClick={(e) => { e.stopPropagation(); if (!pending) onToggle(); }}
+        ref={btnRef}
+        title={onLongPress ? "Tap to check off · hold for more" : undefined}
+        onClick={(e) => { e.stopPropagation(); if (longFired.current) { longFired.current = false; return; } if (!pending) onToggle(); }}
+        onMouseDown={(e) => { if (e.button === 0) startPress(); }}
+        onMouseUp={cancelPress}
+        onMouseLeave={cancelPress}
+        onContextMenu={(e) => {
+          if (!onLongPress) return;
+          e.preventDefault(); e.stopPropagation(); cancelPress();
+          onLongPress(e.currentTarget.getBoundingClientRect());
+        }}
         disabled={pending}
         aria-label={done ? "Mark undone" : "Mark done"}
         onTouchStart={handleTouchStart}
@@ -561,25 +645,49 @@ export function HabitListItem({ habit, completions, isSelected, onSelect }: Prop
 
   const isDoneToday       = completions.some((c) => c.habit_id === habit.id && c.date === today);
   const isDoneYesterday   = completions.some((c) => c.habit_id === habit.id && c.date === yesterday);
-  const canRetroYesterday = !isDoneYesterday && !isAfter(parseISO(habit.start_date), parseISO(yesterday));
+  const yesterdayInRange  = !isAfter(parseISO(habit.start_date), parseISO(yesterday));
   const streak            = calculateStreak(completions, habit.id, habit.start_date);
   const totalDone         = completions.filter((c) => c.habit_id === habit.id).length;
 
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id: habit.id });
 
-  // ── Optimistic done state ──────────────────────────────────────────────────
+  // ── Optimistic done state (today + yesterday) ─────────────────────────────
   const [optimisticDone, setOptimisticDone] = useState(isDoneToday);
+  const [ydayOverride, setYdayOverride]     = useState<boolean | null>(null);
 
   useEffect(() => {
     if (!toggle.isPending) setOptimisticDone(isDoneToday);
   }, [isDoneToday, toggle.isPending]);
+  useEffect(() => {
+    if (!toggle.isPending) setYdayOverride(null);
+  }, [isDoneYesterday, toggle.isPending]);
+
+  const ydayDone = ydayOverride ?? isDoneYesterday;
+  const chainDays: ChainDay[] = Array.from({ length: 7 }, (_, i) => {
+    const date = subDays(new Date(), 6 - i);
+    const key  = format(date, "yyyy-MM-dd");
+    const row  = completions.find((c) => c.habit_id === habit.id && c.date === key);
+    const isToday = i === 6;
+    const isYesterday = i === 5;
+    return {
+      name: format(date, "EEEE"),
+      isToday, isYesterday,
+      done: isToday ? optimisticDone : isYesterday ? ydayDone : !!row,
+      retro: isYesterday && ydayOverride === true ? true : !!row?.is_retroactive,
+    };
+  });
+
+  const weekDone = chainDays.filter((d) => d.done).length;
+  const hue      = habitHue(habit.id);
+  const tier     = streak >= 3 ? getTier(streak) : null;
+  const [burst, setBurst] = useState(0);
 
   // ── Handlers ──────────────────────────────────────────────────────────────
   const handleToggleToday = async () => {
     const wasCompleted = optimisticDone;
     setOptimisticDone((prev) => !prev);
-    if (!wasCompleted) setShowDopamine(true);
+    if (!wasCompleted) { setShowDopamine(true); setBurst((b) => b + 1); }
     try {
       await toggle.mutateAsync({ habitId: habit.id, date: today });
     } catch {
@@ -588,10 +696,33 @@ export function HabitListItem({ habit, completions, isSelected, onSelect }: Prop
     }
   };
 
-  const handleToggleYesterday = async (e: React.MouseEvent) => {
-    e.stopPropagation();
-    try { await toggle.mutateAsync({ habitId: habit.id, date: yesterday }); }
-    catch { toast.error("Failed to update"); }
+  const setYesterday = async (done: boolean) => {
+    setYdayOverride(done);
+    try {
+      await toggle.mutateAsync({ habitId: habit.id, date: yesterday });
+      return true;
+    } catch {
+      setYdayOverride(null);
+      toast.error("Failed to update");
+      return false;
+    }
+  };
+
+  const handleLogYesterday = async () => {
+    if (!(await setYesterday(true))) return;
+    toast.success(`Yesterday logged for ${habit.emoji} ${habit.name}`, {
+      description: "Clicked by mistake? You can undo it.",
+      duration: 6000,
+      action: { label: "Undo", onClick: () => { void setYesterday(false); } },
+    });
+  };
+
+  const handleUndoYesterday = async () => {
+    if (!(await setYesterday(false))) return;
+    toast(`Yesterday removed for ${habit.emoji} ${habit.name}`, {
+      duration: 6000,
+      action: { label: "Redo", onClick: () => { void setYesterday(true); } },
+    });
   };
 
   const handleDelete = async () => {
@@ -698,109 +829,88 @@ export function HabitListItem({ habit, completions, isSelected, onSelect }: Prop
         {/* Main card */}
         <div
           className={cn(
-            "relative z-[1] flex items-center gap-[13px] px-4 py-[15px] pl-3 cursor-pointer",
+            "group relative z-[1] flex items-center gap-3 px-3 py-3 cursor-pointer",
             "bg-card rounded-[18px] border border-border/60 touch-pan-y",
-            !isActiveSwipe && "transition-transform duration-280 ease-swift",
-            "hover:bg-muted/60 hover:border-border",
-            isSelected && "bg-primary/[0.04] border-primary/25",
+            !isActiveSwipe && "transition-[transform,background-color,border-color,box-shadow] duration-280 ease-swift",
+            "hover:border-border hover:bg-muted/40",
+            optimisticDone && "border-primary/25",
+            isSelected && "border-primary/45 shadow-[0_0_0_3px_hsl(var(--primary)/0.10),0_10px_30px_-14px_hsl(var(--primary)/0.5)]",
             isDragging && "opacity-[0.97]"
           )}
-          style={{ transform: `translateX(${swipeX}px)` }}
+          style={{ transform: `translateX(${swipeX}px)`, ["--hh" as string]: hue }}
           onClick={handleItemClick}
           onTouchStart={onTouchStart}
           onTouchMove={onTouchMove}
           onTouchEnd={onTouchEnd}
         >
-          {isSelected && (
-            <div className="absolute left-0 top-[20%] bottom-[20%] w-[3px] rounded-r-[3px] bg-primary" />
+          {/* Week progress washes across the card from the left */}
+          <span
+            aria-hidden
+            className="pointer-events-none absolute inset-y-0 left-0 rounded-l-[18px] bg-[linear-gradient(90deg,hsl(var(--hh)_80%_58%/0.14),hsl(var(--hh)_80%_58%/0.04)_85%,transparent)] transition-[width] duration-700 ease-out"
+            style={{ width: `${(weekDone / 7) * 100}%` }}
+          />
+          {streak >= 7 && (
+            <span aria-hidden className="hli-ember pointer-events-none absolute inset-y-0 right-0 w-2/3 rounded-r-[18px]" />
           )}
 
-          {/* Drag handle */}
+          {/* Emoji tile — doubles as the drag handle */}
           <div
             className={cn(
-              "flex items-center justify-center w-[22px] h-9 shrink-0 rounded-md",
-              "text-muted-foreground/35 cursor-grab select-none touch-none",
+              "relative w-[44px] h-[44px] shrink-0 rounded-[14px]",
+              "flex items-center justify-center text-[22px] leading-none",
+              "hli-tile cursor-grab select-none touch-none",
               "[-webkit-tap-highlight-color:transparent] [-webkit-user-select:none]",
-              "transition-colors duration-150 hover:text-muted-foreground/70 active:cursor-grabbing",
-              isDragging && "cursor-grabbing text-primary"
+              "transition-[transform,background-color,border-color,filter] duration-200 group-hover:scale-[1.04]",
+              "active:cursor-grabbing",
+              optimisticDone && "hli-tile--done",
+              isDragging && "cursor-grabbing scale-105"
             )}
             {...attributes} {...listeners}
-            onClick={(e) => e.stopPropagation()}
+            aria-label={`Reorder ${habit.name}`}
           >
-            <GripIcon />
-          </div>
-
-          {/* Emoji */}
-          <div
-            className={cn(
-              "w-[46px] h-[46px] shrink-0 rounded-[14px]",
-              "bg-muted/70 border border-border/50",
-              "flex items-center justify-center text-[22px] leading-none",
-              "transition-[filter,transform,background-color,border-color] duration-200 hover:scale-105",
-              isSelected && "bg-primary/[0.08] border-primary/15"
+            <span className="relative drop-shadow-[0_2px_3px_rgb(0_0_0/0.25)]">{habit.emoji}</span>
+            <span className={cn(
+              "absolute -left-[9px] top-1/2 -translate-y-1/2 text-muted-foreground",
+              "opacity-0 group-hover:opacity-100 transition-opacity duration-150",
+              "[@media(hover:none)]:hidden"
+            )}>
+              <GripIcon />
+            </span>
+            {optimisticDone && (
+              <span className="absolute -bottom-[5px] -right-[5px] grid place-items-center w-[17px] h-[17px] rounded-full bg-primary text-primary-foreground ring-2 ring-card habit-icon-in">
+                <CheckIcon size={9} />
+              </span>
             )}
-            style={{ filter: optimisticDone ? "none" : "grayscale(0.25) opacity(0.8)" }}
-          >
-            {habit.emoji}
           </div>
 
           {/* Body */}
-          <div className="flex-1 min-w-0 flex flex-col gap-[9px]">
-            <div className="flex items-baseline gap-2 min-w-0">
+          <div className="relative flex-1 min-w-0 flex flex-col gap-[9px]">
+            <div className="flex items-start gap-1 min-w-0">
               <span className={cn(
-                "font-semibold text-[14px] tracking-[-0.025em] text-foreground leading-[1.3]",
-                "min-w-0 overflow-hidden [display:-webkit-box] [-webkit-line-clamp:2] [-webkit-box-orient:vertical]",
-                "transition-[opacity,color] duration-200",
-                optimisticDone && "opacity-30 line-through decoration-muted-foreground/40 decoration-[1.5px]"
+                "flex-1 min-w-0 font-semibold text-[16px] tracking-[-0.015em] leading-[1.3]",
+                "overflow-hidden [display:-webkit-box] [-webkit-line-clamp:2] [-webkit-box-orient:vertical]",
+                "transition-colors duration-200",
+                optimisticDone ? "text-foreground/75" : "text-foreground"
               )}>
                 {habit.name}
               </span>
-              <span className="shrink-0">
-                {streak > 0 ? (
-                  <span className="inline-flex items-center gap-[3px] px-[7px] py-[2px] rounded-full bg-gradient-to-br from-amber-500/15 to-orange-500/10 border border-amber-500/25 text-[11px] font-bold text-amber-700 dark:text-amber-400 tracking-[-0.01em] whitespace-nowrap">
-                    🔥 {streak}d
-                  </span>
-                ) : (
-                  <span className="inline-flex items-center px-[7px] py-[2px] rounded-full bg-muted/80 border border-border/60 text-[11px] font-medium text-muted-foreground whitespace-nowrap">
-                    {totalDone} done
-                  </span>
+              <div
+                className={cn(
+                  "hidden [@media(hover:hover)_and_(pointer:fine)]:block relative -mt-[3px] -mr-[2px] shrink-0",
+                  "opacity-0 group-hover:opacity-100 transition-opacity duration-150",
+                  menuOpen && "opacity-100"
                 )}
-              </span>
-            </div>
-            <SevenDayRow completions={completions} habitId={habit.id} />
-          </div>
-
-          {/* Right controls */}
-          <div className="flex flex-col items-end gap-[9px] shrink-0">
-            <div className="flex items-center gap-[5px]">
-              {canRetroYesterday && (
+                ref={menuBtnRef}
+              >
                 <button
                   className={cn(
-                    "flex items-center gap-1 px-[9px] py-[5px] rounded-full",
-                    "border border-border bg-background text-muted-foreground",
-                    "text-[10.5px] font-semibold font-[inherit] whitespace-nowrap tracking-[0.01em]",
-                    "transition-all duration-150 cursor-pointer",
-                    "hover:border-primary/40 hover:text-primary hover:bg-primary/[0.05]",
-                    "active:scale-95 disabled:opacity-35 disabled:cursor-default",
-                    "[-webkit-tap-highlight-color:transparent] touch-manipulation"
-                  )}
-                  onTouchStart={(e) => e.stopPropagation()}
-                  onTouchEnd={(e) => e.stopPropagation()}
-                  onClick={handleToggleYesterday}
-                  disabled={toggle.isPending}
-                >
-                  <CalendarIcon /> yday
-                </button>
-              )}
-              <div className="hidden [@media(hover:hover)_and_(pointer:fine)]:block relative" ref={menuBtnRef}>
-                <button
-                  className={cn(
-                    "flex items-center justify-center w-[30px] h-[30px] rounded-full border-none",
-                    "bg-transparent text-muted-foreground/60 cursor-pointer",
+                    "flex items-center justify-center w-[24px] h-[24px] rounded-full border-none",
+                    "bg-transparent text-muted-foreground cursor-pointer",
                     "transition-[background-color,color] duration-150",
                     "hover:bg-muted hover:text-foreground",
                     menuOpen && "bg-muted text-foreground"
                   )}
+                  aria-label="Habit options"
                   onClick={(e) => {
                     e.stopPropagation();
                     if (!menuOpen) {
@@ -812,24 +922,109 @@ export function HabitListItem({ habit, completions, isSelected, onSelect }: Prop
                 >
                   <DotsIcon />
                 </button>
-                {menuOpen && (
-                  <ContextMenu
-                    onEdit={() => setEditOpen(true)}
-                    onDelete={handleDelete}
-                    onClose={() => setMenuOpen(false)}
-                    style={{ top: menuPos.top, right: menuPos.right }}
-                  />
-                )}
+
               </div>
             </div>
+            <div className="-mt-[3px] flex items-center gap-[7px] min-w-0 text-[12.5px] leading-none text-foreground/65">
+              {tier && (
+                <span className="shrink-0 font-bold uppercase tracking-[0.05em] text-[11px]" style={{ color: tier.accent }}>
+                  {tier.label.toLowerCase()}
+                </span>
+              )}
+              {tier && <span className="opacity-40">•</span>}
+              <span className="truncate tabular-nums">
+                <strong className="font-bold text-foreground">{weekDone}</strong>/7 this week
+              </span>
+            </div>
+            <div className="flex items-start gap-2 min-w-0">
+              <ChainRow days={chainDays} />
+              {streak === 0 && totalDone > 0 && (
+                <span className="text-[12.5px] font-semibold text-foreground/65 whitespace-nowrap truncate tabular-nums">
+                  {totalDone} total
+                </span>
+              )}
+            </div>
+          </div>
+
+          {/* Missed yesterday: tiny one-tap backfill (toast offers Undo) */}
+          {!ydayDone && yesterdayInRange && (
+            <button
+              type="button"
+              title="Missed yesterday? Tap to log it"
+              aria-label="Log yesterday"
+              className={cn(
+                "relative shrink-0 -mr-1 grid place-items-center w-[24px] h-[24px] rounded-full",
+                "text-muted-foreground/70 bg-muted/60 ring-1 ring-inset ring-border/70",
+                "transition-[color,background-color,transform] duration-150",
+                "hover:text-primary hover:bg-primary/10 hover:ring-primary/30 active:scale-90",
+                "disabled:opacity-40 [-webkit-tap-highlight-color:transparent] touch-manipulation"
+              )}
+              onTouchStart={(e) => e.stopPropagation()}
+              onTouchEnd={(e) => e.stopPropagation()}
+              onClick={(e) => { e.stopPropagation(); void handleLogYesterday(); }}
+              disabled={toggle.isPending}
+            >
+              <YesterdayIcon size={12} />
+            </button>
+          )}
+
+                    {/* Check-off: ring fills with this week's progress, flame badge shows the streak */}
+          <div className="relative shrink-0 w-[46px] h-[46px] grid place-items-center">
+            <svg className="absolute inset-0 -rotate-90 pointer-events-none" viewBox="0 0 46 46" aria-hidden>
+              <circle cx="23" cy="23" r="21" fill="none" strokeWidth="2.5" className="stroke-muted-foreground/[0.12]" />
+              <circle
+                cx="23" cy="23" r="21" fill="none" strokeWidth="2.5" strokeLinecap="round"
+                className="stroke-primary transition-[stroke-dashoffset] duration-500 ease-out"
+                strokeDasharray={2 * Math.PI * 21}
+                strokeDashoffset={2 * Math.PI * 21 * (1 - weekDone / 7)}
+              />
+            </svg>
+            {burst > 0 && (
+              <span key={burst} aria-hidden className="hli-burst pointer-events-none absolute inset-0">
+                <span className="hli-ripple" />
+                {Array.from({ length: 10 }, (_, i) => (
+                  <i key={i} style={{ ["--a" as string]: `${i * 36}deg`, ["--c" as string]: i % 3 === 0 ? "hsl(var(--primary))" : i % 3 === 1 ? `hsl(${hue} 85% 60%)` : "rgb(245 158 11)" }} />
+                ))}
+              </span>
+            )}
             <CheckButton
               done={optimisticDone}
               pending={toggle.isPending}
               onToggle={handleToggleToday}
+              onLongPress={(rect) => {
+                setMenuPos({ top: rect.bottom + 8, right: Math.max(8, window.innerWidth - rect.right) });
+                setMenuOpen(true);
+              }}
             />
+            {streak > 0 && (
+              <span
+                title={`${streak}-day streak`}
+                className={cn(
+                  "absolute -top-[7px] -right-[9px] inline-flex items-center gap-[1px] pl-[4px] pr-[6px] h-[18px] rounded-full",
+                  "text-[10.5px] font-extrabold tracking-[-0.02em] tabular-nums whitespace-nowrap",
+                  "bg-card ring-1 ring-amber-500/40 text-amber-600 dark:text-amber-400",
+                  streak >= 7 && "shadow-[0_0_10px_-2px_rgb(245_158_11/0.7)]"
+                )}
+              >
+                <span className="text-[10px]">🔥</span>{streak}
+              </span>
+            )}
           </div>
         </div>
       </div>
+
+      {menuOpen && (
+        <ContextMenu
+          onEdit={() => setEditOpen(true)}
+          onDelete={handleDelete}
+          onClose={() => setMenuOpen(false)}
+          style={{ top: menuPos.top, right: menuPos.right }}
+          yesterday={yesterdayInRange ? {
+            done: ydayDone,
+            onToggle: () => { void (ydayDone ? handleUndoYesterday() : handleLogYesterday()); },
+          } : undefined}
+        />
+      )}
 
       <EditHabitDialog habit={habit} open={editOpen} onOpenChange={setEditOpen} />
     </>

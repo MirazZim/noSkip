@@ -91,8 +91,8 @@ export function StreakGrid({ habitId, completions }: Props) {
     }
   }, [grid]);
 
-  const CELL = 15;
-  const GAP = 4;
+  const CELL = 10;
+  const GAP = 3;
   const COL_W = CELL + GAP;
 
   const getCellStyle = (day: { done: boolean; retro: boolean; intensity: number; isToday: boolean }): React.CSSProperties => {
@@ -126,22 +126,22 @@ export function StreakGrid({ habitId, completions }: Props) {
         .sg-stats {
           display: grid;
           grid-template-columns: repeat(3, 1fr);
-          gap: 8px;
-          margin-bottom: 14px;
+          gap: 6px;
+          margin-bottom: 10px;
         }
         .sg-stat-pill {
           display: flex;
           flex-direction: column;
           align-items: center;
-          gap: 3px;
-          padding: 10px 6px;
-          border-radius: 12px;
+          gap: 2px;
+          padding: 6px 4px;
+          border-radius: 10px;
           background: hsl(var(--muted) / 0.45);
           border: 1px solid hsl(var(--border) / 0.6);
           transition: background 0.2s;
         }
         .sg-stat-val {
-          font-size: 17px;
+          font-size: 14px;
           font-weight: 700;
           letter-spacing: -0.04em;
           color: hsl(var(--foreground));
@@ -149,10 +149,10 @@ export function StreakGrid({ habitId, completions }: Props) {
         }
         .sg-stat-val--accent { color: hsl(var(--primary)); text-shadow: 0 0 12px hsl(var(--primary) / 0.4); }
         .sg-stat-lbl {
-          font-size: 9px;
+          font-size: 10.5px;
           font-weight: 600;
           text-transform: uppercase;
-          letter-spacing: 0.08em;
+          letter-spacing: 0.06em;
           color: hsl(var(--muted-foreground));
           text-align: center;
         }
@@ -181,20 +181,20 @@ export function StreakGrid({ habitId, completions }: Props) {
 
         .sg-month-row {
           position: relative;
-          height: 16px;
-          margin-bottom: 4px;
+          height: 12px;
+          margin-bottom: 3px;
           min-width: max-content;
         }
         .sg-month-label {
           position: absolute;
-          font-size: 9px;
+          font-size: 10.5px;
           font-weight: 700;
           text-transform: uppercase;
-          letter-spacing: 0.08em;
-          color: hsl(var(--muted-foreground) / 0.55);
+          letter-spacing: 0.06em;
+          color: hsl(var(--muted-foreground) / 0.8);
           white-space: nowrap;
           top: 0;
-          line-height: 16px;
+          line-height: 12px;
         }
 
         .sg-body { display: flex; min-width: max-content; }
@@ -203,19 +203,19 @@ export function StreakGrid({ habitId, completions }: Props) {
           display: flex;
           flex-direction: column;
           gap: ${GAP}px;
-          margin-right: 6px;
+          margin-right: 4px;
         }
         .sg-day-label {
           font-size: 8.5px;
           font-weight: 600;
           text-transform: uppercase;
           letter-spacing: 0.05em;
-          color: hsl(var(--muted-foreground) / 0.4);
+          color: hsl(var(--muted-foreground) / 0.75);
           height: ${CELL}px;
           display: flex;
           align-items: center;
           line-height: 1;
-          width: 10px;
+          width: 12px;
         }
 
         .sg-grid { display: flex; gap: ${GAP}px; }
@@ -224,7 +224,7 @@ export function StreakGrid({ habitId, completions }: Props) {
         .sg-cell {
           width: ${CELL}px;
           height: ${CELL}px;
-          border-radius: 4px;
+          border-radius: 2.5px;
           cursor: default;
           transition: transform 0.12s ease, box-shadow 0.15s ease;
           position: relative;
@@ -243,9 +243,9 @@ export function StreakGrid({ habitId, completions }: Props) {
           50%       { outline-color: rgba(255,255,255,1); }
         }
         .sg-cell--today {
-          outline: 2.5px solid rgba(255,255,255,0.9);
-          outline-offset: 2.5px;
-          border-radius: 4px;
+          outline: 1.5px solid rgba(255,255,255,0.9);
+          outline-offset: 1.5px;
+          border-radius: 2.5px;
           z-index: 3;
           animation: sg-today-pulse 2s ease-in-out infinite;
         }
@@ -253,11 +253,11 @@ export function StreakGrid({ habitId, completions }: Props) {
         .sg-footer {
           display: flex;
           align-items: center;
-          justify-content: space-between;
-          margin-top: 12px;
+          justify-content: flex-end;
+          margin-top: 8px;
         }
         .sg-rate {
-          font-size: 10px;
+          font-size: 11.5px;
           font-weight: 600;
           color: hsl(var(--muted-foreground));
         }
@@ -265,11 +265,11 @@ export function StreakGrid({ habitId, completions }: Props) {
 
         .sg-legend { display: flex; align-items: center; gap: 5px; }
         .sg-legend-label {
-          font-size: 9px;
+          font-size: 10px;
           font-weight: 600;
           text-transform: uppercase;
-          letter-spacing: 0.07em;
-          color: hsl(var(--muted-foreground) / 0.5);
+          letter-spacing: 0.06em;
+          color: hsl(var(--muted-foreground) / 0.8);
         }
         .sg-legend-cells { display: flex; gap: 3px; align-items: center; }
         .sg-legend-cell  { width: 10px; height: 10px; border-radius: 2px; }
@@ -364,7 +364,6 @@ export function StreakGrid({ habitId, completions }: Props) {
 
         {/* Footer: year rate + legend */}
         <div className="sg-footer">
-          <span className="sg-rate"><strong>{totalDone}</strong> days completed in {new Date().getFullYear()}</span>
           <div className="sg-legend">
             <span className="sg-legend-label">Less</span>
             <div className="sg-legend-cells">

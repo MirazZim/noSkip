@@ -21,11 +21,11 @@ import { HabitListItem } from "@/components/habits/HabitListItem";
 import { HabitDetailPanel } from "@/components/habits/HabitDetailPanel";
 import { HabitQuote } from "@/components/habits/HabitQuote";
 import { HabitAnalytics } from "@/components/habits/HabitAnalytics";
+import { HabitSheet } from "@/components/habits/HabitSheet";
 import {
   useHabits,
   useHabitCompletions,
   useReorderHabits,
-  calculateStreak,
 } from "@/hooks/useHabits";
 import { useHabitReminders } from "@/hooks/useHabitReminders";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -49,17 +49,9 @@ function HabitDetail({
   completions: Completions;
   onClose?: () => void;
 }) {
-  const streak = calculateStreak(completions, habit.id, habit.start_date);
-  const total = completions.filter((c) => c.habit_id === habit.id).length;
-  const daysSinceStart = Math.max(
-    1,
-    Math.ceil((Date.now() - new Date(habit.start_date).getTime()) / 86400000)
-  );
-  const rate = total > 0 ? Math.round((total / daysSinceStart) * 100) : 0;
-
   return (
     <div className="hd-inner">
-      <div className="hd-hero">
+      <div className="hd-hero" data-sheet-grab>
         <div className="hd-emoji">{habit.emoji}</div>
         <div className="hd-hero-text">
           <div className="hd-name">{habit.name}</div>
@@ -70,21 +62,6 @@ function HabitDetail({
             <XIcon />
           </button>
         )}
-      </div>
-
-      <div className="hd-stats">
-        <div className="hd-stat">
-          <span className="hd-stat-value">{streak > 0 ? streak : "—"}</span>
-          <span className="hd-stat-label">{streak > 0 ? "🔥 Streak" : "Streak"}</span>
-        </div>
-        <div className="hd-stat">
-          <span className="hd-stat-value">{total}</span>
-          <span className="hd-stat-label">Total</span>
-        </div>
-        <div className="hd-stat">
-          <span className="hd-stat-value">{rate > 0 ? `${rate}%` : "—"}</span>
-          <span className="hd-stat-label">Rate</span>
-        </div>
       </div>
 
       <div className="hd-section">
@@ -200,7 +177,10 @@ export default function Habits() {
 
         /* ── Desktop sidebar ── */
         .hp-detail-col { flex: 1; min-width: 0; display: none; position: sticky; top: 80px; }
-        @media (min-width: 1024px) { .hp-detail-col { display: block; } }
+        @media (min-width: 1024px) {
+          .hp-detail-col { display: block; }
+          .hp-list-col { flex: 0 0 clamp(340px, 36%, 460px); }
+        }
         .hp-detail-card { border-radius: 18px; border: 1px solid hsl(var(--border)); background: hsl(var(--card)); overflow: hidden; }
 
         /* ── Mobile bottom spacing ── */
@@ -210,50 +190,17 @@ export default function Habits() {
           }
         }
 
-        /* ── Mobile sheet overlay ── */
-        .hp-overlay {
-          position: fixed; inset: 0; z-index: 40;
-          background: rgba(0,0,0,0.5);
-          backdrop-filter: blur(3px);
-          -webkit-backdrop-filter: blur(3px);
-          animation: hpOverlayIn 0.2s ease forwards;
-        }
-        @keyframes hpOverlayIn { from { opacity: 0; } to { opacity: 1; } }
-
-        /* ── Mobile bottom sheet ── */
-        .hp-sheet {
-          position: fixed; left: 0; right: 0; bottom: 0; z-index: 50;
-          background: hsl(var(--background));
-          border-radius: 24px 24px 0 0;
-          max-height: 90dvh;
-          overflow-y: auto;
-          overscroll-behavior: contain;
-          -webkit-overflow-scrolling: touch;
-          box-shadow: 0 -12px 60px rgba(0,0,0,0.25);
-          animation: hpSheetIn 0.34s cubic-bezier(0.32, 1, 0.46, 1) forwards;
-          padding-bottom: env(safe-area-inset-bottom, 0px);
-        }
-        @media (min-width: 1024px) { .hp-sheet, .hp-overlay { display: none !important; } }
-        @keyframes hpSheetIn {
-          from { transform: translateY(100%); opacity: 0.6; }
-          to   { transform: translateY(0);    opacity: 1; }
-        }
-
-        /* Sheet handle */
-        .hp-handle-wrap { display: flex; justify-content: center; padding: 12px 0 6px; }
-        .hp-handle-bar { width: 40px; height: 4px; border-radius: 99px; background: hsl(var(--muted-foreground) / 0.25); }
-
         /* ── Shared detail styles ── */
         .hd-inner { display: flex; flex-direction: column; }
         .hd-hero {
           display: flex; align-items: center; gap: 14px;
-          padding: 18px 20px 16px;
+          padding: 12px 14px;
           border-bottom: 1px solid hsl(var(--border));
         }
         .hd-emoji {
-          width: 52px; height: 52px; border-radius: 14px;
+          width: 40px; height: 40px; border-radius: 11px;
           background: hsl(var(--muted)); flex-shrink: 0;
-          display: flex; align-items: center; justify-content: center; font-size: 26px;
+          display: flex; align-items: center; justify-content: center; font-size: 21px;
         }
         .hd-hero-text { flex: 1; min-width: 0; }
         .hd-name {
@@ -270,15 +217,7 @@ export default function Habits() {
           cursor: pointer; flex-shrink: 0; transition: background 0.15s, color 0.15s;
         }
         .hd-close:hover { background: hsl(var(--border)); color: hsl(var(--foreground)); }
-        .hd-stats { display: flex; border-bottom: 1px solid hsl(var(--border)); }
-        .hd-stat {
-          flex: 1; display: flex; flex-direction: column;
-          align-items: center; gap: 3px; padding: 16px 8px;
-        }
-        .hd-stat + .hd-stat { border-left: 1px solid hsl(var(--border)); }
-        .hd-stat-value { font-size: 22px; font-weight: 700; letter-spacing: -0.04em; color: hsl(var(--foreground)); line-height: 1; }
-        .hd-stat-label { font-size: 10px; font-weight: 600; color: hsl(var(--muted-foreground)); text-transform: uppercase; letter-spacing: 0.07em; }
-        .hd-section { padding: 16px 20px; border-bottom: 1px solid hsl(var(--border)); }
+        .hd-section { padding: 10px; border-bottom: 1px solid hsl(var(--border)); }
         .hd-section:last-child { border-bottom: none; padding-bottom: max(20px, env(safe-area-inset-bottom)); }
         .hd-section-title { font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.09em; color: hsl(var(--muted-foreground)); margin-bottom: 12px; }
       `}</style>
@@ -381,21 +320,11 @@ export default function Habits() {
           </TabsContent>
         </Tabs>
 
-        {/* Mobile bottom sheet */}
+        {/* Mobile bottom sheet (iOS / Spotify style: drag down to close) */}
         {sheetOpen && selectedHabit && (
-          <>
-            <div className="hp-overlay" onClick={() => setSheetOpen(false)} />
-            <div className="hp-sheet" role="dialog" aria-modal="true" aria-label={selectedHabit.name}>
-              <div className="hp-handle-wrap">
-                <div className="hp-handle-bar" />
-              </div>
-              <HabitDetail
-                habit={selectedHabit}
-                completions={completions || []}
-                onClose={() => setSheetOpen(false)}
-              />
-            </div>
-          </>
+          <HabitSheet label={selectedHabit.name} onClose={() => setSheetOpen(false)}>
+            {() => <HabitDetail habit={selectedHabit} completions={completions || []} />}
+          </HabitSheet>
         )}
       </div>
     </AppLayout>

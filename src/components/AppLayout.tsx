@@ -36,6 +36,8 @@ const getPillStyle = (fi: number) => {
 
 export function AppLayout({ children }: { children: ReactNode }) {
   const location = useLocation();
+  // Pages with a list + detail split get the full laptop width.
+  const isWidePage = location.pathname === "/habits";
   const navigate = useNavigate();
   const { signOut } = useAuth();
 
@@ -309,8 +311,11 @@ export function AppLayout({ children }: { children: ReactNode }) {
       </nav>
 
       {/* ── Page content ── */}
-      <main className="pt-24 pb-32 md:pb-10 px-3 sm:px-10 md:px-20 lg:px-32 xl:px-48">
-        <div className="max-w-4xl mx-auto">
+      <main className={cn(
+        "pt-24 pb-32 md:pb-10 px-3 sm:px-10",
+        isWidePage ? "md:px-10 xl:px-16" : "md:px-20 lg:px-32 xl:px-48",
+      )}>
+        <div className={cn("mx-auto", isWidePage ? "max-w-7xl" : "max-w-4xl")}>
           <ReviewQueueLauncher />
           {children}
         </div>
