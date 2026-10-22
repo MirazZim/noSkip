@@ -2,6 +2,7 @@ import { createContext, useContext, useEffect, useState, ReactNode } from "react
 import { Session, User } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
 import { useNavigate } from "react-router-dom";
+import { useQueryClient } from "@tanstack/react-query";
 import { auditLog } from "@/lib/auditLog";
 import type { OAuthProvider } from "@/lib/oauthProviders";
 
@@ -21,10 +22,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+  const queryClient = useQueryClient();
 
   useEffect(() => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      (_event, session) => {
+      (event, session) => {
+        // Drop cached data (in memory and the localStorage snapshot) so the next
+        // person on this browser never sees the previous user's finances.
+        if (event === "SIGNED_OUT") queryClient.clear();
         setSession(session);
         setUser(session?.user ?? null);
         setLoading(false);
@@ -38,7 +43,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     });
 
     return () => subscription.unsubscribe();
-  }, []);
+  }, [queryClient]);
 
   const signUp = async (email: string, password: string) => {
     const { error } = await supabase.auth.signUp({

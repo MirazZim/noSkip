@@ -5,6 +5,7 @@ import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 import { ReviewQueueLauncher } from "@/components/expenses/ReviewQueueLauncher";
+import { useRealtimeSync } from "@/hooks/useRealtimeSync";
 
 const navItems = [
   { path: "/", label: "Dashboard" },
@@ -40,6 +41,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
   const isWidePage = location.pathname === "/habits";
   const navigate = useNavigate();
   const { signOut } = useAuth();
+  useRealtimeSync();
 
   const [box, setBox] = useState<BoxStyle | null>(null);
   const [ready, setReady] = useState(false);
