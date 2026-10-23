@@ -3,6 +3,7 @@ import { format } from "date-fns";
 import {
   DndContext,
   DragEndEvent,
+  type Modifier,
   PointerSensor,
   TouchSensor,
   closestCenter,
@@ -19,7 +20,6 @@ import { AppLayout } from "@/components/AppLayout";
 import { AddHabitDialog } from "@/components/habits/AddHabitDialog";
 import { HabitListItem } from "@/components/habits/HabitListItem";
 import { HabitDetailPanel } from "@/components/habits/HabitDetailPanel";
-import { HabitQuote } from "@/components/habits/HabitQuote";
 import { HabitAnalytics } from "@/components/habits/HabitAnalytics";
 import { HabitSheet } from "@/components/habits/HabitSheet";
 import {
@@ -37,6 +37,15 @@ const XIcon = () => (
   </svg>
 );
 
+// The desktop list + detail render under CSS `zoom` (see .hp-body styles).
+const DESKTOP_ZOOM = 0.8;
+const isDesktop = () => typeof window !== "undefined" && window.matchMedia("(min-width: 1024px)").matches;
+
+// Pointer deltas arrive in screen px but the drag transform is applied inside the
+// zoomed list, so divide it back out or the card lags behind the cursor.
+const unzoomDrag: Modifier = ({ transform }) =>
+  isDesktop() ? { ...transform, x: transform.x / DESKTOP_ZOOM, y: transform.y / DESKTOP_ZOOM } : transform;
+
 type Habit = NonNullable<ReturnType<typeof useHabits>["data"]>[0];
 type Completions = NonNullable<ReturnType<typeof useHabitCompletions>["data"]>;
 
@@ -44,14 +53,17 @@ function HabitDetail({
   habit,
   completions,
   onClose,
+  hideHeader,
 }: {
   habit: Habit;
   completions: Completions;
   onClose?: () => void;
+  /** Desktop panel skips the name header; the mobile sheet keeps it as its drag handle. */
+  hideHeader?: boolean;
 }) {
   return (
     <div className="hd-inner">
-      <div className="hd-hero" data-sheet-grab>
+      {!hideHeader && <div className="hd-hero" data-sheet-grab>
         <div className="hd-emoji">{habit.emoji}</div>
         <div className="hd-hero-text">
           <div className="hd-name">{habit.name}</div>
@@ -62,7 +74,7 @@ function HabitDetail({
             <XIcon />
           </button>
         )}
-      </div>
+      </div>}
 
       <div className="hd-section">
         <HabitDetailPanel habit={habit} completions={completions} />
@@ -143,14 +155,14 @@ export default function Habits() {
         /* ── Header ── */
         .hp-header { display: flex; flex-direction: column; gap: 16px; margin-bottom: 24px; }
         .hp-title-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
-        .hp-title { font-size: 28px; font-weight: 700; letter-spacing: -0.035em; color: hsl(var(--foreground)); line-height: 1.1; }
-        .hp-subtitle { font-size: 13px; color: hsl(var(--muted-foreground)); margin-top: 3px; }
+        .hp-title { font-size: calc(28px * var(--tz, 1)); font-weight: 700; letter-spacing: -0.035em; color: hsl(var(--foreground)); line-height: 1.1; }
+        .hp-subtitle { font-size: calc(13px * var(--tz, 1)); color: hsl(var(--muted-foreground)); margin-top: 3px; }
 
         /* ── Progress ── */
         .hp-progress-strip { display: flex; align-items: center; gap: 14px; }
         .hp-progress-track { flex: 1; height: 5px; border-radius: 99px; background: hsl(var(--border)); overflow: hidden; }
         .hp-progress-fill { height: 100%; border-radius: 99px; background: hsl(var(--primary)); transition: width 0.6s cubic-bezier(0.34, 1.2, 0.64, 1); }
-        .hp-progress-label { font-size: 12px; font-weight: 600; color: hsl(var(--muted-foreground)); white-space: nowrap; flex-shrink: 0; }
+        .hp-progress-label { font-size: calc(12px * var(--tz, 1)); font-weight: 600; color: hsl(var(--muted-foreground)); white-space: nowrap; flex-shrink: 0; }
         .hp-progress-label strong { color: hsl(var(--foreground)); }
 
         /* ── Body ── */
@@ -169,8 +181,8 @@ export default function Habits() {
           padding: 64px 24px; border-radius: 18px; border: 1.5px dashed hsl(var(--border));
           text-align: center; gap: 10px;
         }
-        .hp-empty-emoji { font-size: 40px; line-height: 1; }
-        .hp-empty-text { font-size: 14px; color: hsl(var(--muted-foreground)); max-width: 220px; line-height: 1.5; }
+        .hp-empty-emoji { font-size: calc(40px * var(--tz, 1)); line-height: 1; }
+        .hp-empty-text { font-size: calc(14px * var(--tz, 1)); color: hsl(var(--muted-foreground)); max-width: 220px; line-height: 1.5; }
 
         /* ── Skeletons ── */
         .hp-skeleton-list { display: flex; flex-direction: column; gap: 4px; }
@@ -178,8 +190,13 @@ export default function Habits() {
         /* ── Desktop sidebar ── */
         .hp-detail-col { flex: 1; min-width: 0; display: none; position: sticky; top: 80px; }
         @media (min-width: 1024px) {
-          .hp-detail-col { display: block; }
-          .hp-list-col { flex: 0 0 clamp(340px, 36%, 460px); }
+          /* Desktop density: lay out at 80% (like browser zoom) but scale text back
+             up via --tz so it stays readable. Keep in sync with DESKTOP_ZOOM. */
+          .hp-body { zoom: ${DESKTOP_ZOOM}; --tz: 1.15; }
+          /* both columns are capped and the pair sits centred on wide screens */
+          .hp-body { justify-content: center; }
+          .hp-detail-col { display: block; flex: 0 1 620px; top: calc(80px / ${DESKTOP_ZOOM}); }
+          .hp-list-col { flex: 0 1 480px; min-width: 340px; }
         }
         .hp-detail-card { border-radius: 18px; border: 1px solid hsl(var(--border)); background: hsl(var(--card)); overflow: hidden; }
 
@@ -200,15 +217,15 @@ export default function Habits() {
         .hd-emoji {
           width: 40px; height: 40px; border-radius: 11px;
           background: hsl(var(--muted)); flex-shrink: 0;
-          display: flex; align-items: center; justify-content: center; font-size: 21px;
+          display: flex; align-items: center; justify-content: center; font-size: calc(21px * var(--tz, 1));
         }
         .hd-hero-text { flex: 1; min-width: 0; }
         .hd-name {
-          font-size: 17px; font-weight: 700; letter-spacing: -0.025em;
+          font-size: calc(17px * var(--tz, 1)); font-weight: 700; letter-spacing: -0.025em;
           color: hsl(var(--foreground)); line-height: 1.2;
           overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
         }
-        .hd-since { font-size: 12px; color: hsl(var(--muted-foreground)); margin-top: 2px; }
+        .hd-since { font-size: calc(12px * var(--tz, 1)); color: hsl(var(--muted-foreground)); margin-top: 2px; }
         .hd-close {
           width: 32px; height: 32px; border-radius: 50%;
           border: none; background: hsl(var(--muted));
@@ -219,7 +236,7 @@ export default function Habits() {
         .hd-close:hover { background: hsl(var(--border)); color: hsl(var(--foreground)); }
         .hd-section { padding: 10px; border-bottom: 1px solid hsl(var(--border)); }
         .hd-section:last-child { border-bottom: none; padding-bottom: max(20px, env(safe-area-inset-bottom)); }
-        .hd-section-title { font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.09em; color: hsl(var(--muted-foreground)); margin-bottom: 12px; }
+        .hd-section-title { font-size: calc(10.5px * var(--tz, 1)); font-weight: 700; text-transform: uppercase; letter-spacing: 0.09em; color: hsl(var(--muted-foreground)); margin-bottom: 12px; }
       `}</style>
 
       <div className="hp-root">
@@ -245,8 +262,6 @@ export default function Habits() {
               </span>
             </div>
           )}
-
-          <HabitQuote />
         </div>
 
         {/* Tabs */}
@@ -277,7 +292,7 @@ export default function Habits() {
                     sensors={sensors}
                     collisionDetection={closestCenter}
                     onDragEnd={handleDragEnd}
-                    modifiers={[restrictToVerticalAxis]}
+                    modifiers={[restrictToVerticalAxis, unzoomDrag]}
                   >
                     <SortableContext
                       items={activeHabits.map((h) => h.id)}
@@ -307,7 +322,7 @@ export default function Habits() {
                 {selectedHabit && (
                   <div className="hp-detail-col">
                     <div className="hp-detail-card">
-                      <HabitDetail habit={selectedHabit} completions={completions || []} />
+                      <HabitDetail habit={selectedHabit} completions={completions || []} hideHeader />
                     </div>
                   </div>
                 )}

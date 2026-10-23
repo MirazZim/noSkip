@@ -105,7 +105,7 @@ export function HourStrip({ counts, peak }: { counts: number[]; peak: number }) 
           animation-delay: calc(300ms + var(--i) * 18ms);
         }
         .hs-bar--peak { box-shadow: 0 0 10px currentColor; filter: saturate(1.2) brightness(1.08); outline: 1.5px solid hsl(var(--foreground) / 0.5); outline-offset: 1px; }
-        .hs-axis { display: flex; justify-content: space-between; margin-top: 5px; font-size: 10px; color: hsl(var(--muted-foreground) / 0.8); }
+        .hs-axis { display: flex; justify-content: space-between; margin-top: 5px; font-size: calc(10px * var(--tz, 1)); color: hsl(var(--muted-foreground) / 0.8); }
         @media (prefers-reduced-motion: reduce) { .hs-bar { animation: none; } }
       `}</style>
       <div className="hs-bars" role="img" aria-label={`Check-ins by hour, peaking at ${hourLabel(peak)}`}>

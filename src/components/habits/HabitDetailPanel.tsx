@@ -6,16 +6,16 @@ import {
   differenceInDays, differenceInMinutes, parseISO, startOfYear, endOfYear, endOfDay,
 } from "date-fns";
 import {
-  ChevronLeft, ChevronRight, Trophy, Crown, Sparkles, Check, Clock,
+  ChevronLeft, ChevronRight, Crown, Sparkles, Clock,
   TrendingUp, TrendingDown, Minus, Target, Zap, Megaphone, RotateCw,
 } from "lucide-react";
 import { Habit, HabitCompletion, calculateStreak } from "@/hooks/useHabits";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { StreakGrid } from "@/components/habits/StreakGrid";
-import { StreakFlame } from "@/components/habits/detail/StreakFlame";
 import { WeekDial, HourStrip } from "@/components/habits/detail/WeekRhythm";
 import { heatColor } from "@/components/habits/detail/colors";
+import { useHabitPepTalk, cleanPepLine } from "@/hooks/useHabitPepTalk";
 
 // three.js is heavy, so the 3D coach only loads when a detail panel is shown.
 const Coach3D = lazy(() => import("@/components/habits/Coach3D"));
@@ -28,21 +28,6 @@ interface Props {
 const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 const WEEKDAYS_SHORT = ["M", "T", "W", "T", "F", "S", "S"];
 const WEEKDAYS_LONG = ["Mondays", "Tuesdays", "Wednesdays", "Thursdays", "Fridays", "Saturdays", "Sundays"];
-
-// Mirrors the tier thresholds in HabitListItem so the ring aims at the next celebration.
-const MILESTONES: { days: number; label: string }[] = [
-  { days: 3, label: "Wiring up" },
-  { days: 7, label: "One week" },
-  { days: 14, label: "Two weeks" },
-  { days: 21, label: "The Maltz point" },
-  { days: 30, label: "One month" },
-  { days: 40, label: "The 40 day wall" },
-  { days: 66, label: "Lally's number" },
-  { days: 90, label: "The 90 day shift" },
-  { days: 100, label: "Triple digits" },
-  { days: 180, label: "Half a year" },
-  { days: 365, label: "One full year" },
-];
 
 
 function chronotype(h: number) {
@@ -332,31 +317,20 @@ export function HabitDetailPanel({ habit, completions }: Props) {
   const monthCompletions = pastDays.filter((d) => completedDates.has(format(d, "yyyy-MM-dd"))).length;
   const monthRate = pastDays.length > 0 ? Math.round((monthCompletions / pastDays.length) * 100) : 0;
 
-  // ── Hero ──────────────────────────────────────────────────────────────────
+  // ── Today ─────────────────────────────────────────────────────────────────
   const doneToday = completedDates.has(today);
   const minsLeft = Math.max(0, differenceInMinutes(endOfDay(now), now));
   const timeLeft = `${Math.floor(minsLeft / 60)}h ${String(minsLeft % 60).padStart(2, "0")}m`;
   const atRisk = !doneToday && currentStreak > 0;
 
-  const nextMilestone = MILESTONES.find((m) => m.days > currentStreak) ?? null;
-  const prevMilestoneDays = [...MILESTONES].reverse().find((m) => m.days <= currentStreak)?.days ?? 0;
-  const ringProgress = nextMilestone
-    ? (currentStreak - prevMilestoneDays) / (nextMilestone.days - prevMilestoneDays)
-    : 1;
-
-  const toGo = nextMilestone ? nextMilestone.days - currentStreak : 0;
-  const streakCaption =
-    currentStreak === 0 ? "Check in today to start a new streak."
-    : atRisk ? "Check in today to keep it alive."
-    : nextMilestone ? `${toGo} more day${toGo === 1 ? "" : "s"} to reach ${nextMilestone.label} 🏁`
-    : "Every milestone unlocked 👑";
-
-  // ── Coach pep talk: picks the situation, then rotates through original lines.
+  // ── Coach pep talk: picks the situation in code, the AI writes the lines from
+  // the real numbers (useHabitPepTalk). The built-in lines below are the fallback.
   // Voice: warm, corny, folksy, endlessly hopeful. Short sentences, one idea, one tiny action.
   const s = (n: number) => (n === 1 ? "" : "s");
   const coach = (() => {
     if (atRisk) {
       return {
+        situation: "at_risk" as const,
         icon: Clock, tone: "warn" as const,
         title: "Halftime talk",
         series: { quote: "I believe in hope. I believe in Believe.", by: "Ted Lasso", plain: "Hope isn't silly. It's the thing that gets you to do it tonight, even when you're tired." },
@@ -370,6 +344,7 @@ export function HabitDetailPanel({ habit, completions }: Props) {
     }
     if (isComeback) {
       return {
+        situation: "comeback" as const,
         icon: Zap, tone: "good" as const,
         title: "Welcome back, y'all",
         series: { quote: "Be a goldfish.", by: "Ted Lasso", plain: "Forget the miss fast. Don't drag yesterday into today. Just start fresh." },
@@ -383,6 +358,7 @@ export function HabitDetailPanel({ habit, completions }: Props) {
     }
     if (currentStreak >= bestStreak && currentStreak > 2) {
       return {
+        situation: "personal_best" as const,
         icon: Crown, tone: "gold" as const,
         title: "New personal best",
         series: { quote: "Football is life!", by: "Dani Rojas", plain: "Love what you're building. When you go all in, a record is what happens." },
@@ -394,8 +370,22 @@ export function HabitDetailPanel({ habit, completions }: Props) {
         ],
       };
     }
+    if (daysSinceLast >= 7 && totalDone > 0) {
+      return {
+        situation: "gone_quiet" as const,
+        icon: Megaphone, tone: "warn" as const,
+        title: "Hey there, stranger",
+        series: { quote: "Be a goldfish.", by: "Ted Lasso", plain: "However long it's been, let it go. Today is a clean slate." },
+        lines: [
+          `Well, look who it is! **${daysSinceLast} days** since I saw you at practice. No lecture, partner. I'm just tickled you stopped by.`,
+          "Startin' back up don't need a parade. Do the **teeny-tiny version** today. Five minutes. Then we'll talk about tomorrow.",
+          "Be a goldfish, buddy. Forget how long it's been. **Today's a clean slate**, and I saved you a spot.",
+        ],
+      };
+    }
     if (momentumTrend === "up") {
       return {
+        situation: "momentum_up" as const,
         icon: TrendingUp, tone: "good" as const,
         title: "You're on a roll",
         series: { quote: "Football is life!", by: "Dani Rojas", plain: 'Throw your whole heart into it. Joy is what keeps momentum going.' },
@@ -408,6 +398,7 @@ export function HabitDetailPanel({ habit, completions }: Props) {
     }
     if (momentumTrend === "down" && worstDayIdx >= 0) {
       return {
+        situation: "momentum_down" as const,
         icon: Target, tone: "warn" as const,
         title: "Small fix, big win",
         series: { quote: "Be a goldfish.", by: "Ted Lasso", plain: "A bad month doesn't define you. Let it go and win the next day." },
@@ -421,6 +412,7 @@ export function HabitDetailPanel({ habit, completions }: Props) {
     }
     if (bestDayIdx >= 0) {
       return {
+        situation: "steady" as const,
         icon: Sparkles, tone: "good" as const,
         title: "I believe in you",
         series: { quote: "Believe.", by: "Ted Lasso", plain: "Trust that showing up adds up, even on days you can't see it yet." },
@@ -433,6 +425,7 @@ export function HabitDetailPanel({ habit, completions }: Props) {
       };
     }
     return {
+      situation: "new" as const,
       icon: Sparkles, tone: "good" as const,
       title: "Welcome to the team",
         series: { quote: "Believe.", by: "Ted Lasso", plain: "You don't need proof yet. Believe you can, then go get Day 1." },
@@ -443,9 +436,18 @@ export function HabitDetailPanel({ habit, completions }: Props) {
       ],
     };
   })();
-  const lineIdx = (dayOfYearIdx + pepTalkIdx) % coach.lines.length;
-  const coachLine = coach.lines[lineIdx];
-  const talkKey = `${coach.title}-${lineIdx}-${pepTalkIdx}`;
+  const pepTalk = useHabitPepTalk(habit, coach.situation, {
+    currentStreak, bestStreak, doneToday,
+    last30Rate, prev30Rate, showUpRate, totalDone, daysSinceLast,
+    bestDay: bestDayIdx >= 0 ? WEEKDAYS_LONG[bestDayIdx].slice(0, -1) : null,
+    bestDayRate: bestDayIdx >= 0 ? weeklyRates[bestDayIdx] : null,
+    worstDay: worstDayIdx >= 0 ? WEEKDAYS_LONG[worstDayIdx].slice(0, -1) : null,
+  });
+  const coachThinking = pepTalk.isLoading;
+  const pepLines = pepTalk.data?.map((l) => cleanPepLine(l, timeLeft)) ?? coach.lines;
+  const lineIdx = (dayOfYearIdx + pepTalkIdx) % pepLines.length;
+  const coachLine = pepLines[lineIdx];
+  const talkKey = `${coach.title}-${pepTalk.data ? "ai" : "fb"}-${lineIdx}-${pepTalkIdx}`;
   const CoachIcon = coach.icon;
   // a new quote always starts face-up
   useEffect(() => { setBoardFlipped(false); }, [coach.series.quote]);
@@ -486,15 +488,32 @@ export function HabitDetailPanel({ habit, completions }: Props) {
         .hdp-chain[data-mode="month"] .hdp-chain-year { display: none; }
         .hdp-chain[data-mode="year"] .hdp-chain-month { display: none; }
 
-        /* Wide panels: hero | chain, then coach | weekly rhythm, rest pair up */
-        @container (min-width: 660px) {
+        /* The calendar leads, even in the single-column mobile layout */
+        .hdp-chain { order: -1; }
+
+        /* Wide panels: calendar alone up top, coach, weekly rhythm (dial | time of day),
+           compact momentum | skyline, projection — everything but the pair is full width */
+        @container (min-width: 540px) {
           .hdp-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
-          .hdp-hero  { grid-column: 1; grid-row: 1; display: flex; flex-direction: column; justify-content: center; }
-          .hdp-chain { grid-column: 2; grid-row: 1; }
-          .hdp-coach { grid-column: 1; grid-row: 2; }
-          .hdp-rhythm { grid-column: 2; grid-row: 2; }
+          .hdp-chain { grid-column: 1 / -1; grid-row: 1; }
+          .hdp-chain .hdp-cal-nav { margin-bottom: 4px; }
+          .hdp-chain .hdp-cal-day { height: 32px; }
+          .hdp-chain .hdp-cal-dot { width: 28px; height: 28px; }
+          .hdp-chain .hdp-cal-connector { top: 3px; bottom: 3px; }
+          .hdp-chain .hdp-month-rate { margin: 8px 0 5px; }
+          .hdp-coach { grid-column: 1 / -1; grid-row: 2; }
+          .hdp-rhythm { grid-column: 1 / -1; grid-row: 3; }
+          .hdp-rhythm .hdp-body { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 20px; align-items: center; }
+          .hdp-rhythm .hdp-sky { margin-top: 0; padding-top: 0; padding-left: 20px; border-top: 0; border-left: 1px solid hsl(var(--border) / 0.6); }
+          .hdp-momentum { grid-column: 1; grid-row: 4; }
+          .hdp-sky-card { grid-column: 2; grid-row: 4; }
           .hdp-proj { grid-column: 1 / -1; }
-          .hdp-coach-quote { font-size: 14px; }
+          .hdp-momentum .hdp-body, .hdp-sky-card .hdp-body { padding: 6px 14px 12px; }
+          .hdp-momentum .hdp-spark { height: 38px; }
+          .hdp-momentum .hdp-spark-axis { margin-top: 4px; }
+          .hdp-sky-card .hdp-skyline { height: 50px; padding-top: 14px; }
+          .hdp-momentum .hdp-compare, .hdp-sky-card .hdp-sky-facts { margin-top: 8px; }
+          .hdp-coach-quote { font-size: calc(14px * var(--tz, 1)); }
         }
 
         .hdp-card {
@@ -512,12 +531,13 @@ export function HabitDetailPanel({ habit, completions }: Props) {
           gap: 10px; padding: 12px 14px 0;
         }
         .hdp-title {
-          font-size: 13px; font-weight: 650; letter-spacing: -0.015em;
+          font-size: calc(13px * var(--tz, 1)); font-weight: 650; letter-spacing: -0.015em;
           color: hsl(var(--foreground)); line-height: 1.25;
         }
-        .hdp-sub { font-size: 12px; color: hsl(var(--muted-foreground)); margin-top: 2px; line-height: 1.35; }
+        .hdp-title--habit { font-size: calc(15px * var(--tz, 1)); font-weight: 750; letter-spacing: -0.02em; }
+        .hdp-sub { font-size: calc(12px * var(--tz, 1)); color: hsl(var(--muted-foreground)); margin-top: 2px; line-height: 1.35; }
         .hdp-body { padding: 10px 14px 14px; }
-        .hdp-muted { font-size: 12px; color: hsl(var(--muted-foreground)); }
+        .hdp-muted { font-size: calc(12px * var(--tz, 1)); color: hsl(var(--muted-foreground)); }
 
         /* ── Hero ── */
         .hdp-hero {
@@ -534,13 +554,13 @@ export function HabitDetailPanel({ habit, completions }: Props) {
             radial-gradient(80% 90% at 100% 100%, hsl(var(--primary) / 0.06), transparent 60%),
             hsl(var(--card));
         }
-        .hdp-hero-top { display: flex; align-items: center; gap: 14px; padding: 14px 16px 10px; }
+        .hdp-hero-top { display: flex; align-items: center; gap: 14px; padding: 16px; }
 
         .hdp-hero-text { min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 5px; }
         .hdp-status {
           align-self: flex-start;
           display: inline-flex; align-items: center; gap: 5px;
-          font-size: 11px; font-weight: 600; padding: 4px 10px 4px 8px; border-radius: 99px;
+          font-size: calc(11px * var(--tz, 1)); font-weight: 600; padding: 4px 10px 4px 8px; border-radius: 99px;
         }
         .hdp-status--done { background: hsl(142 71% 45% / 0.14); color: hsl(142 71% 38%); }
         .dark .hdp-status--done { color: hsl(142 71% 58%); }
@@ -553,26 +573,14 @@ export function HabitDetailPanel({ habit, completions }: Props) {
           content: ''; position: absolute; inset: 0; border-radius: 50%;
           background: currentColor; animation: hdp-ping 1.4s cubic-bezier(0, 0, 0.2, 1) infinite;
         }
-        .hdp-streak-big { font-size: 15px; font-weight: 650; color: hsl(var(--muted-foreground)); line-height: 1; }
+        .hdp-streak-big { font-size: calc(15px * var(--tz, 1)); font-weight: 650; color: hsl(var(--muted-foreground)); line-height: 1; }
         .hdp-streak-big strong {
-          font-size: 34px; font-weight: 850; letter-spacing: -0.05em; color: hsl(var(--foreground));
+          font-size: calc(34px * var(--tz, 1)); font-weight: 850; letter-spacing: -0.05em; color: hsl(var(--foreground));
           margin-right: 1px; font-variant-numeric: tabular-nums;
         }
-        .hdp-streak-caption { font-size: 12.5px; color: hsl(var(--muted-foreground)); line-height: 1.35; }
+        .hdp-streak-caption { font-size: calc(12.5px * var(--tz, 1)); color: hsl(var(--muted-foreground)); line-height: 1.35; }
 
 
-        .hdp-stats {
-          display: grid; grid-template-columns: repeat(3, 1fr);
-          padding: 10px 8px 12px;
-        }
-        .hdp-stat { display: flex; flex-direction: column; align-items: center; gap: 3px; }
-        .hdp-stat + .hdp-stat { border-left: 1px solid hsl(var(--border) / 0.6); }
-        .hdp-stat-val {
-          display: inline-flex; align-items: center; gap: 4px;
-          font-size: 16px; font-weight: 750; letter-spacing: -0.04em; line-height: 1;
-          color: hsl(var(--foreground));
-        }
-        .hdp-stat-lbl { font-size: 11.5px; color: hsl(var(--muted-foreground)); }
 
         /* ── Milestone trail ── */
         .hdp-trail-track { position: relative; height: 6px; margin-top: 2px; border-radius: 99px; background: hsl(var(--foreground) / 0.08); }
@@ -620,13 +628,86 @@ export function HabitDetailPanel({ habit, completions }: Props) {
           position: absolute; top: -12px; left: 12px; padding: 3px 9px; border-radius: 6px;
           background: hsl(var(--coach)); color: hsl(230 22% 10%);
           border: 2px solid hsl(230 22% 12%); transform: rotate(-2deg);
-          font-size: 10px; box-shadow: 2px 2px 0 hsl(230 22% 12%);
+          font-size: calc(10px * var(--tz, 1)); box-shadow: 2px 2px 0 hsl(230 22% 12%);
         }
-        .hdp-coach .hdp-bubble--comic .hdp-coach-quote { color: hsl(230 18% 22%); }
+        /* Speech: bigger, darker, comfortable line length */
+        .hdp-coach .hdp-bubble--comic .hdp-coach-quote {
+          margin-top: 6px; max-width: 62ch;
+          font-size: calc(15.5px * var(--tz, 1)); line-height: 1.6; font-weight: 500; letter-spacing: -0.005em;
+          color: hsl(230 25% 14%);
+        }
         .hdp-coach .hdp-bubble--comic .hdp-hl, .hdp-bubble--comic .hdp-punch { color: hsl(230 25% 8%); }
+        /* Facts get a fat, slightly crooked marker swipe */
+        .hdp-coach .hdp-bubble--comic .hdp-hl {
+          font-weight: 800; padding: 0 4px; margin: 0 1px; border-radius: 4px 2px 5px 3px;
+          background-image: linear-gradient(100deg, hsl(var(--coach) / 0.55), hsl(var(--coach) / 0.35) 70%, hsl(var(--coach) / 0.5));
+          background-position: 0 90%;
+          transform: rotate(-0.6deg);
+        }
+        .hdp-coach .hdp-bubble--comic .hdp-coach-quote--ghost .hdp-hl,
+        .hdp-coach .hdp-bubble--comic .hdp-coach-quote--leave .hdp-hl { background-size: 100% 55%; }
+        @keyframes hdp-swipe-fat { to { background-size: 100% 55%; } }
+        .hdp-coach .hdp-bubble--comic .hdp-coach-quote:not(.hdp-coach-quote--ghost):not(.hdp-coach-quote--leave) .hdp-hl {
+          animation:
+            hdp-word 0.7s cubic-bezier(0.25, 1, 0.5, 1) both calc(var(--cut, 0ms) + var(--d) * 42ms),
+            hdp-swipe-fat 0.6s cubic-bezier(0.65, 0, 0.35, 1) forwards calc(var(--cut, 0ms) + var(--d) * 42ms + 260ms);
+        }
+        /* Punchline: Ted's own handwriting, underlined with a scribble */
+        .hdp-coach .hdp-bubble--comic .hdp-punch {
+          margin-top: 8px;
+          font-family: "Caveat", "Bradley Hand", cursive;
+          font-size: calc(27px * var(--tz, 1)); font-weight: 700; line-height: 1.05; letter-spacing: 0;
+          transform: rotate(-1.2deg); transform-origin: left center;
+        }
+        .hdp-coach .hdp-bubble--comic .hdp-punch .hdp-hl { font-weight: 700; padding: 0 3px; }
+        .hdp-coach .hdp-bubble--comic .hdp-punch::after {
+          width: 120px; height: 9px; margin-top: 4px; border-radius: 0;
+          background: hsl(var(--coach));
+          -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 120 9'%3E%3Cpath d='M2 6 C 14 1, 22 1, 32 5 S 52 9, 62 4 S 84 0, 94 5 S 112 8, 118 3' fill='none' stroke='black' stroke-width='2.6' stroke-linecap='round'/%3E%3C/svg%3E") no-repeat center / 100% 100%;
+          mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 120 9'%3E%3Cpath d='M2 6 C 14 1, 22 1, 32 5 S 52 9, 62 4 S 84 0, 94 5 S 112 8, 118 3' fill='none' stroke='black' stroke-width='2.6' stroke-linecap='round'/%3E%3C/svg%3E") no-repeat center / 100% 100%;
+        }
         .hdp-coach .hdp-bubble--comic .hdp-pep-dot { background: hsl(230 20% 12% / 0.18); }
         .hdp-coach .hdp-bubble--comic .hdp-pep-dot--on { background: hsl(var(--coach)); }
-        .hdp-coach .hdp-bubble--comic .hdp-pep-btn { color: hsl(230 22% 12%); background: hsl(var(--coach) / 0.35); border: 1.5px solid hsl(230 22% 12%); }
+        /* "New play" button: a comic sticker that presses into its shadow, megaphone shakes on hover */
+        .hdp-coach .hdp-bubble--comic .hdp-pep-btn {
+          margin-top: 10px; gap: 8px; padding: 4px 12px 4px 4px; border-radius: 10px;
+          color: hsl(230 22% 12%); background: hsl(0 0% 100%);
+          border: 2px solid hsl(230 22% 12%);
+          box-shadow: 3px 3px 0 hsl(var(--coach));
+          transform: rotate(-1.5deg);
+          transition: transform 0.15s, box-shadow 0.15s;
+        }
+        .hdp-coach .hdp-bubble--comic .hdp-pep-btn:hover { background: hsl(0 0% 100%); transform: rotate(0deg) translate(-1px, -1px); box-shadow: 4px 4px 0 hsl(var(--coach)); }
+        .hdp-coach .hdp-bubble--comic .hdp-pep-btn:active { transform: translate(3px, 3px); box-shadow: 0 0 0 hsl(var(--coach)); }
+        .hdp-pep-btn-icon {
+          display: grid; place-items: center; width: 26px; height: 26px; border-radius: 7px;
+          background: hsl(var(--coach)); border: 1.5px solid hsl(230 22% 12%);
+        }
+        .hdp-pep-btn:hover .hdp-pep-btn-icon svg { animation: hdp-holler 0.5s ease-in-out; }
+        @keyframes hdp-holler {
+          0%, 100% { transform: rotate(0); }
+          20% { transform: rotate(-18deg) scale(1.15); }
+          40% { transform: rotate(14deg) scale(1.15); }
+          60% { transform: rotate(-10deg); }
+          80% { transform: rotate(6deg); }
+        }
+        .hdp-pep-btn-text { display: flex; flex-direction: column; align-items: flex-start; line-height: 1.1; }
+        .hdp-pep-btn-label { font-size: calc(12px * var(--tz, 1)); font-weight: 800; letter-spacing: -0.01em; }
+        .hdp-pep-btn-sub { font-size: calc(9.5px * var(--tz, 1)); font-weight: 600; opacity: 0.55; text-transform: uppercase; letter-spacing: 0.08em; }
+
+        /* Chalkboard never grows past a readable size */
+        .hdp-coach .hdp-board-wrap { max-width: 300px; }
+        /* Full-width coach: speech on the left, chalkboard on the right */
+        @container (min-width: 660px) {
+          .hdp-coach .hdp-bubble--comic {
+            display: grid; grid-template-columns: minmax(0, 1fr) 260px;
+            grid-template-rows: auto auto 1fr; column-gap: 20px; align-items: start;
+          }
+          .hdp-coach .hdp-bubble--comic > :not(.hdp-board-wrap):not(.hdp-coach-kicker) { grid-column: 1; }
+          .hdp-coach .hdp-bubble--comic .hdp-pep-btn { justify-self: start; align-self: end; }
+          .hdp-coach .hdp-board-wrap { grid-column: 2; grid-row: 1 / 4; margin-top: 0; align-self: center; }
+          .hdp-coach .hdp-board .hdp-chalk text { font-size: 24px; }
+        }
 
         /* chalk written live */
         @keyframes hdp-chalk-trace { to { stroke-dashoffset: 0; } }
@@ -663,7 +744,7 @@ export function HabitDetailPanel({ habit, completions }: Props) {
           box-shadow: inset 0 1px 0 hsl(0 0% 100% / 0.35), inset 0 -6px 14px hsl(0 0% 0% / 0.25);
         }
         .hdp-coach-mono {
-          font-size: 24px; font-weight: 850; letter-spacing: -0.06em; color: hsl(0 0% 100%);
+          font-size: calc(24px * var(--tz, 1)); font-weight: 850; letter-spacing: -0.06em; color: hsl(0 0% 100%);
           text-shadow: 0 2px 6px hsl(0 0% 0% / 0.35);
         }
         .hdp-coach-voice { position: absolute; bottom: 10px; display: flex; gap: 2px; align-items: flex-end; height: 8px; }
@@ -674,7 +755,7 @@ export function HabitDetailPanel({ habit, completions }: Props) {
         }
         .hdp-coach-voice i:nth-child(2) { animation-delay: 0.12s; }
         .hdp-coach-voice i:nth-child(3) { animation-delay: 0.24s; }
-        .hdp-coach-name { font-size: 11.5px; font-weight: 700; color: hsl(var(--foreground)); letter-spacing: -0.01em; white-space: nowrap; }
+        .hdp-coach-name { font-size: calc(11.5px * var(--tz, 1)); font-weight: 700; color: hsl(var(--foreground)); letter-spacing: -0.01em; white-space: nowrap; }
         .hdp-bubble {
           position: relative; flex: 1; min-width: 0;
           padding: 9px 12px 10px; border-radius: 4px 14px 14px 14px;
@@ -689,14 +770,14 @@ export function HabitDetailPanel({ habit, completions }: Props) {
         }
         .hdp-coach-kicker {
           display: flex; align-items: center; gap: 6px;
-          font-size: 11px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase;
+          font-size: calc(11px * var(--tz, 1)); font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase;
           color: hsl(var(--coach));
         }
         .hdp-coach-kicker-icon { flex-shrink: 0; }
         @keyframes hdp-quote-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
         .hdp-coach-quote {
           position: relative; margin-top: 4px;
-          font-size: 14px; line-height: 1.55; font-weight: 500; letter-spacing: -0.01em;
+          font-size: calc(14px * var(--tz, 1)); line-height: 1.55; font-weight: 500; letter-spacing: -0.01em;
           color: hsl(var(--foreground) / 0.88);
         }
         /* words land one after another, like he's talking */
@@ -718,7 +799,7 @@ export function HabitDetailPanel({ habit, completions }: Props) {
         @keyframes hdp-swipe { to { background-size: 100% 42%; } }
         .hdp-punch {
           display: block; margin-top: 6px;
-          font-size: 16px; font-weight: 800; letter-spacing: -0.02em; line-height: 1.3;
+          font-size: calc(16px * var(--tz, 1)); font-weight: 800; letter-spacing: -0.02em; line-height: 1.3;
           color: hsl(var(--foreground));
         }
         .hdp-punch::after {
@@ -772,7 +853,7 @@ export function HabitDetailPanel({ habit, completions }: Props) {
         .hdp-board-by {
           position: relative; margin-top: 4px;
           font-family: "Caveat", "Bradley Hand", cursive;
-          font-size: 15px; font-weight: 500;
+          font-size: calc(15px * var(--tz, 1)); font-weight: 500;
           color: hsl(48 90% 72%);
           transform: rotate(-1deg); transform-origin: left center;
           animation: hdp-quote-in 0.4s 0.8s cubic-bezier(0.22, 1, 0.36, 1) both;
@@ -790,12 +871,22 @@ export function HabitDetailPanel({ habit, completions }: Props) {
         .hdp-pep-btn {
           margin-top: 8px;
           display: inline-flex; align-items: center; gap: 5px;
-          font-size: 11px; font-weight: 650;
+          font-size: calc(11px * var(--tz, 1)); font-weight: 650;
           padding: 5px 10px; border-radius: 99px;
           color: hsl(var(--coach)); background: hsl(var(--coach) / 0.12);
           transition: background 0.2s, transform 0.15s;
         }
         .hdp-pep-btn:hover { background: hsl(var(--coach) / 0.2); }
+        .hdp-pep-btn:disabled { opacity: 0.5; pointer-events: none; }
+        .hdp-thinking { opacity: 0.7; font-style: italic; }
+        .hdp-thinking span { display: inline-flex; gap: 3px; margin-left: 4px; }
+        .hdp-thinking i {
+          width: 4px; height: 4px; border-radius: 50%; background: currentColor;
+          animation: hdp-think 1s ease-in-out infinite;
+        }
+        .hdp-thinking i:nth-child(2) { animation-delay: 0.15s; }
+        .hdp-thinking i:nth-child(3) { animation-delay: 0.3s; }
+        @keyframes hdp-think { 0%, 100% { opacity: 0.25; } 50% { opacity: 1; } }
         .hdp-pep-btn:active { transform: scale(0.96); }
 
         /* ── Segmented toggle ── */
@@ -804,7 +895,7 @@ export function HabitDetailPanel({ habit, completions }: Props) {
           background: hsl(var(--foreground) / 0.06); flex-shrink: 0;
         }
         .hdp-seg button {
-          font-size: 11.5px; font-weight: 600;
+          font-size: calc(11.5px * var(--tz, 1)); font-weight: 600;
           padding: 4px 12px; border-radius: 7px;
           color: hsl(var(--muted-foreground));
           transition: background 0.2s, color 0.2s, box-shadow 0.2s;
@@ -816,16 +907,16 @@ export function HabitDetailPanel({ habit, completions }: Props) {
 
         /* ── Month calendar ── */
         .hdp-cal-nav { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
-        .hdp-cal-title { font-weight: 650; font-size: 13px; letter-spacing: -0.01em; }
+        .hdp-cal-title { font-weight: 650; font-size: calc(13px * var(--tz, 1)); letter-spacing: -0.01em; }
         .hdp-cal-weekdays { display: grid; grid-template-columns: repeat(7, 1fr); margin-bottom: 2px; }
-        .hdp-cal-wd { text-align: center; font-size: 11.5px; font-weight: 600; color: hsl(var(--muted-foreground)); padding: 2px 0; }
+        .hdp-cal-wd { text-align: center; font-size: calc(11.5px * var(--tz, 1)); font-weight: 600; color: hsl(var(--muted-foreground)); padding: 2px 0; }
         .hdp-cal-week { display: grid; grid-template-columns: repeat(7, 1fr); }
         .hdp-cal-day { position: relative; height: 28px; display: flex; align-items: center; justify-content: center; }
         .hdp-cal-connector { position: absolute; top: 2px; bottom: 2px; background: hsl(var(--primary) / 0.14); }
         .hdp-cal-dot {
           position: relative; z-index: 1; display: flex; width: 24px; height: 24px;
           align-items: center; justify-content: center; border-radius: 50%;
-          font-size: 12.5px; font-weight: 500; transition: background 0.15s, transform 0.15s;
+          font-size: calc(12.5px * var(--tz, 1)); font-weight: 500; transition: background 0.15s, transform 0.15s;
         }
         .hdp-cal-dot--done {
           background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); font-weight: 650;
@@ -835,7 +926,7 @@ export function HabitDetailPanel({ habit, completions }: Props) {
         .hdp-cal-dot--future { color: hsl(var(--muted-foreground) / 0.4); }
         .hdp-cal-dot--missed { color: hsl(var(--foreground) / 0.7); }
         .hdp-month-rate { display: flex; align-items: baseline; justify-content: space-between; margin: 10px 0 6px; }
-        .hdp-month-rate-val { font-size: 15px; font-weight: 750; letter-spacing: -0.03em; color: hsl(var(--foreground)); }
+        .hdp-month-rate-val { font-size: calc(15px * var(--tz, 1)); font-weight: 750; letter-spacing: -0.03em; color: hsl(var(--foreground)); }
         .hdp-track { height: 6px; border-radius: 99px; background: hsl(var(--foreground) / 0.07); overflow: hidden; }
         .hdp-fill {
           height: 100%; border-radius: 99px;
@@ -851,13 +942,13 @@ export function HabitDetailPanel({ habit, completions }: Props) {
 
         .hdp-sky { margin-top: 14px; padding-top: 12px; border-top: 1px solid hsl(var(--border) / 0.6); }
         .hdp-sky-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; }
-        .hdp-sky-type { font-size: 13.5px; font-weight: 750; letter-spacing: -0.02em; color: hsl(var(--foreground)); }
+        .hdp-sky-type { font-size: calc(13.5px * var(--tz, 1)); font-weight: 750; letter-spacing: -0.02em; color: hsl(var(--foreground)); }
         .hdp-sky-peak { color: hsl(var(--foreground)); font-weight: 700; }
         @keyframes hdp-rise { from { transform: scaleY(0); } to { transform: none; } }
         .hdp-daychip {
           display: inline-flex; align-items: center; gap: 5px; align-self: flex-start;
           padding: 6px 11px 6px 9px; border-radius: 99px;
-          font-size: 13px; font-weight: 600; color: hsl(var(--foreground) / 0.85);
+          font-size: calc(13px * var(--tz, 1)); font-weight: 600; color: hsl(var(--foreground) / 0.85);
           background: color-mix(in srgb, var(--chip) 14%, transparent);
           box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--chip) 35%, transparent);
           cursor: default;
@@ -882,24 +973,24 @@ export function HabitDetailPanel({ habit, completions }: Props) {
           opacity: 0.45; transition: opacity 0.2s, transform 0.4s;
         }
         .hdp-board-kicker {
-          position: relative; font-size: 10px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase;
+          position: relative; font-size: calc(10px * var(--tz, 1)); font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase;
           color: hsl(48 90% 72%);
         }
         .hdp-board-meaning {
           position: relative; margin-top: 4px;
-          font-family: "Caveat", "Bradley Hand", cursive; font-size: 19px; font-weight: 600; line-height: 1.2;
+          font-family: "Caveat", "Bradley Hand", cursive; font-size: calc(19px * var(--tz, 1)); font-weight: 600; line-height: 1.2;
           color: hsl(60 20% 94%);
         }
         .hdp-fact { display: flex; gap: 8px; align-items: flex-start; }
         .hdp-fact-dot { width: 8px; height: 8px; border-radius: 3px; margin-top: 4px; flex-shrink: 0; }
-        .hdp-fact-text { font-size: 13px; line-height: 1.5; color: hsl(var(--muted-foreground)); }
+        .hdp-fact-text { font-size: calc(13px * var(--tz, 1)); line-height: 1.5; color: hsl(var(--muted-foreground)); }
         .hdp-fact-text strong { color: hsl(var(--foreground)); font-weight: 650; }
 
         /* ── Momentum ── */
         .hdp-badge {
           display: inline-flex; align-items: center; gap: 4px; flex-shrink: 0;
           padding: 4px 9px; border-radius: 99px;
-          font-size: 12px; font-weight: 700;
+          font-size: calc(12px * var(--tz, 1)); font-weight: 700;
         }
         .hdp-badge--up { background: hsl(142 71% 45% / 0.14); color: hsl(142 71% 36%); }
         .dark .hdp-badge--up { color: hsl(142 71% 58%); }
@@ -912,9 +1003,9 @@ export function HabitDetailPanel({ habit, completions }: Props) {
         .hdp-spark-axis { display: flex; justify-content: space-between; margin-top: 6px; }
         .hdp-compare { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 8px; }
         .hdp-compare-cell { padding: 7px 10px; border-radius: 10px; background: hsl(var(--foreground) / 0.035); }
-        .hdp-compare-val { font-size: 15px; font-weight: 750; letter-spacing: -0.04em; color: hsl(var(--foreground)); line-height: 1; }
+        .hdp-compare-val { font-size: calc(15px * var(--tz, 1)); font-weight: 750; letter-spacing: -0.04em; color: hsl(var(--foreground)); line-height: 1; }
         .hdp-compare-val--dim { color: hsl(var(--muted-foreground)); }
-        .hdp-compare-lbl { font-size: 11.5px; color: hsl(var(--muted-foreground)); margin-top: 4px; }
+        .hdp-compare-lbl { font-size: calc(11.5px * var(--tz, 1)); color: hsl(var(--muted-foreground)); margin-top: 4px; }
 
         /* ── Skyline ── */
         .hdp-skyline {
@@ -941,18 +1032,18 @@ export function HabitDetailPanel({ habit, completions }: Props) {
         }
         .hdp-tower-crown { position: absolute; left: 50%; top: -18px; transform: translateX(-50%); color: hsl(42 95% 52%); }
         .hdp-sky-facts { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 10px; }
-        .hdp-sky-val { font-size: 15px; font-weight: 750; letter-spacing: -0.035em; color: hsl(var(--foreground)); line-height: 1; }
-        .hdp-sky-lbl { font-size: 11.5px; color: hsl(var(--muted-foreground)); margin-top: 4px; }
+        .hdp-sky-val { font-size: calc(15px * var(--tz, 1)); font-weight: 750; letter-spacing: -0.035em; color: hsl(var(--foreground)); line-height: 1; }
+        .hdp-sky-lbl { font-size: calc(11.5px * var(--tz, 1)); color: hsl(var(--muted-foreground)); margin-top: 4px; }
 
         /* ── Projection ── */
-        .hdp-proj-kicker { font-size: 13px; color: hsl(var(--muted-foreground)); }
+        .hdp-proj-kicker { font-size: calc(13px * var(--tz, 1)); color: hsl(var(--muted-foreground)); }
         .hdp-proj-big { display: flex; align-items: baseline; gap: 8px; margin: 2px 0 10px; }
         .hdp-proj-num {
-          font-size: 34px; font-weight: 800; letter-spacing: -0.06em; line-height: 0.95;
+          font-size: calc(34px * var(--tz, 1)); font-weight: 800; letter-spacing: -0.06em; line-height: 0.95;
           background: linear-gradient(135deg, hsl(var(--foreground)), hsl(var(--primary)));
           -webkit-background-clip: text; background-clip: text; color: transparent;
         }
-        .hdp-proj-unit { font-size: 13px; font-weight: 600; color: hsl(var(--muted-foreground)); }
+        .hdp-proj-unit { font-size: calc(13px * var(--tz, 1)); font-weight: 600; color: hsl(var(--muted-foreground)); }
         .hdp-proj-bar { position: relative; height: 10px; border-radius: 99px; background: hsl(var(--foreground) / 0.07); overflow: hidden; }
         .hdp-proj-ghost {
           position: absolute; inset: 0 auto 0 0; border-radius: 99px;
@@ -971,7 +1062,7 @@ export function HabitDetailPanel({ habit, completions }: Props) {
           border: 1px solid hsl(var(--primary) / 0.2);
         }
         .hdp-cta-icon { color: hsl(var(--primary)); flex-shrink: 0; }
-        .hdp-cta-text { font-size: 13px; line-height: 1.45; color: hsl(var(--foreground) / 0.85); }
+        .hdp-cta-text { font-size: calc(13px * var(--tz, 1)); line-height: 1.45; color: hsl(var(--foreground) / 0.85); }
         .hdp-cta-text strong { color: hsl(var(--primary)); font-weight: 750; }
 
         @media (prefers-reduced-motion: reduce) {
@@ -984,47 +1075,6 @@ export function HabitDetailPanel({ habit, completions }: Props) {
       `}</style>
 
       <div className="hdp-grid">
-      {/* ── 1. Hero ──────────────────────────────────────────────────────────── */}
-      <div className={cn("hdp-card hdp-hero", atRisk && "hdp-hero--risk")}>
-        <div className="hdp-hero-top">
-          <StreakFlame streak={currentStreak} atRisk={atRisk} id={uid} />
-
-          <div className="hdp-hero-text">
-            {doneToday ? (
-              <span className="hdp-status hdp-status--done"><Check size={12} strokeWidth={3} /> Done today</span>
-            ) : atRisk ? (
-              <span className="hdp-status hdp-status--risk"><span className="hdp-ping" /> {timeLeft} left today</span>
-            ) : (
-              <span className="hdp-status hdp-status--idle"><Clock size={12} strokeWidth={2.5} /> {timeLeft} left today</span>
-            )}
-            <span className="hdp-streak-big">
-              <strong>{currentStreak}</strong>-day streak
-            </span>
-            <span className="hdp-streak-caption">{streakCaption}</span>
-            {nextMilestone && currentStreak > 0 && (
-              <div className="hdp-trail-track" aria-hidden>
-                <div className="hdp-trail-fill" style={{ width: `${Math.max(4, ringProgress * 100)}%` }} />
-              </div>
-            )}
-          </div>
-        </div>
-
-        <div className="hdp-stats">
-          <div className="hdp-stat">
-            <span className="hdp-stat-val"><Trophy size={14} strokeWidth={2.4} style={{ color: "hsl(42 95% 52%)" }} />{bestStreak}</span>
-            <span className="hdp-stat-lbl">Best streak</span>
-          </div>
-          <div className="hdp-stat">
-            <span className="hdp-stat-val">{showUpRate}%</span>
-            <span className="hdp-stat-lbl">Show-up</span>
-          </div>
-          <div className="hdp-stat">
-            <span className="hdp-stat-val">{totalDone}</span>
-            <span className="hdp-stat-lbl">Total days</span>
-          </div>
-        </div>
-      </div>
-
       {/* ── 2. Coach pep talk ────────────────────────────────────────────────── */}
       <div className={cn("hdp-card hdp-coach", `hdp-coach--${coach.tone}`)}>
         <div className="hdp-coach-side">
@@ -1052,8 +1102,13 @@ export function HabitDetailPanel({ habit, completions }: Props) {
           </div>
           {/* Every line sits in the same grid cell so the bubble is sized to the
               longest one and doesn't jump when cycling pep talks. */}
+          {coachThinking ? (
+            <p className="hdp-coach-quote hdp-thinking" aria-live="polite">
+              Coach is thinkin' about your numbers<span aria-hidden><i /><i /><i /></span>
+            </p>
+          ) : (
           <div className="hdp-quote-stack">
-            {coach.lines.map((line, i) => {
+            {pepLines.map((line, i) => {
               const active = i === lineIdx;
               const isLeaving = !active && leaving?.title === coach.title && leaving.idx === i;
               return (
@@ -1072,8 +1127,9 @@ export function HabitDetailPanel({ habit, completions }: Props) {
               );
             })}
           </div>
-          <div className="hdp-pep-dots" aria-label={`Pep talk ${lineIdx + 1} of ${coach.lines.length}`}>
-            {coach.lines.map((_, i) => (
+          )}
+          <div className="hdp-pep-dots" aria-label={`Pep talk ${lineIdx + 1} of ${pepLines.length}`}>
+            {!coachThinking && pepLines.map((_, i) => (
               <span key={i} className={cn("hdp-pep-dot", i === lineIdx && "hdp-pep-dot--on")} />
             ))}
           </div>
@@ -1111,8 +1167,12 @@ export function HabitDetailPanel({ habit, completions }: Props) {
               </figure>
             </div>
           </button>
-          <button type="button" className="hdp-pep-btn" onClick={() => { setLeaving({ title: coach.title, idx: lineIdx }); setPepTalkIdx((i) => i + 1); }}>
-            <Megaphone size={12} strokeWidth={2.6} /> Another pep talk
+          <button type="button" className="hdp-pep-btn" disabled={coachThinking} onClick={() => { setLeaving({ title: coach.title, idx: lineIdx }); setPepTalkIdx((i) => i + 1); }}>
+            <span className="hdp-pep-btn-icon" aria-hidden><Megaphone size={13} strokeWidth={2.6} /></span>
+            <span className="hdp-pep-btn-text">
+              <span className="hdp-pep-btn-label">New play, Coach!</span>
+              <span className="hdp-pep-btn-sub">Another pep talk</span>
+            </span>
           </button>
         </div>
       </div>
@@ -1121,7 +1181,7 @@ export function HabitDetailPanel({ habit, completions }: Props) {
       <div className="hdp-card hdp-chain" data-mode={calMode}>
         <div className="hdp-head">
           <div>
-            <div className="hdp-title">Your chain</div>
+            <div className="hdp-title hdp-title--habit">{habit.name}</div>
           </div>
           <div className="hdp-seg" role="tablist">
             <button type="button" role="tab" data-active={calMode === "month"} onClick={() => setCalMode("month")}>Month</button>
@@ -1158,16 +1218,19 @@ export function HabitDetailPanel({ habit, completions }: Props) {
                       const isCompleted = completedDates.has(dateStr);
                       const isToday = dateStr === today;
                       const isFuture = dateStr > today;
-                      const { inStreak, isStart, isEnd, isSingle } = getStreakPosition(dateStr);
+                      const { inStreak, isStart, isEnd } = getStreakPosition(dateStr);
+                      // The band reaches toward a neighbour only within this row, so it
+                      // stops at the Mon/Sun edges instead of running off the calendar.
+                      const reachLeft = inStreak && !isStart && di !== 0;
+                      const reachRight = inStreak && !isEnd && di !== 6;
 
                       return (
                         <div key={di} className="hdp-cal-day">
-                          {inStreak && !isSingle && (
+                          {(reachLeft || reachRight) && (
                             <div className={cn(
                               "hdp-cal-connector",
-                              isStart && "rounded-l-full left-1/2 right-0",
-                              isEnd && "rounded-r-full left-0 right-1/2",
-                              !isStart && !isEnd && "left-0 right-0",
+                              reachLeft ? "left-0" : "left-1/2 rounded-l-full",
+                              reachRight ? "right-0" : "right-1/2 rounded-r-full",
                             )} />
                           )}
                           <span className={cn(
@@ -1251,7 +1314,7 @@ export function HabitDetailPanel({ habit, completions }: Props) {
       </div>
 
       {/* ── 5. Momentum ─────────────────────────────────────────────────────── */}
-      <div className="hdp-card">
+      <div className="hdp-card hdp-momentum">
         <div className="hdp-head">
           <div>
             <div className="hdp-title">Momentum</div>
@@ -1297,7 +1360,7 @@ export function HabitDetailPanel({ habit, completions }: Props) {
       </div>
 
       {/* ── 6. Streak skyline ───────────────────────────────────────────────── */}
-      <div className="hdp-card">
+      <div className="hdp-card hdp-sky-card">
         <div className="hdp-head">
           <div>
             <div className="hdp-title">Streak skyline</div>

@@ -294,7 +294,7 @@ function DopamineCard({
             {/* ── Row 1: tier label + streak badge side by side ── */}
             <div className="flex items-center justify-between">
               <span
-                className="text-[9.5px] font-black tracking-[0.2em] uppercase"
+                className="text-[length:calc(9.5px*var(--tz,1))] font-black tracking-[0.2em] uppercase"
                 style={{ color: `${tier.accent}80` }}
               >
                 {tier.label}
@@ -302,7 +302,7 @@ function DopamineCard({
 
               {streak > 0 && (
                 <div
-                  className="flex items-center gap-1 px-2.5 py-1 rounded-full text-[12px] font-black"
+                  className="flex items-center gap-1 px-2.5 py-1 rounded-full text-[length:calc(12px*var(--tz,1))] font-black"
                   style={{
                     background: `${tier.accent}16`,
                     border: `1px solid ${tier.accent}30`,
@@ -318,7 +318,7 @@ function DopamineCard({
             <div className="flex items-center gap-2">
               <span className="text-xl leading-none">🎉</span>
               <span
-                className="text-[13px] font-bold tracking-[-0.01em]"
+                className="text-[length:calc(13px*var(--tz,1))] font-bold tracking-[-0.01em]"
                 style={{ color: tier.accent }}
               >
                 Congratulations!
@@ -329,13 +329,13 @@ function DopamineCard({
             <div className="flex flex-col gap-2">
               <p
                 className="text-white font-extrabold leading-[1.2] tracking-[-0.03em]"
-                style={{ fontSize: "21px" }}
+                style={{ fontSize: "calc(21px * var(--tz, 1))" }}
               >
                 {congrat}
               </p>
 
               {insight && (
-                <p className="text-white/55 text-[13px] font-medium leading-relaxed tracking-[-0.01em]">
+                <p className="text-white/55 text-[length:calc(13px*var(--tz,1))] font-medium leading-relaxed tracking-[-0.01em]">
                   {insight}
                 </p>
               )}
@@ -349,13 +349,13 @@ function DopamineCard({
               {/* Full name — wraps freely, no pill, no clip */}
               <div className="flex items-center gap-1.5">
                 <span className="text-sm leading-none shrink-0">{habitEmoji}</span>
-                <span className="text-white/35 text-[12px] font-semibold leading-snug">
+                <span className="text-white/35 text-[length:calc(12px*var(--tz,1))] font-semibold leading-snug">
                   {habitName}
                 </span>
               </div>
 
               <p
-                className="text-[11.5px] font-semibold leading-relaxed tracking-[-0.01em]"
+                className="text-[length:calc(11.5px*var(--tz,1))] font-semibold leading-relaxed tracking-[-0.01em]"
                 style={{ color: `${tier.accent}85` }}
               >
                 {tier.subtext(streak)}
@@ -440,7 +440,7 @@ function ChainRow({ days }: { days: ChainDay[] }) {
                 )}
               />
               <span className={cn(
-                "text-[10.5px] leading-none font-semibold uppercase select-none",
+                "text-[length:calc(10.5px*var(--tz,1))] leading-none font-semibold uppercase select-none",
                 isToday ? "text-primary font-extrabold" : "text-muted-foreground"
               )}>
                 {name[0]}
@@ -468,14 +468,14 @@ function ContextMenu({ onEdit, onDelete, onClose, style, yesterday }: {
         style={style}
       >
         <button
-          className="flex items-center gap-[9px] w-full px-[11px] py-[9px] rounded-[10px] border-none bg-transparent text-foreground cursor-pointer text-[13px] font-medium font-[inherit] hover:bg-muted/80 transition-colors duration-100"
+          className="flex items-center gap-[9px] w-full px-[11px] py-[9px] rounded-[10px] border-none bg-transparent text-foreground cursor-pointer text-[length:calc(13px*var(--tz,1))] font-medium font-[inherit] hover:bg-muted/80 transition-colors duration-100"
           onClick={() => { onEdit(); onClose(); }}
         >
           <PencilIcon /> Edit habit
         </button>
         {yesterday && (
           <button
-            className="flex items-center gap-[9px] w-full px-[11px] py-[9px] rounded-[10px] border-none bg-transparent text-foreground cursor-pointer text-[13px] font-medium font-[inherit] hover:bg-muted/80 transition-colors duration-100"
+            className="flex items-center gap-[9px] w-full px-[11px] py-[9px] rounded-[10px] border-none bg-transparent text-foreground cursor-pointer text-[length:calc(13px*var(--tz,1))] font-medium font-[inherit] hover:bg-muted/80 transition-colors duration-100"
             onClick={() => { yesterday.onToggle(); onClose(); }}
           >
             <YesterdayIcon /> {yesterday.done ? "Unmark yesterday" : "Mark yesterday done"}
@@ -483,7 +483,7 @@ function ContextMenu({ onEdit, onDelete, onClose, style, yesterday }: {
         )}
         <div className="h-px bg-border/60 my-[3px]" />
         <button
-          className="flex items-center gap-[9px] w-full px-[11px] py-[9px] rounded-[10px] border-none bg-transparent text-destructive cursor-pointer text-[13px] font-medium font-[inherit] hover:bg-destructive/[0.08] transition-colors duration-100"
+          className="flex items-center gap-[9px] w-full px-[11px] py-[9px] rounded-[10px] border-none bg-transparent text-destructive cursor-pointer text-[length:calc(13px*var(--tz,1))] font-medium font-[inherit] hover:bg-destructive/[0.08] transition-colors duration-100"
           onClick={() => { onDelete(); onClose(); }}
         >
           <TrashIcon /> Delete
@@ -798,7 +798,7 @@ export function HabitListItem({ habit, completions, isSelected, onSelect }: Prop
             className={cn(
               "flex flex-col items-center justify-center gap-1 w-[52px] h-[52px] rounded-[14px]",
               "bg-primary/[0.12] text-primary border border-primary/20",
-              "text-[9px] font-bold uppercase tracking-[0.06em] font-[inherit]",
+              "text-[length:calc(9px*var(--tz,1))] font-bold uppercase tracking-[0.06em] font-[inherit]",
               "[-webkit-tap-highlight-color:transparent] touch-manipulation",
               "transition-[transform,opacity] duration-200 active:scale-90",
               isSwipeOpen ? "opacity-100" : "opacity-0"
@@ -813,7 +813,7 @@ export function HabitListItem({ habit, completions, isSelected, onSelect }: Prop
             className={cn(
               "flex flex-col items-center justify-center gap-1 w-[52px] h-[52px] rounded-[14px]",
               "bg-destructive/[0.10] text-destructive border border-destructive/20",
-              "text-[9px] font-bold uppercase tracking-[0.06em] font-[inherit]",
+              "text-[length:calc(9px*var(--tz,1))] font-bold uppercase tracking-[0.06em] font-[inherit]",
               "[-webkit-tap-highlight-color:transparent] touch-manipulation",
               "transition-[transform,opacity] duration-200 active:scale-90",
               isSwipeOpen ? "opacity-100" : "opacity-0"
@@ -857,7 +857,7 @@ export function HabitListItem({ habit, completions, isSelected, onSelect }: Prop
           <div
             className={cn(
               "relative w-[44px] h-[44px] shrink-0 rounded-[14px]",
-              "flex items-center justify-center text-[22px] leading-none",
+              "flex items-center justify-center text-[length:calc(22px*var(--tz,1))] leading-none",
               "hli-tile cursor-grab select-none touch-none",
               "[-webkit-tap-highlight-color:transparent] [-webkit-user-select:none]",
               "transition-[transform,background-color,border-color,filter] duration-200 group-hover:scale-[1.04]",
@@ -887,7 +887,7 @@ export function HabitListItem({ habit, completions, isSelected, onSelect }: Prop
           <div className="relative flex-1 min-w-0 flex flex-col gap-[9px]">
             <div className="flex items-start gap-1 min-w-0">
               <span className={cn(
-                "flex-1 min-w-0 font-semibold text-[16px] tracking-[-0.015em] leading-[1.3]",
+                "flex-1 min-w-0 font-semibold text-[length:calc(16px*var(--tz,1))] tracking-[-0.015em] leading-[1.3]",
                 "overflow-hidden [display:-webkit-box] [-webkit-line-clamp:2] [-webkit-box-orient:vertical]",
                 "transition-colors duration-200",
                 optimisticDone ? "text-foreground/75" : "text-foreground"
@@ -925,9 +925,9 @@ export function HabitListItem({ habit, completions, isSelected, onSelect }: Prop
 
               </div>
             </div>
-            <div className="-mt-[3px] flex items-center gap-[7px] min-w-0 text-[12.5px] leading-none text-foreground/65">
+            <div className="-mt-[3px] flex items-center gap-[7px] min-w-0 text-[length:calc(12.5px*var(--tz,1))] leading-none text-foreground/65">
               {tier && (
-                <span className="shrink-0 font-bold uppercase tracking-[0.05em] text-[11px]" style={{ color: tier.accent }}>
+                <span className="shrink-0 font-bold uppercase tracking-[0.05em] text-[length:calc(11px*var(--tz,1))]" style={{ color: tier.accent }}>
                   {tier.label.toLowerCase()}
                 </span>
               )}
@@ -939,7 +939,7 @@ export function HabitListItem({ habit, completions, isSelected, onSelect }: Prop
             <div className="flex items-start gap-2 min-w-0">
               <ChainRow days={chainDays} />
               {streak === 0 && totalDone > 0 && (
-                <span className="text-[12.5px] font-semibold text-foreground/65 whitespace-nowrap truncate tabular-nums">
+                <span className="text-[length:calc(12.5px*var(--tz,1))] font-semibold text-foreground/65 whitespace-nowrap truncate tabular-nums">
                   {totalDone} total
                 </span>
               )}
@@ -1001,12 +1001,12 @@ export function HabitListItem({ habit, completions, isSelected, onSelect }: Prop
                 title={`${streak}-day streak`}
                 className={cn(
                   "absolute -top-[7px] -right-[9px] inline-flex items-center gap-[1px] pl-[4px] pr-[6px] h-[18px] rounded-full",
-                  "text-[10.5px] font-extrabold tracking-[-0.02em] tabular-nums whitespace-nowrap",
+                  "text-[length:calc(10.5px*var(--tz,1))] font-extrabold tracking-[-0.02em] tabular-nums whitespace-nowrap",
                   "bg-card ring-1 ring-amber-500/40 text-amber-600 dark:text-amber-400",
                   streak >= 7 && "shadow-[0_0_10px_-2px_rgb(245_158_11/0.7)]"
                 )}
               >
-                <span className="text-[10px]">🔥</span>{streak}
+                <span className="text-[length:calc(10px*var(--tz,1))]">🔥</span>{streak}
               </span>
             )}
           </div>

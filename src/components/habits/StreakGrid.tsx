@@ -141,7 +141,7 @@ export function StreakGrid({ habitId, completions }: Props) {
           transition: background 0.2s;
         }
         .sg-stat-val {
-          font-size: 14px;
+          font-size: calc(14px * var(--tz, 1));
           font-weight: 700;
           letter-spacing: -0.04em;
           color: hsl(var(--foreground));
@@ -149,7 +149,7 @@ export function StreakGrid({ habitId, completions }: Props) {
         }
         .sg-stat-val--accent { color: hsl(var(--primary)); text-shadow: 0 0 12px hsl(var(--primary) / 0.4); }
         .sg-stat-lbl {
-          font-size: 10.5px;
+          font-size: calc(10.5px * var(--tz, 1));
           font-weight: 600;
           text-transform: uppercase;
           letter-spacing: 0.06em;
@@ -187,7 +187,7 @@ export function StreakGrid({ habitId, completions }: Props) {
         }
         .sg-month-label {
           position: absolute;
-          font-size: 10.5px;
+          font-size: calc(10.5px * var(--tz, 1));
           font-weight: 700;
           text-transform: uppercase;
           letter-spacing: 0.06em;
@@ -206,7 +206,7 @@ export function StreakGrid({ habitId, completions }: Props) {
           margin-right: 4px;
         }
         .sg-day-label {
-          font-size: 8.5px;
+          font-size: calc(8.5px * var(--tz, 1));
           font-weight: 600;
           text-transform: uppercase;
           letter-spacing: 0.05em;
@@ -257,7 +257,7 @@ export function StreakGrid({ habitId, completions }: Props) {
           margin-top: 8px;
         }
         .sg-rate {
-          font-size: 11.5px;
+          font-size: calc(11.5px * var(--tz, 1));
           font-weight: 600;
           color: hsl(var(--muted-foreground));
         }
@@ -265,7 +265,7 @@ export function StreakGrid({ habitId, completions }: Props) {
 
         .sg-legend { display: flex; align-items: center; gap: 5px; }
         .sg-legend-label {
-          font-size: 10px;
+          font-size: calc(10px * var(--tz, 1));
           font-weight: 600;
           text-transform: uppercase;
           letter-spacing: 0.06em;
@@ -279,7 +279,7 @@ export function StreakGrid({ habitId, completions }: Props) {
           background: hsl(var(--popover));
           border: 1px solid hsl(var(--border));
           color: hsl(var(--popover-foreground));
-          font-size: 11px;
+          font-size: calc(11px * var(--tz, 1));
           font-weight: 500;
           padding: 5px 10px;
           border-radius: 8px;
