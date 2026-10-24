@@ -7,7 +7,7 @@ import {
 } from "date-fns";
 import {
   ChevronLeft, ChevronRight, Crown, Sparkles, Clock,
-  TrendingUp, TrendingDown, Minus, Target, Zap, Megaphone, RotateCw,
+  TrendingUp, TrendingDown, Minus, Target, Zap, Megaphone, RotateCw, Flame,
 } from "lucide-react";
 import { Habit, HabitCompletion, calculateStreak } from "@/hooks/useHabits";
 import { Button } from "@/components/ui/button";
@@ -331,6 +331,7 @@ export function HabitDetailPanel({ habit, completions }: Props) {
     if (atRisk) {
       return {
         situation: "at_risk" as const,
+        emotion: "concerned" as const,
         icon: Clock, tone: "warn" as const,
         title: "Halftime talk",
         series: { quote: "I believe in hope. I believe in Believe.", by: "Ted Lasso", plain: "Hope isn't silly. It's the thing that gets you to do it tonight, even when you're tired." },
@@ -345,6 +346,7 @@ export function HabitDetailPanel({ habit, completions }: Props) {
     if (isComeback) {
       return {
         situation: "comeback" as const,
+        emotion: "excited" as const,
         icon: Zap, tone: "good" as const,
         title: "Welcome back, y'all",
         series: { quote: "Be a goldfish.", by: "Ted Lasso", plain: "Forget the miss fast. Don't drag yesterday into today. Just start fresh." },
@@ -359,6 +361,7 @@ export function HabitDetailPanel({ habit, completions }: Props) {
     if (currentStreak >= bestStreak && currentStreak > 2) {
       return {
         situation: "personal_best" as const,
+        emotion: "proud" as const,
         icon: Crown, tone: "gold" as const,
         title: "New personal best",
         series: { quote: "Football is life!", by: "Dani Rojas", plain: "Love what you're building. When you go all in, a record is what happens." },
@@ -370,9 +373,28 @@ export function HabitDetailPanel({ habit, completions }: Props) {
         ],
       };
     }
+    // A week or more without a miss outranks the 30-day trend: a slow month
+    // shouldn't drown out a perfect week.
+    if (currentStreak >= 7) {
+      const weeks = Math.floor(currentStreak / 7);
+      return {
+        situation: "hot_streak" as const,
+        emotion: "excited" as const,
+        icon: Flame, tone: "good" as const,
+        title: weeks === 1 ? "Perfect week" : `${weeks} perfect weeks`,
+        series: { quote: "Believe.", by: "Ted Lasso", plain: "Trust that showing up adds up. A perfect week is the proof." },
+        lines: [
+          `**${currentStreak} days** straight, partner. Not one miss. I'm happier than a puppy in a pile of fresh laundry.`,
+          "A whole week without skippin' a beat. That ain't luck, buddy. That's **who you are now**.",
+          `Coach Beard just looked at your ${habit.name} streak and nodded. He don't nod for nobody. **Keep it rollin'.**`,
+          "Seven days is when a habit starts feelin' like home. **Welcome home**, friend. Let's go get day eight.",
+        ],
+      };
+    }
     if (daysSinceLast >= 7 && totalDone > 0) {
       return {
         situation: "gone_quiet" as const,
+        emotion: "warm" as const,
         icon: Megaphone, tone: "warn" as const,
         title: "Hey there, stranger",
         series: { quote: "Be a goldfish.", by: "Ted Lasso", plain: "However long it's been, let it go. Today is a clean slate." },
@@ -386,6 +408,7 @@ export function HabitDetailPanel({ habit, completions }: Props) {
     if (momentumTrend === "up") {
       return {
         situation: "momentum_up" as const,
+        emotion: "excited" as const,
         icon: TrendingUp, tone: "good" as const,
         title: "You're on a roll",
         series: { quote: "Football is life!", by: "Dani Rojas", plain: 'Throw your whole heart into it. Joy is what keeps momentum going.' },
@@ -399,6 +422,7 @@ export function HabitDetailPanel({ habit, completions }: Props) {
     if (momentumTrend === "down" && worstDayIdx >= 0) {
       return {
         situation: "momentum_down" as const,
+        emotion: "concerned" as const,
         icon: Target, tone: "warn" as const,
         title: "Small fix, big win",
         series: { quote: "Be a goldfish.", by: "Ted Lasso", plain: "A bad month doesn't define you. Let it go and win the next day." },
@@ -413,6 +437,7 @@ export function HabitDetailPanel({ habit, completions }: Props) {
     if (bestDayIdx >= 0) {
       return {
         situation: "steady" as const,
+        emotion: "warm" as const,
         icon: Sparkles, tone: "good" as const,
         title: "I believe in you",
         series: { quote: "Believe.", by: "Ted Lasso", plain: "Trust that showing up adds up, even on days you can't see it yet." },
@@ -426,6 +451,7 @@ export function HabitDetailPanel({ habit, completions }: Props) {
     }
     return {
       situation: "new" as const,
+      emotion: "warm" as const,
       icon: Sparkles, tone: "good" as const,
       title: "Welcome to the team",
         series: { quote: "Believe.", by: "Ted Lasso", plain: "You don't need proof yet. Believe you can, then go get Day 1." },
@@ -1083,7 +1109,7 @@ export function HabitDetailPanel({ habit, completions }: Props) {
             <div className="hdp-coach-3d-stage">
               <Suspense fallback={<CoachBadge talkKey={talkKey} />}>
                 <Coach3D
-                  mood={coach.tone}
+                  emotion={coachThinking ? "thinking" : coach.emotion}
                   talkKey={talkKey}
                   talkMs={Math.min(5000, coachLine.split(/\s+/).length * 32 + 900)}
                   fallback={<CoachBadge talkKey={talkKey} />}

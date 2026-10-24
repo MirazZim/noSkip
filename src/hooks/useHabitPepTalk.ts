@@ -12,7 +12,7 @@ import { useAuth } from "@/contexts/AuthContext";
 // ─────────────────────────────────────────────────────────
 
 export type PepTalkSituation =
-  | "at_risk" | "comeback" | "personal_best" | "gone_quiet"
+  | "at_risk" | "comeback" | "personal_best" | "hot_streak" | "gone_quiet"
   | "momentum_up" | "momentum_down" | "steady" | "new";
 
 export interface PepTalkFacts {
@@ -60,7 +60,7 @@ export function useHabitPepTalk(
   return useQuery({
     // Keyed on what changes the story (situation, streak), not every stat, so a
     // check-off doesn't always cost an LLM call. Bump the version when the prompt changes.
-    queryKey: ["habit_pep_talk", "v4", user?.id, habit.id, habit.name, today, situation, facts.currentStreak],
+    queryKey: ["habit_pep_talk", "v6", user?.id, habit.id, habit.name, today, situation, facts.currentStreak],
     queryFn: async () => {
       const { data, error } = await supabase.functions.invoke("habit-pep-talk", {
         body: { habitName: habit.name, situation, facts },

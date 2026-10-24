@@ -16,7 +16,7 @@ const ANON_KEY     = Deno.env.get("SUPABASE_ANON_KEY")!;
 // An empty result makes the client fall back to its built-in lines.
 
 const SITUATIONS = [
-  "at_risk", "comeback", "personal_best", "gone_quiet", "momentum_up", "momentum_down", "steady", "new",
+  "at_risk", "comeback", "personal_best", "hot_streak", "gone_quiet", "momentum_up", "momentum_down", "steady", "new",
 ] as const;
 type Situation = typeof SITUATIONS[number];
 
@@ -24,6 +24,7 @@ const SITUATION_BRIEF: Record<Situation, string> = {
   at_risk:       "They have a live streak but haven't checked in today yet. Urge them to do it today, even a tiny version.",
   comeback:      "They broke their streak for 3+ days and are now back on a new streak. Celebrate the return, no guilt about the miss.",
   personal_best: "Their current streak is their longest ever. Every day now is a new record.",
+  hot_streak:    "They've done this every day for a week or more straight. The unbroken run (current_streak_days) is the whole story: any number you cite must be current_streak_days. Don't cite totals, rates or weekdays, and don't mention slumps.",
   gone_quiet:    "They haven't done this habit in a week or more (see days_since_last_check_in). Don't talk about weekdays or rates. Reach out like Ted checking on a player who's stopped showing up to practice: no guilt, genuinely glad to see them, make restarting today feel tiny and easy.",
   momentum_up:   "Their last-30-day completion rate is clearly up versus the 30 days before.",
   momentum_down: "Their last-30-day rate dropped. Be kind, no blame, and point at their weakest weekday as the one small fix.",

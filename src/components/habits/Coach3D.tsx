@@ -4,14 +4,37 @@ import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { MeshoptDecoder } from "three/examples/jsm/libs/meshopt_decoder.module.js";
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
 
-export type CoachMood = "good" | "warn" | "gold";
+export type CoachEmotion = "proud" | "excited" | "warm" | "concerned" | "thinking";
+
+/** Expression targets; the face eases toward them so emotions blend instead of snapping. */
+interface Face {
+  smile: number;     // -1 frown … 1 big grin
+  open: number;      // mouth open at rest (a grin shows teeth-dark)
+  browLift: number;  // both brows up
+  browWorry: number; // + inner ends up (worried), − inner ends down (determined)
+  browAsym: number;  // one brow raised (thinking)
+  cheek: number;     // cheeks push up with a real smile
+  squint: number;    // smiling eyes
+  pitch: number;     // − chin up (proud), + head down (concerned)
+  roll: number;      // head tilt
+  lookX: number;     // gaze off to the side
+  bounce: number;    // idle energy
+}
+const FACES: Record<CoachEmotion, Face> = {
+  proud:     { smile: 1,     open: 0.3, browLift: 0.05, browWorry: 0,    browAsym: 0,    cheek: 1,   squint: 0.5, pitch: -0.12, roll: 0,     lookX: 0,    bounce: 0.03 },
+  excited:   { smile: 0.9,   open: 0.6, browLift: 0.08, browWorry: -0.1, browAsym: 0,    cheek: 0.9, squint: 0.3, pitch: -0.05, roll: 0.05,  lookX: 0,    bounce: 0.06 },
+  warm:      { smile: 0.55,  open: 0,   browLift: 0.02, browWorry: 0.25, browAsym: 0,    cheek: 0.5, squint: 0.3, pitch: 0.03,  roll: 0.1,   lookX: 0,    bounce: 0.015 },
+  concerned: { smile: -0.5,  open: 0,   browLift: 0,    browWorry: 1,    browAsym: 0,    cheek: 0,   squint: 0,   pitch: 0.09,  roll: -0.14, lookX: 0,    bounce: 0.008 },
+  thinking:  { smile: -0.1,  open: 0,   browLift: 0.01, browWorry: -0.2, browAsym: 1,    cheek: 0.1, squint: 0.2, pitch: -0.14, roll: 0.08,  lookX: 0.3,  bounce: 0.01 },
+};
+const FACE_KEYS = Object.keys(FACES.warm) as (keyof Face)[];
 
 /** Optional: a rigged .glb at public/coach.glb replaces the built-in coach. */
 const COACH_MODEL_URL = "/coach.glb";
 
 interface Props {
-  /** Expression: friendly, determined (streak at risk), or beaming (record). */
-  mood: CoachMood;
+  /** How he feels about the habit right now; drives face, head and body language. */
+  emotion: CoachEmotion;
   /** Changes whenever a new pep talk starts — triggers talking + a nod. */
   talkKey: string | number;
   /** How long he keeps talking for this line, in ms. */
@@ -22,7 +45,7 @@ interface Props {
   height?: number;
 }
 
-interface FrameState { now: number; t: number; dt: number; talking: boolean; since: number; mood: CoachMood; px: number; py: number; blink: number }
+interface FrameState { now: number; t: number; dt: number; talking: boolean; since: number; emotion: CoachEmotion; face: Face; px: number; py: number; blink: number }
 interface Rig { root: THREE.Object3D; camera: THREE.PerspectiveCamera; update: (s: FrameState) => void; dispose?: () => void }
 
 const lerp = (a: number, b: number, k: number) => a + (b - a) * k;
@@ -44,8 +67,12 @@ function loadModel() {
 const MORPHS = {
   jaw: ["jawOpen", "mouthOpen", "viseme_aa", "MouthOpen"],
   smile: ["mouthSmile", "mouthSmileLeft", "mouthSmileRight", "Smile"],
+  frown: ["mouthFrownLeft", "mouthFrownRight", "Frown"],
   browUp: ["browInnerUp", "BrowsUp"],
+  browOuter: ["browOuterUpLeft"],
   browDown: ["browDownLeft", "browDownRight", "BrowsDown"],
+  cheek: ["cheekSquintLeft", "cheekSquintRight"],
+  squint: ["eyeSquintLeft", "eyeSquintRight"],
   blink: ["eyesClosed", "eyeBlinkLeft", "eyeBlinkRight", "Blink"],
 };
 type MorphKey = keyof typeof MORPHS;
@@ -94,14 +121,19 @@ function gltfRig(source: THREE.Group, clips: THREE.AnimationClip[], aspect: numb
       if (head && base) {
         if (!mixer) head.quaternion.copy(base);
         ly = lerp(ly, s.px * 0.45, 0.08);
-        lx = lerp(lx, s.py * 0.25 + nod, 0.1);
-        head.quaternion.multiply(q.setFromEuler(e.set(lx, ly, s.talking ? Math.sin(s.t * 3.5) * 0.04 : 0)));
+        lx = lerp(lx, s.py * 0.25 + nod + s.face.pitch, 0.1);
+        head.quaternion.multiply(q.setFromEuler(e.set(lx, ly + s.face.lookX, s.face.roll + (s.talking ? Math.sin(s.t * 3.5) * 0.04 : 0))));
       }
+      const f = s.face;
       const flap = s.talking ? Math.abs(Math.sin(s.t * 13)) * (0.55 + 0.45 * Math.abs(Math.sin(s.t * 2.9))) : 0;
-      set("jaw", flap * 0.7);
-      set("smile", s.mood === "gold" ? 0.7 : s.mood === "good" ? 0.35 : 0.05);
-      set("browUp", s.mood === "warn" ? 0.45 : 0);
-      set("browDown", s.mood === "warn" ? 0.35 : 0);
+      set("jaw", Math.min(1, flap * 0.7 + f.open * 0.3));
+      set("smile", Math.max(0, f.smile) * 0.8);
+      set("frown", Math.max(0, -f.smile) * 0.8);
+      set("browUp", Math.max(0, f.browWorry) * 0.7 + f.browLift * 4);
+      set("browOuter", f.browAsym * 0.8);
+      set("browDown", Math.max(0, -f.browWorry) * 0.6);
+      set("cheek", f.cheek * 0.6);
+      set("squint", f.squint);
       set("blink", s.blink);
       camera.position.z = lerp(camera.position.z, s.talking ? baseZ - viewH * 0.12 : baseZ, 0.03);
     },
@@ -173,6 +205,7 @@ function builtInRig(accent: THREE.Color, aspect: number): Rig {
     transparent: true, opacity: 0.88, side: THREE.DoubleSide, envMapIntensity: 1.8,
   });
   const dark = new THREE.MeshStandardMaterial({ color: 0x2a1410, roughness: 0.8 });
+  const lipMat = phys(0xa9614c, { roughness: 0.45, sheen: 0.3, sheenColor: new THREE.Color(0xe0907a) });
 
   const root = new THREE.Group();
   const add = (geo: THREE.BufferGeometry, m: THREE.Material, parent: THREE.Object3D, p: [number, number, number] = [0, 0, 0]) => {
@@ -297,13 +330,51 @@ function builtInRig(accent: THREE.Color, aspect: number): Rig {
   add(new THREE.SphereGeometry(0.105, 32, 24), skin, head, [0, -0.15, tipBase.z + 0.13]);
   for (const side of [-1, 1]) add(new THREE.SphereGeometry(0.06, 20, 16), skinDeep, head, [side * 0.1, -0.2, tipBase.z + 0.05]);
 
-  // mouth + lower lip (the jaw group moves when he talks)
-  const jaw = new THREE.Group();
+  // cheeks: rise and round out with a real smile
+  const cheeks: THREE.Mesh[] = [];
+  for (const side of [-1, 1]) {
+    const p = face(side * 0.46, -0.3);
+    const c = add(new THREE.SphereGeometry(0.17, 28, 20), skin, head, [p.x, p.y, p.z - 0.12]);
+    c.scale.set(1, 0.8, 0.5);
+    c.userData.y = p.y;
+    cheeks.push(c);
+  }
+
+  // mouth: a flat strip below the mustache, built as top/bottom edges so two
+  // morphs can bend it (smile: corners up, negative = frown) and open it into
+  // a grin with a row of teeth.
+  const lipY = -0.64;
+  const mouthG = new THREE.Group();
+  mouthG.position.set(0, lipY, face(0, lipY).z + 0.012);
+  head.add(mouthG);
+  const W = 0.23, N = 24;
+  const xs = Array.from({ length: N + 1 }, (_, i) => (i / N * 2 - 1) * W);
+  const curl = (x: number) => 0.13 * (x / W) ** 2;            // smile = 1: corners up this much
+  const dip = (x: number) => 0.12 * (1 - (x / W) ** 2) ** 0.7; // open = 1: bottom edge drops this much
+  const mouthStrip = (thick: number, openFrac: number, mat: THREE.Material, z: number) => {
+    const pos: number[] = [], smile: number[] = [], open: number[] = [], idx: number[] = [];
+    xs.forEach((x, i) => {
+      const zz = -Math.abs(x) * 0.35 + z;
+      pos.push(x, 0, zz, x, -thick * (1 - (x / W) ** 2), zz);
+      smile.push(0, curl(x), 0, 0, curl(x), 0);
+      open.push(0, 0, 0, 0, -dip(x) * openFrac, 0);
+      if (i) idx.push(2 * i - 2, 2 * i - 1, 2 * i, 2 * i - 1, 2 * i + 1, 2 * i);
+    });
+    const g = new THREE.BufferGeometry();
+    g.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
+    g.setIndex(idx);
+    g.morphAttributes.position = [new THREE.Float32BufferAttribute(smile, 3), new THREE.Float32BufferAttribute(open, 3)];
+    g.morphTargetsRelative = true;
+    g.computeVertexNormals();
+    const m = add(g, mat, mouthG) as THREE.Mesh;
+    m.morphTargetInfluences = [0, 0];
+    return m;
+  };
+  const mouth = mouthStrip(0.03, 1, new THREE.MeshStandardMaterial({ color: 0x3a1512, roughness: 0.7, side: THREE.DoubleSide }), 0);
+  const teeth = mouthStrip(0.0, 0.38, new THREE.MeshStandardMaterial({ color: 0xf3eee4, roughness: 0.4, side: THREE.DoubleSide }), 0.004);
+  const jaw = new THREE.Group(); // lower lip + chin follow the mouth open
   head.add(jaw);
-  const lipP = face(0, -0.58);
-  const mouth = add(new THREE.SphereGeometry(1, 32, 16), dark, jaw, [0, -0.52, lipP.z - 0.02]);
-  mouth.scale.set(0.2, 0.05, 0.05);
-  const lip = add(new THREE.CapsuleGeometry(0.04, 0.22, 6, 16), skinDeep, jaw, [0, -0.58, lipP.z + 0.01]);
+  const lip = add(new THREE.CapsuleGeometry(0.028, 0.2, 6, 16), lipMat, jaw, [0, lipY - 0.055, face(0, lipY - 0.055).z + 0.005]);
   lip.rotation.z = Math.PI / 2;
 
   // big bushy mustache: dense taper of spheres along the upper lip, drooping at the ends
@@ -323,15 +394,19 @@ function builtInRig(accent: THREE.Color, aspect: number): Rig {
   // brows: arched, thick, following the brow ridge
   const brows: THREE.Group[] = [];
   for (const side of [-1, 1]) {
+    // pivot at the brow's middle so it can tilt in place (worried / determined)
+    const mid = face(side * 0.325, 0.37);
     const g = new THREE.Group();
+    g.position.copy(mid);
     head.add(g);
     for (let t = 0; t <= 1.0001; t += 0.08) {
       const x = side * lerp(0.13, 0.52, t);
       const y = 0.34 + Math.sin(t * Math.PI) * 0.045 - t * 0.02;
       const p = face(x, y);
       const r = lerp(0.048, 0.028, t);
-      add(new THREE.SphereGeometry(r, 14, 10), hair, g, [p.x, p.y, p.z + 0.01]).scale.set(1.2, 0.7, 0.7);
+      add(new THREE.SphereGeometry(r, 14, 10), hair, g, [p.x - mid.x, p.y - mid.y, p.z + 0.01 - mid.z]).scale.set(1.2, 0.7, 0.7);
     }
+    g.userData.y = mid.y;
     brows.push(g);
   }
 
@@ -342,6 +417,8 @@ function builtInRig(accent: THREE.Color, aspect: number): Rig {
   tear.bezierCurveTo(0.25, -0.05, 0.1, -0.21, -0.03, -0.2);
   tear.bezierCurveTo(-0.16, -0.19, -0.21, -0.06, -0.2, 0.1);
   const tearPts = tear.getPoints(48);
+  const specs = new THREE.Group(); // nudged up when the cheeks lift
+  head.add(specs);
   for (const side of [-1, 1]) {
     // mirror the outline (not the mesh) so the teardrop droops toward the outside
     const outline = tearPts.map((p) => new THREE.Vector2(p.x * side, p.y));
@@ -349,15 +426,15 @@ function builtInRig(accent: THREE.Color, aspect: number): Rig {
     const g = new THREE.Group();
     g.position.set(side * 0.31, 0.08, c.z + 0.11);
     g.rotation.set(0.04, side * 0.22, 0);
-    head.add(g);
+    specs.add(g);
     add(new THREE.ShapeGeometry(new THREE.Shape(outline), 24), lens, g);
     tube(outline.map((p) => new THREE.Vector3(p.x, p.y, 0)), 0.013, gold, g, true);
     const ear = hit(side * 3, 0.08, -0.05, -side, 0, 0);
-    tube([new THREE.Vector3(side * 0.53, 0.14, c.z + 0.02), new THREE.Vector3(side * (ear.x + 0.02 * side), 0.12, 0.2), new THREE.Vector3(side * (ear.x + 0.01 * side), 0.06, -0.15)], 0.011, gold, head);
+    tube([new THREE.Vector3(side * 0.53, 0.14, c.z + 0.02), new THREE.Vector3(side * (ear.x + 0.02 * side), 0.12, 0.2), new THREE.Vector3(side * (ear.x + 0.01 * side), 0.06, -0.15)], 0.011, gold, specs);
   }
   const bz = face(0, 0.14).z + 0.1;
-  tube([new THREE.Vector3(-0.12, 0.13, bz), new THREE.Vector3(0, 0.17, bz + 0.01), new THREE.Vector3(0.12, 0.13, bz)], 0.011, gold, head);
-  tube([new THREE.Vector3(-0.2, 0.22, bz - 0.02), new THREE.Vector3(0.2, 0.22, bz - 0.02)], 0.009, gold, head);
+  tube([new THREE.Vector3(-0.12, 0.13, bz), new THREE.Vector3(0, 0.17, bz + 0.01), new THREE.Vector3(0.12, 0.13, bz)], 0.011, gold, specs);
+  tube([new THREE.Vector3(-0.2, 0.22, bz - 0.02), new THREE.Vector3(0.2, 0.22, bz - 0.02)], 0.009, gold, specs);
 
   head.position.y = 0.3;
 
@@ -369,27 +446,43 @@ function builtInRig(accent: THREE.Color, aspect: number): Rig {
   return {
     root, camera,
     update: (s) => {
-      const nod = s.since < 0.9 ? Math.sin((s.since / 0.9) * Math.PI) * 0.1 : 0;
-      root.position.y = Math.sin(s.t * 1.8) * 0.02;
-      ly = lerp(ly, s.px * 0.5 + Math.sin(s.t * 0.6) * 0.06, 0.08);
-      lx = lerp(lx, s.py * 0.25 + nod + (s.talking ? Math.sin(s.t * 7) * 0.03 : 0), 0.1);
-      head.rotation.set(lx, ly, Math.sin(s.t * 1.1) * 0.03 + (s.talking ? Math.sin(s.t * 3.6) * 0.04 : 0));
+      const f = s.face;
+      // a reaction when a new line starts: proud/excited hop, concerned sighs into a slow shake
+      const r = s.since < 1.1 ? Math.sin((s.since / 1.1) * Math.PI) : 0;
+      const nod = s.emotion === "concerned" ? r * 0.06 : r * 0.1;
+      const shake = s.emotion === "concerned" ? r * Math.sin(s.since * 9) * 0.07 : 0;
+      const hop = s.emotion === "excited" || s.emotion === "proud" ? r * 0.12 : 0;
+      const laugh = s.emotion === "excited" && s.since < 1.4 ? Math.sin(s.t * 30) * 0.012 * (1 - s.since / 1.4) : 0;
+      root.position.y = Math.sin(s.t * 1.8) * 0.02 + Math.abs(Math.sin(s.t * 3.2)) * f.bounce + hop + laugh;
+      ly = lerp(ly, s.px * 0.5 + Math.sin(s.t * 0.6) * 0.06 + f.lookX + shake, 0.08);
+      lx = lerp(lx, s.py * 0.25 + nod + f.pitch + (s.talking ? Math.sin(s.t * 7) * 0.03 : 0), 0.1);
+      head.rotation.set(lx, ly, f.roll + Math.sin(s.t * 1.1) * 0.03 + (s.talking ? Math.sin(s.t * 3.6) * 0.04 : 0));
       torso.rotation.y = ly * 0.2;
+      torso.rotation.x = f.pitch * 0.3;
 
       const flap = s.talking ? Math.abs(Math.sin(s.t * 13)) * (0.55 + 0.45 * Math.abs(Math.sin(s.t * 2.9))) : 0;
-      jaw.position.y = -flap * 0.05;
-      mouth.scale.y = 0.05 + flap * 0.06 + (s.mood === "gold" ? 0.02 : 0);
-      stache.position.y = flap * 0.02;
+      const open = Math.min(1, f.open + flap);
+      for (const m of [mouth, teeth]) { m.morphTargetInfluences![0] = f.smile; m.morphTargetInfluences![1] = open; }
+      mouthG.position.x = f.browAsym * 0.04; // thinking: mouth pulls to one side
+      mouthG.scale.x = 0.85 + Math.max(0, f.smile) * 0.25; // a grin is wider
+      jaw.position.y = -open * 0.1 + Math.max(0, f.smile) * 0.02;
+      stache.position.y = flap * 0.02 + Math.max(0, f.smile) * 0.015;
       stache.rotation.z = s.talking ? Math.sin(s.t * 13) * 0.025 : 0;
 
-      const tilt = s.mood === "warn" ? 0.18 : s.mood === "gold" ? -0.08 : 0;
-      const lift = (s.mood === "gold" ? 0.05 : s.mood === "warn" ? -0.025 : 0) + (s.talking ? Math.abs(Math.sin(s.t * 5)) * 0.03 : 0);
+      for (const c of cheeks) {
+        c.position.y = c.userData.y + f.cheek * 0.03;
+        c.scale.set(1, 0.8 + f.cheek * 0.06, 0.5 + f.cheek * 0.12);
+      }
+      specs.position.y = f.cheek * 0.02;
+
+      const talkLift = s.talking ? Math.abs(Math.sin(s.t * 5)) * 0.025 : 0;
       brows.forEach((b, i) => {
         const side = i === 0 ? -1 : 1;
-        b.rotation.z = lerp(b.rotation.z, -side * tilt, 0.12);
-        b.position.y = lerp(b.position.y, lift, 0.2);
+        // + worry lifts the inner ends; asym raises only the right brow and arches it
+        b.rotation.z = -side * f.browWorry * 0.32 + (side > 0 ? f.browAsym * 0.1 : 0);
+        b.position.y = b.userData.y + f.browLift + talkLift + (side > 0 ? f.browAsym * 0.06 : -f.browAsym * 0.01) - Math.max(0, -f.browWorry) * 0.03;
       });
-      for (const e of eyes) e.scale.y = 0.75 * (1 - s.blink * 0.9);
+      for (const e of eyes) e.scale.y = 0.75 * (1 - f.squint * 0.45) * (1 - s.blink * 0.9);
 
       camera.position.z = lerp(camera.position.z, s.talking ? 7.0 : 7.6, 0.025);
     },
@@ -406,11 +499,11 @@ function resolveAccent(): THREE.Color {
 // ─────────────────────────────────────────────────────────────────────────────
 // Component
 // ─────────────────────────────────────────────────────────────────────────────
-export default function Coach3D({ mood, talkKey, talkMs, fallback, width = 80, height = 104 }: Props) {
+export default function Coach3D({ emotion, talkKey, talkMs, fallback, width = 80, height = 104 }: Props) {
   const hostRef = useRef<HTMLDivElement>(null);
   const talkStart = useRef(-1e9);
   const talkUntil = useRef(0);
-  const moodRef = useRef<CoachMood>(mood);
+  const emotionRef = useRef<CoachEmotion>(emotion);
   const [ready, setReady] = useState(false);
   const [failed, setFailed] = useState(false);
 
@@ -418,7 +511,7 @@ export default function Coach3D({ mood, talkKey, talkMs, fallback, width = 80, h
     talkStart.current = performance.now();
     talkUntil.current = performance.now() + talkMs;
   }, [talkKey, talkMs]);
-  useEffect(() => { moodRef.current = mood; }, [mood]);
+  useEffect(() => { emotionRef.current = emotion; }, [emotion]);
 
   useEffect(() => {
     const host = hostRef.current;
@@ -468,6 +561,7 @@ export default function Coach3D({ mood, talkKey, talkMs, fallback, width = 80, h
       io.observe(host);
       const clock = new THREE.Clock();
       let nextBlink = performance.now() + 1800, blinkStart = -1;
+      const face: Face = { ...FACES[emotionRef.current] };
       const frame = (now: number, dt: number, t: number) => {
         if (blinkStart < 0 && now > nextBlink) blinkStart = now;
         let blink = 0;
@@ -476,8 +570,11 @@ export default function Coach3D({ mood, talkKey, talkMs, fallback, width = 80, h
           blink = p < 1 ? 1 - Math.abs(1 - p * 2) : 0;
           if (p >= 1) { blinkStart = -1; nextBlink = now + 2500 + Math.random() * 3000; }
         }
+        const target = FACES[emotionRef.current];
+        const k = dt ? 1 - Math.exp(-dt * 5) : 1;
+        for (const key of FACE_KEYS) face[key] = lerp(face[key], target[key], k);
         r.update({
-          now, t, dt, blink, mood: moodRef.current, px: pointer.x, py: pointer.y,
+          now, t, dt, blink, emotion: emotionRef.current, face, px: pointer.x, py: pointer.y,
           talking: now < talkUntil.current, since: (now - talkStart.current) / 1000,
         });
         renderer.render(scene, r.camera);
