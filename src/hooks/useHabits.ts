@@ -149,37 +149,82 @@ export function useDeleteHabit() {
   });
 }
 
+/**
+ * Toggle a habit's completion for a date.
+ *
+ * Optimistic: the completions cache flips instantly, so streaks, rings and
+ * totals update on tap. The write is a single round trip — the direction
+ * (insert vs delete) comes from the cache rather than a SELECT first — and
+ * there's no full refetch afterwards; the inserted row replaces the
+ * placeholder. On error the snapshot is restored.
+ */
 export function useToggleHabitCompletion() {
   const queryClient = useQueryClient();
   const { user } = useAuth();
-  return useMutation({
-    mutationFn: async ({ habitId, date }: { habitId: string; date: string }) => {
-      const { data: existing } = await supabase
-        .from("habit_completions")
-        .select("id")
-        .eq("habit_id", habitId)
-        .eq("date", date)
-        .maybeSingle();
+  const key = ["habit_completions", user?.id];
 
-      if (existing) {
+  return useMutation({
+    onMutate: async ({ habitId, date }: { habitId: string; date: string }) => {
+      await queryClient.cancelQueries({ queryKey: key });
+      const snapshot = queryClient.getQueryData<HabitCompletion[]>(key) ?? [];
+      const wasDone = snapshot.some((c) => c.habit_id === habitId && c.date === date);
+      const tempId = `temp-${habitId}-${date}`;
+
+      queryClient.setQueryData<HabitCompletion[]>(key, wasDone
+        ? snapshot.filter((c) => !(c.habit_id === habitId && c.date === date))
+        : [...snapshot, {
+            id: tempId,
+            habit_id: habitId,
+            date,
+            status: "completed",
+            is_retroactive: date !== format(new Date(), "yyyy-MM-dd"),
+            user_id: user!.id,
+            created_at: new Date().toISOString(),
+          }]);
+
+      return { snapshot, tempId };
+    },
+
+    mutationFn: async ({ habitId, date }: { habitId: string; date: string }) => {
+      // onMutate has already run, so the cache holds the *target* state.
+      const target = queryClient.getQueryData<HabitCompletion[]>(key) ?? [];
+      const nowDone = target.some((c) => c.habit_id === habitId && c.date === date);
+
+      if (!nowDone) {
         const { error } = await supabase
           .from("habit_completions")
           .delete()
-          .eq("id", existing.id);
+          .eq("habit_id", habitId)
+          .eq("date", date);
         if (error) throw error;
-      } else {
-        const today = format(new Date(), "yyyy-MM-dd");
-        const { error } = await supabase.from("habit_completions").insert({
+        return null;
+      }
+
+      const { data, error } = await supabase
+        .from("habit_completions")
+        .insert({
           habit_id: habitId,
           date,
           user_id: user!.id,
-          is_retroactive: date !== today,
-        });
-        if (error) throw error;
-      }
+          is_retroactive: date !== format(new Date(), "yyyy-MM-dd"),
+        })
+        .select()
+        .single();
+      if (error) throw error;
+      return data as HabitCompletion;
     },
-    onSuccess: () =>
-      queryClient.invalidateQueries({ queryKey: ["habit_completions"] }),
+
+    onSuccess: (row, _vars, context) => {
+      if (!row || !context) return;
+      queryClient.setQueryData<HabitCompletion[]>(key, (old = []) =>
+        old.map((c) => (c.id === context.tempId ? row : c))
+      );
+    },
+
+    onError: (_err, _vars, context) => {
+      if (context) queryClient.setQueryData(key, context.snapshot);
+      queryClient.invalidateQueries({ queryKey: ["habit_completions"] });
+    },
   });
 }
 
