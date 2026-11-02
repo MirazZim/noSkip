@@ -39,6 +39,23 @@ function chronotype(h: number) {
 
 const hourLabel = (h: number) => format(new Date(2000, 0, 1, h), "h a");
 
+// ── Chalkboard quotes: a few per situation, rotated by day and by "New play" ──
+type BoardQuote = { quote: string; by: string; plain: string };
+const Q = {
+  goldfish:  { quote: "Be a goldfish.", by: "Ted Lasso", plain: "Forget the miss fast. Don't drag yesterday into today. Just start fresh." },
+  hope:      { quote: "I believe in hope. I believe in Believe.", by: "Ted Lasso", plain: "Hope isn't silly. It's the thing that gets you to do it tonight, even when you're tired." },
+  believe:   { quote: "Believe.", by: "Ted Lasso", plain: "Trust that showing up adds up, even on days you can't see it yet." },
+  lackHope:  { quote: "It's the lack of hope that comes and gets you.", by: "Ted Lasso", plain: "Missing a day won't sink you. Giving up on yourself would. So don't." },
+  horse:     { quote: "Taking on a challenge is a lot like riding a horse. If you're comfortable while you're doing it, you're probably doing it wrong.", by: "Ted Lasso", plain: "If it feels a bit hard, that's not failure. That's the growing part." },
+  rightThing:{ quote: "Doing the right thing is never the wrong thing.", by: "Ted Lasso", plain: "You already know what today-you should do. Go do it." },
+  curious:   { quote: "Be curious, not judgmental.", by: "Ted Lasso", plain: "Don't beat yourself up over a miss. Ask what got in the way, and fix that." },
+  clarinet:  { quote: "You beating yourself up is like Woody Allen playing the clarinet. I don't wanna hear it.", by: "Ted Lasso", plain: "Guilt doesn't help you do the habit. Skip the self-criticism, do the next rep." },
+  better:    { quote: "I think things come into our lives to help us get from one place to a better one.", by: "Ted Lasso", plain: "Even the rough patch is moving you somewhere. Keep walking." },
+  football:  { quote: "Football is life!", by: "Dani Rojas", plain: "Throw your whole heart into it. Joy is what keeps momentum going." },
+  potential: { quote: "I do love a locker room. It smells like potential.", by: "Ted Lasso", plain: "Day one is exciting, not scary. Everything you'll build starts here." },
+  success:   { quote: "Success is not about the wins and losses. It's about helping these young fellas be the best versions of themselves.", by: "Ted Lasso", plain: "The streak isn't the point. Who you're becoming is." },
+} satisfies Record<string, BoardQuote>;
+
 /** Shown until (or instead of) the 3D model: a glossy monogram with a little voice meter. */
 function CoachBadge({ talkKey }: { talkKey: string }) {
   return (
@@ -334,7 +351,7 @@ export function HabitDetailPanel({ habit, completions }: Props) {
         emotion: "concerned" as const,
         icon: Clock, tone: "warn" as const,
         title: "Halftime talk",
-        series: { quote: "I believe in hope. I believe in Believe.", by: "Ted Lasso", plain: "Hope isn't silly. It's the thing that gets you to do it tonight, even when you're tired." },
+        quotes: [Q.hope, Q.horse, Q.lackHope, Q.rightThing],
         lines: [
           `Well hey there, partner. **${currentStreak} day${s(currentStreak)}** in a row. That ain't nothin', that's a whole heap of somethin'. Still got **${timeLeft}** on the clock. Let's go get today.`,
           "Now it don't have to be pretty tonight. Do the itty-bitty version. **Two minutes** counts. A scrappy win is still a win, and I'll take it every darn time.",
@@ -349,7 +366,7 @@ export function HabitDetailPanel({ habit, completions }: Props) {
         emotion: "excited" as const,
         icon: Zap, tone: "good" as const,
         title: "Welcome back, y'all",
-        series: { quote: "Be a goldfish.", by: "Ted Lasso", plain: "Forget the miss fast. Don't drag yesterday into today. Just start fresh." },
+        quotes: [Q.goldfish, Q.clarinet, Q.better, Q.curious],
         lines: [
           "So you missed a few days. Big whoop. Fallin' down ain't the story. **Gettin' back up** is the story. And look at you, you're up.",
           "**Forget the miss. Keep the lesson.** That's the whole dang trick, and you're already doin' it.",
@@ -364,7 +381,7 @@ export function HabitDetailPanel({ habit, completions }: Props) {
         emotion: "proud" as const,
         icon: Crown, tone: "gold" as const,
         title: "New personal best",
-        series: { quote: "Football is life!", by: "Dani Rojas", plain: "Love what you're building. When you go all in, a record is what happens." },
+        quotes: [Q.football, Q.success, Q.believe],
         lines: [
           `**${currentStreak} days!** Well, butter my biscuit. You ain't never been here before. Every day from now on is a **brand-new record**.`,
           "I'm not cryin', you're cryin'. Okay, we're both cryin'. Proud of ya. Keep on keepin' on.",
@@ -382,7 +399,7 @@ export function HabitDetailPanel({ habit, completions }: Props) {
         emotion: "excited" as const,
         icon: Flame, tone: "good" as const,
         title: weeks === 1 ? "Perfect week" : `${weeks} perfect weeks`,
-        series: { quote: "Believe.", by: "Ted Lasso", plain: "Trust that showing up adds up. A perfect week is the proof." },
+        quotes: [Q.believe, Q.football, Q.success, Q.horse],
         lines: [
           `**${currentStreak} days** straight, partner. Not one miss. I'm happier than a puppy in a pile of fresh laundry.`,
           "A whole week without skippin' a beat. That ain't luck, buddy. That's **who you are now**.",
@@ -397,7 +414,7 @@ export function HabitDetailPanel({ habit, completions }: Props) {
         emotion: "warm" as const,
         icon: Megaphone, tone: "warn" as const,
         title: "Hey there, stranger",
-        series: { quote: "Be a goldfish.", by: "Ted Lasso", plain: "However long it's been, let it go. Today is a clean slate." },
+        quotes: [Q.goldfish, Q.lackHope, Q.better, Q.hope],
         lines: [
           `Well, look who it is! **${daysSinceLast} days** since I saw you at practice. No lecture, partner. I'm just tickled you stopped by.`,
           "Startin' back up don't need a parade. Do the **teeny-tiny version** today. Five minutes. Then we'll talk about tomorrow.",
@@ -411,7 +428,7 @@ export function HabitDetailPanel({ habit, completions }: Props) {
         emotion: "excited" as const,
         icon: TrendingUp, tone: "good" as const,
         title: "You're on a roll",
-        series: { quote: "Football is life!", by: "Dani Rojas", plain: 'Throw your whole heart into it. Joy is what keeps momentum going.' },
+        quotes: [Q.football, Q.potential, Q.horse],
         lines: [
           `You went from **${prev30Rate}% to ${last30Rate}%** this month. That ain't luck, that's you. Keep doin' exactly what you're doin'.`,
           `**${last30Rate}%** over thirty days. If I baked cookies that good, I'd open up a shop on Main Street. Proud of ya.`,
@@ -425,7 +442,7 @@ export function HabitDetailPanel({ habit, completions }: Props) {
         emotion: "concerned" as const,
         icon: Target, tone: "warn" as const,
         title: "Small fix, big win",
-        series: { quote: "Be a goldfish.", by: "Ted Lasso", plain: "A bad month doesn't define you. Let it go and win the next day." },
+        quotes: [Q.goldfish, Q.clarinet, Q.curious, Q.better],
         lines: [
           `We slipped from **${prev30Rate}% to ${last30Rate}%** this month. That's alright. Every team hits a rough patch. Your tricky day's **${WEEKDAYS_LONG[worstDayIdx].slice(0, -1)}**. Let's just go win that one.`,
           `Here's the plan, y'all. Don't fix the whole week. Just fix **${WEEKDAYS_LONG[worstDayIdx]}**. Set a reminder the night before. Easy as pie.`,
@@ -440,7 +457,7 @@ export function HabitDetailPanel({ habit, completions }: Props) {
         emotion: "warm" as const,
         icon: Sparkles, tone: "good" as const,
         title: "I believe in you",
-        series: { quote: "Believe.", by: "Ted Lasso", plain: "Trust that showing up adds up, even on days you can't see it yet." },
+        quotes: [Q.believe, Q.success, Q.rightThing, Q.horse],
         lines: [
           `On **${WEEKDAYS_LONG[bestDayIdx]}** you hit **${weeklyRates[bestDayIdx]}%**. Whatever you're fixin' to do on ${WEEKDAYS_LONG[bestDayIdx]}, do it every day. That's the whole playbook.`,
           `You show up **${showUpRate}%** of days. That ain't just a number, friend. That's who you are.`,
@@ -454,7 +471,7 @@ export function HabitDetailPanel({ habit, completions }: Props) {
       emotion: "warm" as const,
       icon: Sparkles, tone: "good" as const,
       title: "Welcome to the team",
-        series: { quote: "Believe.", by: "Ted Lasso", plain: "You don't need proof yet. Believe you can, then go get Day 1." },
+      quotes: [Q.potential, Q.believe, Q.horse],
       lines: [
         "Howdy! Every great season starts with **one practice**. Today's yours. Let's have us some fun.",
         "I don't care how you start. I just care that **you start**. Go get one done, then come tell me all about it.",
@@ -475,8 +492,9 @@ export function HabitDetailPanel({ habit, completions }: Props) {
   const coachLine = pepLines[lineIdx];
   const talkKey = `${coach.title}-${pepTalk.data ? "ai" : "fb"}-${lineIdx}-${pepTalkIdx}`;
   const CoachIcon = coach.icon;
+  const board: BoardQuote = coach.quotes[(dayOfYearIdx + pepTalkIdx) % coach.quotes.length];
   // a new quote always starts face-up
-  useEffect(() => { setBoardFlipped(false); }, [coach.series.quote]);
+  useEffect(() => { setBoardFlipped(false); }, [board.quote]);
 
   // ── Sparkline ─────────────────────────────────────────────────────────────
   const SW = 300;
@@ -1160,7 +1178,7 @@ export function HabitDetailPanel({ habit, completions }: Props) {
             ))}
           </div>
           <button
-            key={coach.series.quote}
+            key={board.quote}
             type="button"
             className="hdp-board-wrap"
             aria-pressed={boardFlipped}
@@ -1181,14 +1199,14 @@ export function HabitDetailPanel({ habit, completions }: Props) {
                 </svg>
                 <span className="hdp-board-smudge" aria-hidden />
                 <RotateCw size={12} strokeWidth={2.4} className="hdp-board-hint" aria-hidden />
-                <ChalkWriting key={coach.series.quote} text={`“${coach.series.quote}”`} />
-                <figcaption className="hdp-board-by">— {coach.series.by}</figcaption>
+                <ChalkWriting key={board.quote} text={`“${board.quote}”`} />
+                <figcaption className="hdp-board-by">— {board.by}</figcaption>
                 <span className="hdp-board-chalk" aria-hidden />
               </figure>
               <figure className="hdp-board hdp-board--back" aria-hidden={!boardFlipped}>
                 <span className="hdp-board-smudge" aria-hidden />
                 <span className="hdp-board-kicker">In plain words</span>
-                <p className="hdp-board-meaning">{coach.series.plain}</p>
+                <p className="hdp-board-meaning">{board.plain}</p>
                 <span className="hdp-board-chalk" aria-hidden />
               </figure>
             </div>
