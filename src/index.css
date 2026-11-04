@@ -721,3 +721,19 @@
   }
 }
 
+/* ── AI orb (AiOrb.tsx) ── */
+@keyframes aiOrbSpin {
+  to { transform: rotate(360deg); }
+}
+@keyframes aiOrbPulse {
+  0%, 100% { opacity: 0.55; transform: scale(0.94); }
+  50%      { opacity: 1;    transform: scale(1.06); }
+}
+@keyframes aiOrbBreathe {
+  0%, 100% { transform: scale(1); }
+  50%      { transform: scale(1.06); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ai-orb, .ai-orb * { animation: none !important; }
+}
+

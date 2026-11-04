@@ -1,19 +1,23 @@
-import { useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import {
-  Sparkles, Loader2, AlertTriangle, RefreshCw, X,
-  TrendingUp, Target, Heart, Zap, ThumbsUp, ThumbsDown, Fingerprint,
+  AlertTriangle, RefreshCw, X, TrendingUp, Target, Zap, ThumbsUp, ThumbsDown,
+  Lightbulb, ListChecks, ChevronDown,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { formatDistanceToNow, format } from "date-fns";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { AiOrb } from "@/components/AiOrb";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useCurrency } from "@/hooks/useCurrency";
+import { getCategoryDisplayLabel, isValidCategory } from "@/hooks/useExpenses";
 import { loadCycleConfig } from "@/components/expenses/BudgetManager";
 import { getCycleRangeForDate } from "@/hooks/useSavings";
+import { getDisplayName } from "@/lib/userProfile";
+import { cn } from "@/lib/utils";
 import {
-  useAIInsights, type AiInsight, type InsightType,
+  useAIInsights, useAINotes, type AiInsight, type AiNote,
 } from "@/hooks/useAIInsights";
 
 function ordinal(n: number): string {
@@ -23,8 +27,10 @@ function ordinal(n: number): string {
 }
 
 interface Props {
-  open:         boolean;
-  onOpenChange: (o: boolean) => void;
+  open:                boolean;
+  onOpenChange:        (o: boolean) => void;
+  /** Lets the trigger button's orb swirl while an analysis is being made. */
+  onGeneratingChange?: (generating: boolean) => void;
 }
 
 interface Memory { memory_key: string; memory_value: string }
@@ -36,29 +42,6 @@ interface Snapshot {
   active_loans_count:         number | null;
   active_loans_total:         number | null;
 }
-
-// Fixed accents for card identity (readable on every theme's glass surface);
-// health + action always follow the active theme's primary.
-const A = {
-  blue:    "#38BDF8",
-  emerald: "#10b981",
-  gold:    "#f59e0b",
-} as const;
-
-const INSIGHT_META: Record<InsightType, { label: string; Icon: LucideIcon; accent: string }> = {
-  spending_summary: { label: "Spending",  Icon: TrendingUp,    accent: A.blue    },
-  habit_coaching:   { label: "Habits",    Icon: Target,        accent: A.emerald },
-  anomaly:          { label: "Anomaly",   Icon: AlertTriangle, accent: A.gold    },
-  financial_health: { label: "Health",    Icon: Heart,         accent: "hsl(var(--primary))" },
-  top_action:       { label: "Top Action", Icon: Zap,          accent: "hsl(var(--primary))" },
-};
-
-const ORDERED_TYPES: InsightType[] = [
-  "spending_summary",
-  "habit_coaching",
-  "anomaly",
-  "financial_health",
-];
 
 function parseInsightContent(insight: AiInsight): { text: string; score?: number } {
   if (insight.insight_type !== "financial_health") return { text: insight.content };
@@ -81,137 +64,93 @@ function scoreTone(score: number): string {
   return "hsl(var(--destructive))";
 }
 
-// ─── Shared rating row ────────────────────────────────────────────────────────
-function RatingRow({
-  rated, busy, onRate,
-}: {
-  rated: boolean | null;
-  busy:  boolean;
-  onRate: (useful: boolean) => void;
-}) {
+const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+// The AI writes currency codes ("BDT 2,000") and sometimes raw category ids
+// ("transport:vehicle-maint"); show the user's symbol and the readable label.
+function tidy(text: string, currency: string, symbol: string): string {
+  return text
+    .replace(new RegExp(`\\b${escapeRe(currency)}\\s?(?=\\d)`, "g"), symbol)
+    .replace(/\b[a-z]+(?:-[a-z]+)*:[a-z]+(?:-[a-z]+)*\b/g, (m) => (isValidCategory(m) ? getCategoryDisplayLabel(m) : m));
+}
+
+const categoryLabel = (c: string) => (isValidCategory(c) ? getCategoryDisplayLabel(c) : c);
+
+function firstSentence(text: string): string {
+  return text.match(/^.*?[.!?](?:\s|$)/)?.[0].trim() ?? text;
+}
+
+// ─── Inline highlight (numbers the eye should land on) ────────────────────────
+function Hl({ children, tone }: { children: ReactNode; tone?: string }) {
   return (
-    <div className="mt-auto flex items-center justify-between gap-2 border-t border-border/30 pt-2.5">
-      <span className="text-[10px] font-medium tracking-wide text-muted-foreground">
-        {rated === null ? "Was this helpful?" : rated ? "Marked helpful" : "Marked not helpful"}
-      </span>
-      <div className="flex items-center gap-1">
-        <button
-          onClick={() => onRate(true)}
-          disabled={rated !== null || busy}
-          title="Helpful"
-          className="flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] font-semibold transition-all duration-200 disabled:cursor-default"
-          style={{
-            borderColor: rated === true ? "hsl(var(--success) / 0.35)" : "hsl(var(--border) / 0.4)",
-            background:  rated === true ? "hsl(var(--success) / 0.14)" : "hsl(var(--card) / 0.4)",
-            color:       rated === true ? "hsl(var(--success))"        : "hsl(var(--muted-foreground))",
-            opacity:     rated === false ? 0.3 : 1,
-          }}
-        >
-          <ThumbsUp size={11} />
-          {rated === true && <span>Helpful</span>}
-        </button>
-        <button
-          onClick={() => onRate(false)}
-          disabled={rated !== null || busy}
-          title="Not helpful"
-          className="flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] font-semibold transition-all duration-200 disabled:cursor-default"
-          style={{
-            borderColor: rated === false ? "hsl(var(--destructive) / 0.35)" : "hsl(var(--border) / 0.4)",
-            background:  rated === false ? "hsl(var(--destructive) / 0.14)" : "hsl(var(--card) / 0.4)",
-            color:       rated === false ? "hsl(var(--destructive))"        : "hsl(var(--muted-foreground))",
-            opacity:     rated === true ? 0.3 : 1,
-          }}
-        >
-          <ThumbsDown size={11} />
-          {rated === false && <span>Not helpful</span>}
-        </button>
-      </div>
-    </div>
+    <span
+      className="whitespace-nowrap rounded-md px-1 py-px font-semibold tabular-nums text-foreground"
+      style={{
+        background: tone ? `color-mix(in srgb, ${tone} 18%, transparent)` : "hsl(var(--primary) / 0.14)",
+        color:      tone,
+      }}
+    >
+      {children}
+    </span>
   );
 }
 
-// ─── Single insight card ──────────────────────────────────────────────────────
-function InsightCard({
-  insight, onRate, animDelay,
+// Text with **bold**, money amounts and percentages highlighted.
+function Rich({ text, symbol }: { text: string; symbol: string }) {
+  const re = new RegExp(
+    `(\\*\\*[^*]+\\*\\*|${escapeRe(symbol)}\\s?[\\d,]+(?:\\.\\d+)?k?|\\d+(?:\\.\\d+)?%)`,
+    "g",
+  );
+  return (
+    <>
+      {text.split(re).map((part, i) =>
+        i % 2 === 1 ? <Hl key={i}>{part.replace(/^\*\*|\*\*$/g, "")}</Hl> : part,
+      )}
+    </>
+  );
+}
+
+// ─── A message from the coach ─────────────────────────────────────────────────
+function Bubble({
+  children, delay = 0, className,
 }: {
-  insight:   AiInsight;
-  onRate:    (id: string, useful: boolean) => Promise<void>;
-  animDelay: number;
+  children:   ReactNode;
+  delay?:     number;
+  className?: string;
 }) {
-  const meta = INSIGHT_META[insight.insight_type];
-  const { text, score } = parseInsightContent(insight);
-  const isPrimaryAccent = meta.accent.startsWith("hsl(var");
-
-  const [rated, setRated] = useState<boolean | null>(insight.was_useful ?? null);
-  const [busy,  setBusy]  = useState(false);
-
-  const handleRate = async (useful: boolean) => {
-    if (rated !== null || busy) return;
-    setBusy(true);
-    setRated(useful);
-    try { await onRate(insight.id, useful); }
-    catch { setRated(null); }
-    finally { setBusy(false); }
-  };
-
-  const tone = score !== undefined ? scoreTone(score) : undefined;
-
   return (
     <div
-      className="ai-glass flex flex-col gap-2.5 rounded-3xl p-4 transition-transform duration-300 sm:p-[18px]"
-      style={{ animation: "aiSlideIn 0.4s ease both", animationDelay: `${animDelay}ms` }}
-    >
-      <div className="flex items-center gap-2.5">
-        <div
-          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-xl"
-          style={{
-            background: isPrimaryAccent ? "hsl(var(--primary) / 0.12)" : `${meta.accent}1c`,
-            boxShadow:  `inset 0 1px 0 hsl(0 0% 100% / 0.15), 0 0 14px ${isPrimaryAccent ? "hsl(var(--primary) / 0.15)" : `${meta.accent}22`}`,
-          }}
-        >
-          <meta.Icon size={13} color={meta.accent} />
-        </div>
-        <span className="text-[10px] font-bold uppercase tracking-[0.14em] text-muted-foreground">
-          {meta.label}
-        </span>
-        {score !== undefined && tone && (
-          <span
-            className="ml-auto rounded-full px-2.5 py-0.5 text-[11px] font-bold tabular-nums"
-            style={{
-              color:      tone,
-              background: `color-mix(in srgb, ${tone} 14%, transparent)`,
-              boxShadow:  "inset 0 1px 0 hsl(0 0% 100% / 0.12)",
-            }}
-          >
-            {score}/10
-          </span>
-        )}
-      </div>
-
-      <p className="flex-1 text-[13px] leading-[1.7] text-foreground/90">
-        {text}
-      </p>
-
-      {score !== undefined && tone && (
-        <div
-          className="h-1 w-full overflow-hidden rounded-full"
-          style={{ background: `color-mix(in srgb, ${tone} 16%, transparent)` }}
-          aria-hidden
-        >
-          <div
-            className="h-full rounded-full transition-[width] duration-700"
-            style={{ width: `${score * 10}%`, background: tone }}
-          />
-        </div>
+      className={cn(
+        "max-w-[92%] rounded-[18px] rounded-tl-md border border-border/40 bg-card/60 px-3.5 py-2.5",
+        "text-[13px] leading-[1.6] text-foreground/90 backdrop-blur-xl",
+        className,
       )}
-
-      <RatingRow rated={rated} busy={busy} onRate={handleRate} />
+      style={{ animation: "aiSlideIn 0.4s ease both", animationDelay: `${delay}ms` }}
+    >
+      {children}
     </div>
   );
 }
 
-// ─── Featured top_action card ─────────────────────────────────────────────────
-function FeaturedActionCard({
+function Typing({ label }: { label: string }) {
+  return (
+    <Bubble className="inline-flex w-fit items-center gap-2.5 text-[12.5px] text-muted-foreground">
+      <span className="flex gap-1" aria-hidden>
+        {[0, 1, 2].map((i) => (
+          <span
+            key={i}
+            className="h-1.5 w-1.5 rounded-full bg-primary"
+            style={{ animation: "aiDot 1.2s ease-in-out infinite", animationDelay: `${i * 160}ms` }}
+          />
+        ))}
+      </span>
+      {label}
+    </Bubble>
+  );
+}
+
+// ─── Helpful? row ─────────────────────────────────────────────────────────────
+function Rating({
   insight, onRate,
 }: {
   insight: AiInsight;
@@ -220,7 +159,12 @@ function FeaturedActionCard({
   const [rated, setRated] = useState<boolean | null>(insight.was_useful ?? null);
   const [busy,  setBusy]  = useState(false);
 
-  const handleRate = async (useful: boolean) => {
+  // Insight ids survive a regeneration — reset when the words change
+  useEffect(() => {
+    setRated(insight.was_useful ?? null);
+  }, [insight.id, insight.generated_at, insight.was_useful]);
+
+  const rate = async (useful: boolean) => {
     if (rated !== null || busy) return;
     setBusy(true);
     setRated(useful);
@@ -229,89 +173,139 @@ function FeaturedActionCard({
     finally { setBusy(false); }
   };
 
-  return (
-    <div
-      className="ai-glass relative mb-3 flex flex-col gap-3 overflow-hidden rounded-3xl p-4 sm:p-5"
-      style={{
-        animation: "aiSlideIn 0.4s ease both",
-        boxShadow: "inset 0 1px 0 hsl(0 0% 100% / 0.16), inset 0 0 0 1px hsl(var(--primary) / 0.18), 0 16px 48px -20px hsl(var(--primary) / 0.45)",
-      }}
-    >
-      <div
-        aria-hidden
-        className="pointer-events-none absolute -left-14 -top-20 h-48 w-48 rounded-full blur-3xl"
-        style={{ background: "hsl(var(--primary) / 0.22)" }}
-      />
-      <div
-        aria-hidden
-        className="pointer-events-none absolute -bottom-24 -right-10 h-44 w-44 rounded-full blur-3xl"
-        style={{ background: "hsl(var(--accent) / 0.14)" }}
-      />
+  const btn = (useful: boolean, Icon: LucideIcon, label: string) => {
+    const active = rated === useful;
+    const tone   = useful ? "var(--success)" : "var(--destructive)";
+    return (
+      <button
+        onClick={() => rate(useful)}
+        disabled={rated !== null || busy}
+        title={label}
+        aria-label={label}
+        className="flex h-5 w-5 items-center justify-center rounded-full transition-colors enabled:hover:bg-foreground/[0.06] disabled:cursor-default"
+        style={{
+          color:      active ? `hsl(${tone})` : "hsl(var(--muted-foreground))",
+          background: active ? `hsl(${tone} / 0.14)` : undefined,
+          opacity:    rated !== null && !active ? 0.3 : 1,
+        }}
+      >
+        <Icon size={11} />
+      </button>
+    );
+  };
 
-      <div className="relative flex items-center gap-2.5">
-        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-primary/15 shadow-[inset_0_1px_0_hsl(0_0%_100%/0.2),0_0_18px_hsl(var(--primary)/0.3)]">
-          <Zap size={15} className="text-primary" />
+  return (
+    <div className="mt-0.5 flex items-center justify-end gap-0.5 text-[10px] text-muted-foreground">
+      <span className="mr-1">
+        {rated === null ? "Helpful?" : rated ? "Thanks — noted" : "Noted, I'll change it up"}
+      </span>
+      {btn(true, ThumbsUp, "Helpful")}
+      {btn(false, ThumbsDown, "Not helpful")}
+    </div>
+  );
+}
+
+// ─── Collapsible detail row ───────────────────────────────────────────────────
+function Section({
+  Icon, label, teaser, children,
+}: {
+  Icon:     LucideIcon;
+  label:    string;
+  teaser?:  string;
+  children: ReactNode;
+}) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="border-b border-border/30 last:border-b-0">
+      <button
+        onClick={() => setOpen((o) => !o)}
+        aria-expanded={open}
+        className="flex w-full items-center gap-3 px-3.5 py-2 text-left transition-colors hover:bg-foreground/[0.03]"
+      >
+        <Icon size={13} className="shrink-0 text-primary" />
+        <span className="min-w-0 flex-1">
+          <span className="block text-[12.5px] font-semibold text-foreground">{label}</span>
+          {!open && teaser && (
+            <span className="block truncate text-[11.5px] text-muted-foreground">{teaser}</span>
+          )}
+        </span>
+        <ChevronDown
+          size={15}
+          className={cn("shrink-0 text-muted-foreground transition-transform duration-200", open && "rotate-180")}
+        />
+      </button>
+      {open && (
+        <div className="px-3.5 pb-2.5 pl-10 text-[13px] leading-[1.6] text-foreground/90">
+          {children}
         </div>
-        <span className="text-[10px] font-bold uppercase tracking-[0.14em] text-primary">
-          Top Action
-        </span>
-        <span className="ml-auto rounded-full bg-primary px-2.5 py-1 text-[9px] font-extrabold uppercase tracking-[0.12em] text-primary-foreground shadow-[0_4px_14px_-4px_hsl(var(--primary)/0.6)]">
-          This Week
-        </span>
-      </div>
-
-      <p className="relative font-display text-[15px] font-semibold leading-normal tracking-tight text-foreground">
-        {insight.content}
-      </p>
-
-      <RatingRow rated={rated} busy={busy} onRate={handleRate} />
+      )}
     </div>
   );
 }
 
-// ─── Stat chip (inside the glass context panel — wraps, never truncates) ──────
-function Stat({ label, value }: { label: string; value: string }) {
+function TrackRow({ label, children }: { label: string; children: ReactNode }) {
   return (
-    <div className="min-w-0 rounded-2xl bg-foreground/[0.04] px-3 py-2.5 shadow-[inset_0_1px_0_hsl(0_0%_100%/0.08)]">
-      <p className="mb-0.5 text-[9px] font-bold uppercase tracking-[0.14em] text-muted-foreground">
-        {label}
-      </p>
-      <p className="break-words text-[12.5px] font-semibold leading-snug tabular-nums text-foreground">
-        {value}
-      </p>
+    <div className="flex items-baseline justify-between gap-4 py-1">
+      <span className="shrink-0 text-[12px] text-muted-foreground">{label}</span>
+      <span className="min-w-0 text-right text-[13px] font-medium text-foreground">{children}</span>
     </div>
   );
 }
 
-// ─── Spending persona banner ──────────────────────────────────────────────────
-function PersonaBanner({ memory }: { memory: string }) {
-  const sep = memory.indexOf(" — ");
-  const name     = sep > -1 ? memory.slice(0, sep)  : memory;
-  const evidence = sep > -1 ? memory.slice(sep + 3) : "";
+// "Practice vocabularies (80% consistency)" → name + highlighted rate
+function HabitValue({ value }: { value: string }) {
+  const m = value.match(/^(.*) \((\d+(?:\.\d+)?)% consistency\)$/);
+  if (!m) return <>{value}</>;
+  return <>{m[1]} <Hl>{m[2]}%</Hl></>;
+}
 
+// "0% (0 of 49 identity votes cast this week)" → "0 of 49 this week"
+function identityValue(value: string): ReactNode {
+  const m = value.match(/^\d+(?:\.\d+)?% \((\d+) of (\d+)/);
+  if (!m) return value;
+  return <><Hl>{m[1]} of {m[2]}</Hl> this week</>;
+}
+
+function NotesList({ notes, onDismiss }: { notes: AiNote[]; onDismiss: (id: string) => void }) {
   return (
-    <div className="mb-2 flex items-start gap-3 rounded-2xl bg-primary/[0.07] px-3.5 py-3 shadow-[inset_0_1px_0_hsl(0_0%_100%/0.1),inset_0_0_0_1px_hsl(var(--primary)/0.15)]">
-      <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-primary/10 shadow-[inset_0_1px_0_hsl(0_0%_100%/0.15)]">
-        <Fingerprint size={14} className="text-primary" />
-      </div>
-      <div className="min-w-0">
-        <p className="text-[9px] font-bold uppercase tracking-[0.14em] text-muted-foreground">
-          Spending Persona
-        </p>
-        <p className="text-[13px] leading-snug">
-          <span className="font-display font-bold text-foreground">{name}</span>
-          {evidence && <span className="text-muted-foreground"> — {evidence}</span>}
-        </p>
-      </div>
-    </div>
+    <>
+      <ul className="flex flex-col gap-1.5">
+        {notes.map((n) => (
+          <li key={n.id} className="flex items-start gap-2">
+            <p className="flex-1">
+              {n.memory_value}
+              <span className="ml-1.5 text-[10.5px] text-muted-foreground">
+                · {formatDistanceToNow(new Date(n.last_updated), { addSuffix: true })}
+              </span>
+            </p>
+            <button
+              onClick={() => onDismiss(n.id)}
+              title="Not true — forget this"
+              aria-label="Not true — forget this"
+              className="mt-1 shrink-0 rounded-full p-1 text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
+            >
+              <X size={12} />
+            </button>
+          </li>
+        ))}
+      </ul>
+      <p className="mt-2 text-[11px] leading-relaxed text-muted-foreground">
+        Wrong? Tap × and I won't assume it again. Notes I can't keep confirming fade after 60 days.
+      </p>
+    </>
   );
 }
 
 // ─── Main dialog ──────────────────────────────────────────────────────────────
-export function AIAnalystDialog({ open, onOpenChange }: Props) {
+export function AIAnalystDialog({ open, onOpenChange, onGeneratingChange }: Props) {
   const { user }                                                            = useAuth();
-  const { formatAmount }                                                    = useCurrency();
+  const { currency, symbol, formatAmount }                                  = useCurrency();
   const { insights, isLoading, isGenerating, error, refresh, rateInsight }  = useAIInsights();
+  const { notes, dismissNote }                                              = useAINotes(open);
+
+  useEffect(() => {
+    onGeneratingChange?.(isGenerating);
+  }, [isGenerating, onGeneratingChange]);
 
   // Same cycle source of truth the Edge Function gets (BudgetManager + useSavings)
   const cycleConfig  = loadCycleConfig();
@@ -394,40 +388,78 @@ export function AIAnalystDialog({ open, onOpenChange }: Props) {
   const memMap: Record<string, string> = {};
   for (const m of memories ?? []) memMap[m.memory_key] = m.memory_value;
 
-  const hasContext =
-    (memories && memories.length > 0) ||
-    (snapshot && (snapshot.total_income || snapshot.total_expenses));
-
   const insightMap  = new Map((insights ?? []).map((i) => [i.insight_type, i]));
   const hasInsights = (insights?.length ?? 0) > 0;
+  const say         = (text: string) => <Rich text={tidy(text, currency, symbol)} symbol={symbol} />;
+  const teaser      = (text?: string) => (text ? tidy(firstSentence(text), currency, symbol) : undefined);
 
   const lastGeneratedAt = (insights ?? [])
     .map((i) => i.generated_at ? new Date(i.generated_at) : null)
     .filter((d): d is Date => d !== null)
     .sort((a, b) => b.getTime() - a.getTime())[0];
 
-  const buttonText = isGenerating
-    ? "Analyzing your spending and habits…"
-    : error
-      ? "Try again"
-      : hasInsights
-        ? "Regenerate Analysis"
-        : "Generate Analysis";
+  // ── The opening message, written from the numbers ──────────────────────────
+  const firstName = getDisplayName(user).split(" ")[0];
+  const income    = Number(snapshot?.total_income   ?? 0);
+  const spent     = Number(snapshot?.total_expenses ?? 0);
+  const kept      = income - spent;
 
-  const ButtonIcon = isGenerating ? Loader2 : error ? RefreshCw : Sparkles;
+  let moneyLine: ReactNode = null;
+  if (income > 0 && kept >= 0) {
+    moneyLine = (
+      <>
+        You brought in <Hl>{formatAmount(income)}</Hl>, spent <Hl>{formatAmount(spent)}</Hl> and
+        kept <Hl>{formatAmount(kept)}</Hl> — <Hl>{Math.round((kept / income) * 100)}%</Hl> of what came in.
+      </>
+    );
+  } else if (income > 0) {
+    moneyLine = (
+      <>
+        You brought in <Hl>{formatAmount(income)}</Hl> but spent <Hl>{formatAmount(spent)}</Hl> —
+        that's <Hl tone="hsl(var(--destructive))">{formatAmount(-kept)}</Hl> more than came in.
+      </>
+    );
+  } else if (spent > 0) {
+    moneyLine = (
+      <>
+        You've spent <Hl>{formatAmount(spent)}</Hl> so far. Log your income and I can tell you how much
+        you're keeping.
+      </>
+    );
+  }
+
+  const healthInsight = insightMap.get("financial_health");
+  const health        = healthInsight ? parseInsightContent(healthInsight) : null;
+  const actionInsight = insightMap.get("top_action");
+
+  const personaSep = memMap.spending_persona?.indexOf(" — ") ?? -1;
+  const persona    = memMap.spending_persona
+    ? personaSep > -1
+      ? { name: memMap.spending_persona.slice(0, personaSep), why: memMap.spending_persona.slice(personaSep + 3) }
+      : { name: memMap.spending_persona, why: "" }
+    : null;
+
+  const spending = insightMap.get("spending_summary");
+  const habits   = insightMap.get("habit_coaching");
+  const anomaly  = insightMap.get("anomaly");
+  const topCat   = snapshot?.biggest_spending_category ?? memMap.biggest_spending_category;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[94dvh] w-[calc(100vw-20px)] gap-0 overflow-hidden rounded-3xl border-border/30 bg-background/80 p-0 backdrop-blur-2xl sm:max-w-4xl">
+      <DialogContent className="max-h-[94dvh] w-[calc(100vw-20px)] gap-0 overflow-hidden rounded-3xl border-border/30 bg-background/80 p-0 backdrop-blur-2xl sm:max-w-3xl lg:max-w-4xl">
         <style>{`
           @keyframes aiSlideIn {
-            from { opacity: 0; transform: translateY(12px); }
+            from { opacity: 0; transform: translateY(10px); }
             to   { opacity: 1; transform: translateY(0);    }
           }
           @keyframes aiDrift {
             0%   { transform: translate3d(0, 0, 0) scale(1); }
             50%  { transform: translate3d(24px, -18px, 0) scale(1.12); }
             100% { transform: translate3d(-16px, 14px, 0) scale(0.95); }
+          }
+          @keyframes aiDot {
+            0%, 60%, 100% { transform: translateY(0);    opacity: 0.4; }
+            30%           { transform: translateY(-3px); opacity: 1;   }
           }
           .ai-glass {
             background: linear-gradient(150deg, hsl(var(--card) / 0.62), hsl(var(--card) / 0.34));
@@ -438,186 +470,207 @@ export function AIAnalystDialog({ open, onOpenChange }: Props) {
             backdrop-filter: blur(18px) saturate(1.35);
             -webkit-backdrop-filter: blur(18px) saturate(1.35);
           }
+          /* Transparent scrollbar: no track or arrows, a faint thumb that firms up on hover */
+          .ai-scroll {
+            scrollbar-width: thin;
+            scrollbar-color: hsl(var(--foreground) / 0.12) transparent;
+          }
+          .ai-scroll:hover { scrollbar-color: hsl(var(--foreground) / 0.25) transparent; }
+          .ai-scroll::-webkit-scrollbar              { width: 6px; background: transparent; }
+          .ai-scroll::-webkit-scrollbar-track        { background: transparent; }
+          .ai-scroll::-webkit-scrollbar-button       { display: none; }
+          .ai-scroll::-webkit-scrollbar-thumb        { background: hsl(var(--foreground) / 0.12); border-radius: 999px; }
+          .ai-scroll:hover::-webkit-scrollbar-thumb  { background: hsl(var(--foreground) / 0.25); }
           @media (prefers-reduced-motion: reduce) {
             .ai-drift { animation: none !important; }
           }
         `}</style>
 
-        <div className="relative flex max-h-[94dvh] flex-col">
+        {/* min-w-0: DialogContent is a grid, and the one-line teasers below would
+            otherwise stretch this column past the dialog's edge */}
+        <div className="relative flex min-w-0 max-h-[94dvh] flex-col">
 
-          {/* ── Liquid backdrop: drifting color blobs the glass panels sit on ── */}
+          {/* ── Liquid backdrop ── */}
           <div aria-hidden className="pointer-events-none absolute inset-0 overflow-hidden">
             <div
               className="ai-drift absolute -top-24 right-[-10%] h-72 w-72 rounded-full blur-3xl"
-              style={{ background: "hsl(var(--primary) / 0.2)", animation: "aiDrift 14s ease-in-out infinite alternate" }}
+              style={{ background: "hsl(var(--primary) / 0.16)", animation: "aiDrift 14s ease-in-out infinite alternate" }}
             />
             <div
-              className="ai-drift absolute top-1/3 left-[-12%] h-64 w-64 rounded-full blur-3xl"
-              style={{ background: "hsl(var(--accent) / 0.13)", animation: "aiDrift 18s ease-in-out infinite alternate-reverse" }}
-            />
-            <div
-              className="ai-drift absolute bottom-[-15%] right-[15%] h-60 w-60 rounded-full blur-3xl"
-              style={{ background: "hsl(var(--primary) / 0.12)", animation: "aiDrift 16s ease-in-out infinite alternate" }}
+              className="ai-drift absolute bottom-[-15%] left-[-10%] h-64 w-64 rounded-full blur-3xl"
+              style={{ background: "hsl(var(--accent) / 0.12)", animation: "aiDrift 18s ease-in-out infinite alternate-reverse" }}
             />
           </div>
 
-          {/* ── Header ── */}
-          <div className="shrink-0 border-b border-border/30 px-4 pb-4 pt-5 sm:px-6">
-            <DialogHeader>
-              <DialogTitle className="flex items-center gap-3">
-                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-primary/10 shadow-[inset_0_1px_0_hsl(0_0%_100%/0.2),0_0_24px_hsl(var(--primary)/0.28)]">
-                  <Sparkles size={17} className="text-primary" />
-                </span>
-                <span className="flex min-w-0 flex-col text-left">
-                  <span className="font-display text-[16px] font-bold tracking-tight">
-                    AI Finance Analyst
-                  </span>
-                  <span className="text-[11px] font-normal leading-relaxed text-muted-foreground">
-                    A fresh read on your money, your habits, and who you're becoming.
-                  </span>
-                </span>
+          {/* ── Header: the orb is the coach ── */}
+          <div className="relative flex shrink-0 items-center gap-3 border-b border-border/30 py-3 pl-4 pr-12 sm:pl-5 sm:pr-14">
+            <AiOrb size={34} state={isGenerating ? "thinking" : "idle"} />
+            <DialogHeader className="min-w-0 flex-1 space-y-0 text-left">
+              <DialogTitle className="font-display text-[15px] font-bold tracking-tight">
+                Your AI coach
               </DialogTitle>
+              <DialogDescription className="truncate text-[11px]">
+                {isGenerating
+                  ? "Thinking…"
+                  : lastGeneratedAt
+                    ? `${cycleLabel} · updated ${formatDistanceToNow(lastGeneratedAt, { addSuffix: true })}`
+                    : cycleLabel}
+              </DialogDescription>
             </DialogHeader>
-          </div>
-
-          {/* ── Scrollable body ── */}
-          <div className="flex-1 overflow-y-auto px-4 py-4 sm:px-6">
-
-            {/* What I Know */}
-            <div className="mb-2.5 flex flex-wrap items-baseline justify-between gap-2">
-              <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-muted-foreground">
-                What I Know About You
-              </p>
-              <span className="whitespace-nowrap rounded-full bg-primary/10 px-2.5 py-1 text-[10px] font-semibold tabular-nums text-primary shadow-[inset_0_1px_0_hsl(0_0%_100%/0.1)]">
-                {cycleLabel}
-              </span>
-            </div>
-
-            {hasContext ? (
-              <div className="ai-glass mb-4 rounded-3xl p-3 sm:p-3.5">
-                {memMap.spending_persona && <PersonaBanner memory={memMap.spending_persona} />}
-                <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-                  {snapshot?.total_income != null && (
-                    <Stat label="Income" value={formatAmount(Number(snapshot.total_income))} />
-                  )}
-                  {snapshot?.total_expenses != null && (
-                    <Stat label="Expenses" value={formatAmount(Number(snapshot.total_expenses))} />
-                  )}
-                  {snapshot?.net_savings != null && (
-                    <Stat label="Net Savings" value={formatAmount(Number(snapshot.net_savings))} />
-                  )}
-                  {snapshot?.biggest_spending_category && (
-                    <Stat label="Top Category" value={snapshot.biggest_spending_category} />
-                  )}
-                  {memMap.strongest_habit && (
-                    <Stat label="Strongest Habit" value={memMap.strongest_habit} />
-                  )}
-                  {memMap.weakest_habit && (
-                    <Stat label="Weakest Habit" value={memMap.weakest_habit} />
-                  )}
-                  {memMap.identity_alignment && (
-                    <Stat label="Identity Votes" value={memMap.identity_alignment} />
-                  )}
-                  {snapshot?.active_loans_count != null && snapshot.active_loans_count > 0 && (
-                    <Stat
-                      label="Active Loans"
-                      value={`${snapshot.active_loans_count} · ${formatAmount(Number(snapshot.active_loans_total ?? 0))}`}
-                    />
-                  )}
-                  {memMap.expense_volatility && (
-                    <Stat label="Volatility" value={memMap.expense_volatility} />
-                  )}
-                </div>
-              </div>
-            ) : (
-              <p className="mb-4 text-[12px] leading-relaxed text-muted-foreground">
-                First time here — generate your first analysis below.
-              </p>
-            )}
-
-            {/* Generation control */}
-            {error && !isGenerating && (
-              <div className="mb-2.5 flex items-start gap-2.5 rounded-2xl bg-destructive/10 px-3.5 py-3 shadow-[inset_0_0_0_1px_hsl(var(--destructive)/0.25)]">
-                <AlertTriangle size={13} className="mt-0.5 shrink-0 text-destructive" />
-                <p className="text-[11px] leading-relaxed text-muted-foreground">{error}</p>
-              </div>
-            )}
-
             <button
               onClick={() => refresh()}
               disabled={isGenerating}
-              className="group relative flex w-full items-center justify-center gap-2 overflow-hidden rounded-2xl bg-primary px-4 py-3.5 text-[13px] font-bold text-primary-foreground shadow-[inset_0_1px_0_hsl(0_0%_100%/0.25),0_10px_32px_-10px_hsl(var(--primary)/0.6)] transition-all duration-200 hover:brightness-105 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-70"
+              title="Get a fresh read"
+              aria-label="Get a fresh read"
+              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-border/50 bg-card/60 text-muted-foreground transition-colors hover:text-foreground disabled:opacity-50"
             >
-              <span
-                aria-hidden
-                className="pointer-events-none absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/20 to-transparent transition-transform duration-700 ease-out group-hover:translate-x-full"
-              />
-              <ButtonIcon
-                size={14}
-                className={isGenerating ? "animate-spin" : undefined}
-              />
-              {buttonText}
+              <RefreshCw size={14} className={isGenerating ? "animate-spin" : undefined} />
             </button>
+          </div>
 
-            {/* Skeleton while generating the very first analysis */}
-            {isGenerating && !hasInsights && (
-              <div className="mt-4 grid grid-cols-1 gap-2.5 sm:grid-cols-2 sm:gap-3">
-                {[0, 1, 2, 3].map((i) => (
-                  <div
-                    key={i}
-                    className="ai-glass h-28 animate-pulse rounded-3xl"
-                    style={{ animationDelay: `${i * 150}ms` }}
-                  />
-                ))}
-              </div>
+          {/* ── The briefing ── */}
+          <div className="relative flex min-w-0 flex-1 flex-col gap-2 overflow-y-auto overflow-x-hidden px-4 py-3.5 ai-scroll sm:px-5">
+
+            {/* Greeting + the numbers */}
+            <Bubble>
+              <p>
+                Hey {firstName} — here's your read on{" "}
+                <span className="font-semibold text-foreground">{cycleLabel}</span>.
+              </p>
+              {moneyLine && <p className="mt-1">{moneyLine}</p>}
+              {persona && (
+                <p className="mt-1">
+                  This cycle you're <Hl>{persona.name}</Hl>
+                  {persona.why && <> — {say(persona.why)}</>}.
+                </p>
+              )}
+              {health && health.score !== undefined && (
+                <p className="mt-1">
+                  Overall health:{" "}
+                  <Hl tone={scoreTone(health.score)}>{health.score}/10</Hl>
+                  {health.text ? <>. {say(health.text)}</> : "."}
+                </p>
+              )}
+              {healthInsight && <Rating insight={healthInsight} onRate={rateInsight} />}
+            </Bubble>
+
+            {isGenerating && (
+              <Typing label={hasInsights ? "Taking a fresh look at your numbers…" : "Reading your cycle…"} />
             )}
 
-            {/* Insights display */}
+            {error && !isGenerating && (
+              <Bubble className="border-destructive/30 bg-destructive/10">
+                <p className="flex items-start gap-2">
+                  <AlertTriangle size={14} className="mt-1 shrink-0 text-destructive" />
+                  <span>{error}</span>
+                </p>
+                <button
+                  onClick={() => refresh()}
+                  className="mt-2 rounded-full bg-foreground/[0.08] px-3 py-1 text-[12px] font-semibold text-foreground transition-colors hover:bg-foreground/[0.12]"
+                >
+                  Try again
+                </button>
+              </Bubble>
+            )}
+
+            {!hasInsights && !isGenerating && !error && !isLoading && (
+              <Bubble>
+                I haven't looked at this cycle yet.{" "}
+                <button onClick={() => refresh()} className="font-semibold text-primary underline-offset-2 hover:underline">
+                  Get my first read
+                </button>
+              </Bubble>
+            )}
+
             {hasInsights && !isLoading && (
-              <div className="mt-4" style={{ opacity: isGenerating ? 0.55 : 1, transition: "opacity 0.3s" }}>
-                {insightMap.get("top_action") && (
-                  <FeaturedActionCard
-                    insight={insightMap.get("top_action")!}
-                    onRate={rateInsight}
-                  />
+              <div
+                className="flex flex-col gap-2"
+                style={{ opacity: isGenerating ? 0.55 : 1, transition: "opacity 0.3s" }}
+              >
+                {/* This week's one thing */}
+                {actionInsight && (
+                  <Bubble delay={100} className="border-primary/30 bg-primary/[0.08]">
+                    <p className="mb-0.5 flex items-center gap-1.5 text-[9.5px] font-bold uppercase tracking-[0.14em] text-primary">
+                      <Zap size={11} /> This week
+                    </p>
+                    <p className="font-display text-[14px] font-semibold leading-snug tracking-tight text-foreground">
+                      {say(actionInsight.content)}
+                    </p>
+                    <Rating insight={actionInsight} onRate={rateInsight} />
+                  </Bubble>
                 )}
-                <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 sm:gap-3">
-                  {ORDERED_TYPES.map((type, i) => {
-                    const insight = insightMap.get(type);
-                    if (!insight) return null;
-                    return (
-                      <InsightCard
-                        key={insight.id}
-                        insight={insight}
-                        onRate={rateInsight}
-                        animDelay={i * 60}
-                      />
-                    );
-                  })}
+
+                <p
+                  className="mt-1 px-1 text-[9.5px] font-bold uppercase tracking-[0.14em] text-muted-foreground"
+                  style={{ animation: "aiSlideIn 0.4s ease both", animationDelay: "220ms" }}
+                >
+                  Want the details?
+                </p>
+                <div
+                  className="ai-glass overflow-hidden rounded-[20px]"
+                  style={{ animation: "aiSlideIn 0.4s ease both", animationDelay: "260ms" }}
+                >
+                  {spending && (
+                    <Section Icon={TrendingUp} label="Spending" teaser={teaser(spending.content)}>
+                      {say(spending.content)}
+                      <Rating insight={spending} onRate={rateInsight} />
+                    </Section>
+                  )}
+                  {habits && (
+                    <Section Icon={Target} label="Habits" teaser={teaser(habits.content)}>
+                      {say(habits.content)}
+                      <Rating insight={habits} onRate={rateInsight} />
+                    </Section>
+                  )}
+                  {anomaly && (
+                    <Section Icon={AlertTriangle} label="Anything unusual" teaser={teaser(anomaly.content)}>
+                      {say(anomaly.content)}
+                      <Rating insight={anomaly} onRate={rateInsight} />
+                    </Section>
+                  )}
+                  {notes.length > 0 && (
+                    <Section
+                      Icon={Lightbulb}
+                      label="Patterns I've noticed"
+                      teaser={notes.length === 1 ? notes[0].memory_value : `${notes.length} patterns across your past cycles`}
+                    >
+                      <NotesList notes={notes} onDismiss={dismissNote} />
+                    </Section>
+                  )}
+                  <Section Icon={ListChecks} label="What I'm keeping an eye on" teaser="Top category, habits, identity votes">
+                    {topCat && <TrackRow label="Top category">{categoryLabel(topCat)}</TrackRow>}
+                    {memMap.strongest_habit && (
+                      <TrackRow label="Strongest habit"><HabitValue value={memMap.strongest_habit} /></TrackRow>
+                    )}
+                    {memMap.weakest_habit && (
+                      <TrackRow label="Needs help"><HabitValue value={memMap.weakest_habit} /></TrackRow>
+                    )}
+                    {memMap.identity_alignment && (
+                      <TrackRow label="Identity votes">{identityValue(memMap.identity_alignment)}</TrackRow>
+                    )}
+                    {memMap.expense_volatility && (
+                      <TrackRow label="Spending pattern">
+                        <span className="capitalize">{memMap.expense_volatility}</span>
+                      </TrackRow>
+                    )}
+                    {snapshot?.active_loans_count != null && snapshot.active_loans_count > 0 && (
+                      <TrackRow label="Unpaid loans">
+                        {snapshot.active_loans_count} · <Hl>{formatAmount(Number(snapshot.active_loans_total ?? 0))}</Hl>
+                      </TrackRow>
+                    )}
+                  </Section>
                 </div>
               </div>
             )}
-          </div>
 
-          {/* ── Footer ── */}
-          <div className="flex shrink-0 items-center justify-between border-t border-border/30 px-4 py-3 sm:px-6">
-            <span className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
-              {lastGeneratedAt ? (
-                <>
-                  <span className="h-1.5 w-1.5 rounded-full bg-primary/60" aria-hidden />
-                  Last generated {formatDistanceToNow(lastGeneratedAt, { addSuffix: true })}
-                </>
-              ) : (
-                "No analysis yet"
-              )}
-            </span>
-            <button
-              onClick={() => onOpenChange(false)}
-              className="flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[11px] font-semibold text-muted-foreground transition-colors hover:bg-foreground/[0.06] hover:text-foreground"
-            >
-              <X size={12} />
-              Close
-            </button>
+            {/* Skeleton while the very first analysis loads */}
+            {isLoading && (
+              <div className="flex flex-col gap-2.5">
+                {[0, 1].map((i) => (
+                  <div key={i} className="ai-glass h-20 max-w-[92%] animate-pulse rounded-[22px] rounded-tl-md" />
+                ))}
+              </div>
+            )}
           </div>
         </div>
       </DialogContent>

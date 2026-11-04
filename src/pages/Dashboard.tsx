@@ -1,6 +1,6 @@
 import { useMemo, useState, useEffect } from "react";
 import { format, subDays } from "date-fns";
-import { CalendarCheck, Check, ChevronRight, Flame, ListChecks, Sparkles, Wallet } from "lucide-react";
+import { CalendarCheck, Check, ChevronRight, Flame, ListChecks, Wallet } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { AppLayout } from "@/components/AppLayout";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -12,6 +12,7 @@ import { useCurrency } from "@/hooks/useCurrency";
 import { DashboardExpenseCharts } from "@/components/dashboard/DashboardExpenseCharts";
 import { ActivityRing, SectionHeader, Widget, WidgetHeader } from "@/components/dashboard/Widget";
 import { AIAnalystDialog } from "@/components/AIAnalystDialog";
+import { AiOrb } from "@/components/AiOrb";
 import { MAC, PRIMARY, SF_STACK } from "@/lib/macColors";
 import { getAvatarUrl, getDisplayName, getInitials } from "@/lib/userProfile";
 import { cn } from "@/lib/utils";
@@ -202,6 +203,7 @@ export default function Dashboard() {
 
   // ── AI Analyst modal ──────────────────────────────────────────────────────
   const [analystOpen, setAnalystOpen] = useState(false);
+  const [analystThinking, setAnalystThinking] = useState(false);
 
   // ── Confetti ──────────────────────────────────────────────────────────────
   const [particles, setParticles] = useState<{ id: number; x: number; color: string; size: number }[]>([]);
@@ -260,16 +262,11 @@ export default function Dashboard() {
           <div className="mb-1 flex shrink-0 items-center gap-2">
             <button
               onClick={() => setAnalystOpen(true)}
-              className="relative flex h-10 w-10 items-center justify-center rounded-full border border-foreground/[0.08] bg-card/70 text-primary shadow-md backdrop-blur-xl transition-transform active:scale-95"
-              aria-label="Ask your AI Finance Analyst"
-              title="AI Finance Analyst"
+              className="rounded-full transition-transform hover:scale-105 active:scale-95"
+              aria-label="Ask your AI coach"
+              title={analystThinking ? "Your AI coach is thinking…" : "Your AI coach"}
             >
-              <span
-                className="absolute inset-0 rounded-full opacity-60"
-                style={{ background: "radial-gradient(circle at 30% 25%, hsl(var(--primary)/0.35), transparent 60%)" }}
-                aria-hidden="true"
-              />
-              <Sparkles className="relative h-[18px] w-[18px]" />
+              <AiOrb size={40} state={analystThinking ? "thinking" : "idle"} />
             </button>
             <button
               onClick={() => navigate("/settings")}
@@ -461,7 +458,7 @@ export default function Dashboard() {
           {expenses && <DashboardExpenseCharts expenses={expenses} month={today} delay={280} />}
         </div>
 
-        <AIAnalystDialog open={analystOpen} onOpenChange={setAnalystOpen} />
+        <AIAnalystDialog open={analystOpen} onOpenChange={setAnalystOpen} onGeneratingChange={setAnalystThinking} />
       </div>
     </AppLayout>
   );
