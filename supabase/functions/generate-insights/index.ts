@@ -8,6 +8,13 @@ const SUPABASE_URL  = Deno.env.get("SUPABASE_URL")!;
 const ANON_KEY      = Deno.env.get("SUPABASE_ANON_KEY")!;
 const SERVICE_KEY   = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
+// AI notes: a pattern the model noticed lives this long unless a later
+// analysis confirms it again; at most MAX_NOTES live at once.
+const NOTE_TTL_DAYS     = 60;
+const MAX_NOTES         = 6;
+const MAX_NOTE_CHARS    = 180;
+const FEEDBACK_TTL_DAYS = 60;
+
 // ─── View row types ───────────────────────────────────────────────────────────
 
 interface ExpenseSummaryRow {
@@ -594,10 +601,140 @@ function extractMemories(
   return out;
 }
 
+// ─── AI notes + insight feedback (Part D) ─────────────────────────────────────
+
+interface MemoryRow {
+  id:           string;
+  memory_key:   string;
+  memory_value: string;
+  source:       "computed" | "ai" | "feedback";
+  expires_at:   string | null;
+  dismissed_at: string | null;
+  last_updated: string;
+}
+
+// `label` is the short id the model sees ("n1"), so row uuids stay out of the prompt.
+interface AiNote          { label: string; id: string; text: string; written: string }
+interface InsightFeedback { type: string; useful: boolean; said: string }
+interface ExistingInsightRow {
+  id: string; insight_type: string; content: string; was_useful: boolean | null;
+}
+
+const daysFromNow = (days: number) => new Date(Date.now() + days * 86_400_000).toISOString();
+const normNote    = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+
+// The words the user actually read on the card (financial_health is stored as JSON).
+function insightText(type: string, content: string): string {
+  if (type !== "financial_health") return content;
+  try { return (JSON.parse(content) as { verdict?: string }).verdict ?? content; }
+  catch { return content; }
+}
+
+// A rating belongs to one specific insight. Save it with that insight's text
+// before the insight is overwritten, so the next analysis learns from what was said.
+function feedbackRows(insights: ExistingInsightRow[], userId: string) {
+  const now = new Date().toISOString();
+  return insights
+    .filter((r) => r.was_useful !== null)
+    .map((r) => ({
+      user_id:      userId,
+      memory_key:   `feedback:${r.insight_type}`,
+      memory_value: JSON.stringify({
+        useful: r.was_useful,
+        said:   insightText(r.insight_type, r.content).slice(0, 300),
+      }),
+      source:       "feedback",
+      confidence:   1.0,
+      last_updated: now,
+      expires_at:   daysFromNow(FEEDBACK_TTL_DAYS),
+    }));
+}
+
+function parseFeedback(rows: MemoryRow[]): InsightFeedback[] {
+  const out: InsightFeedback[] = [];
+  for (const r of rows) {
+    try {
+      const v = JSON.parse(r.memory_value) as { useful?: unknown; said?: unknown };
+      if (typeof v.useful === "boolean" && typeof v.said === "string") {
+        out.push({ type: r.memory_key.replace(/^feedback:/, ""), useful: v.useful, said: v.said });
+      }
+    } catch { /* malformed row — skip */ }
+  }
+  return out;
+}
+
+interface MemoryUpdate { keep: string[]; drop: string[]; newNote: string | null }
+
+// Only note ids we actually showed the model count; the new note is trimmed,
+// capped, and refused if it repeats a live or rejected note.
+function parseMemoryUpdate(raw: unknown, notes: AiNote[], rejected: string[]): MemoryUpdate {
+  const m      = (raw ?? {}) as Record<string, unknown>;
+  const labels = new Set(notes.map((n) => n.label));
+  const ids    = (v: unknown) =>
+    Array.isArray(v) ? [...new Set(v.filter((x): x is string => typeof x === "string" && labels.has(x)))] : [];
+
+  const drop = ids(m.drop);
+  const keep = ids(m.keep).filter((l) => !drop.includes(l));
+
+  let newNote: string | null = null;
+  if (typeof m.new_note === "string") {
+    const text = m.new_note.replace(/\s+/g, " ").trim().slice(0, MAX_NOTE_CHARS);
+    const seen = new Set([...notes.map((n) => n.text), ...rejected].map(normNote));
+    if (text.length >= 12 && !seen.has(normNote(text))) newNote = text;
+  }
+  return { keep, drop, newNote };
+}
+
+async function applyMemoryUpdate(
+  db:     ReturnType<typeof createClient>,
+  userId: string,
+  notes:  AiNote[],
+  update: MemoryUpdate,
+): Promise<void> {
+  const byLabel = new Map(notes.map((n) => [n.label, n]));
+  const keepIds = update.keep.map((l) => byLabel.get(l)!.id);
+  const dropIds = update.drop.map((l) => byLabel.get(l)!.id);
+
+  if (update.newNote) {
+    // Make room by retiring the oldest notes that weren't just reconfirmed
+    const live = notes.filter((n) => !dropIds.includes(n.id));
+    const over = live.length + 1 - MAX_NOTES;
+    if (over > 0) {
+      const oldest = live
+        .filter((n) => !keepIds.includes(n.id))
+        .sort((a, b) => a.written.localeCompare(b.written))
+        .slice(0, over);
+      dropIds.push(...oldest.map((n) => n.id));
+    }
+  }
+
+  const ops: Promise<{ error: { message: string } | null }>[] = [];
+  if (keepIds.length > 0) {
+    ops.push(db.from("ai_memories").update({ expires_at: daysFromNow(NOTE_TTL_DAYS) }).in("id", keepIds));
+  }
+  if (dropIds.length > 0) {
+    ops.push(db.from("ai_memories").delete().in("id", dropIds));
+  }
+  if (update.newNote) {
+    ops.push(db.from("ai_memories").insert({
+      user_id:      userId,
+      memory_key:   `note:${crypto.randomUUID().slice(0, 8)}`,
+      memory_value: update.newNote,
+      source:       "ai",
+      confidence:   0.7,
+      last_updated: new Date().toISOString(),
+      expires_at:   daysFromNow(NOTE_TTL_DAYS),
+    }));
+  }
+  for (const { error } of await Promise.all(ops)) {
+    if (error) console.error("ai notes update:", error.message);
+  }
+}
+
 // ─── Prompt builders ──────────────────────────────────────────────────────────
 
-function buildSystemPrompt(unhelpfulTypes: string[]): string {
-  let base = `You are a friendly, no-nonsense personal finance and habit coach.
+function buildSystemPrompt(): string {
+  return `You are a friendly, no-nonsense personal finance and habit coach.
 Talk like a real coach, not an analyst. Warm, direct, human.
 
 VOICE RULES:
@@ -696,6 +833,28 @@ PRIORITIES (in order):
 
 If evidence is sparse or weak, say so plainly. Don't pretend to know more than the data shows.
 
+MEMORY — you keep a small notebook about this user across analyses.
+"Your Notes From Past Analyses" are patterns you wrote down before. Treat them
+as hunches to check, not facts. For each one: keep it if this cycle's numbers
+still back it up, drop it if they contradict it, and leave it out of both lists
+if this data can't tell either way (unconfirmed notes fade out on their own).
+Notes you keep can sharpen your coaching ("payday week is coming — that's when
+food spending usually jumps").
+You may add ONE new note when you see a pattern likely to hold beyond this
+cycle: a repeat behavior, a trigger, a timing ("spends most in the week after
+payday", "reading slips on days the run is skipped"). Rules for a new note:
+- Money or habit patterns only. Never about health, body, eating, mood,
+  relationships, religion, or any named person.
+- Must be backed by numbers in this data. When in doubt, write no note.
+- One plain sentence, max 25 words, no advice — just the pattern.
+- Never repeat or rephrase anything under "Notes The User Rejected".
+- Don't restate what "What I know about you" already says.
+
+FEEDBACK — "How The User Rated Your Last Analysis" quotes what you said last
+time. Do more of what they found helpful. Where they found it unhelpful, change
+the approach (a different angle, more specific, fewer generalities) instead of
+saying the same thing in new words.
+
 EXAMPLE OF BAD OUTPUT (analyst voice):
 "Food spending increased 38% month-over-month and now represents 41% of total expenses,
 indicating spending concentration in discretionary consumption."
@@ -710,27 +869,26 @@ ANOTHER GOOD EXAMPLE:
 this month. When one habit takes off, another usually pays the price. Block 20 minutes
 after dinner three nights a week and you'll get reading back without losing the run."
 
-Return a JSON object with exactly these 5 keys:
+Return a JSON object with exactly these 6 keys:
 - "spending_summary": 4-6 sentences in coach voice — what shifted, what it means, why it
-  matters. If a Spending Persona is given, address it by name once.
+  matters. If a Spending Persona is given, address it by name once. The app already shows
+  total income, spending and savings right above this, so don't open by restating them —
+  open with what changed.
 - "habit_coaching": 4-6 sentences in coach voice covering at most 2 habits: the biggest
   win (with its streak or consistency number) and the most fixable slip — fixed with its
   prescribed lever from Habit Diagnostics as one concrete, doable prescription. When
   Identity Rules exist, tie one point to the user's own rule text.
 - "anomaly": 1-2 sentences flagging anything unusual ("Nothing weird this period." if clean)
-- "financial_health": object with "verdict" only — 1-2 sentences in plain language. Score is computed externally.
+- "financial_health": object with "verdict" only — 1-2 sentences in plain language. Score is computed
+  externally and shown right before your verdict, so never restate it ("you scored a 7") — say what's
+  driving it.
 - "top_action": one specific thing to do this week, with a number, aimed at the Spending
   Persona's defining pattern when one is given
   (e.g. "Cap food spending at BDT 7,500 next week — that's 20% below your current pace")
+- "memory": object {"keep": [ids of past notes still backed by this data],
+  "drop": [ids of past notes this data contradicts], "new_note": "<one sentence>" or null}
 
 Respond with valid JSON only. No markdown code fences. No text outside the JSON object.`;
-
-  if (unhelpfulTypes.length > 0) {
-    base += `\n\nThe user previously found these insight types unhelpful: ${unhelpfulTypes.join(", ")}.
-Avoid repeating that style of analysis. Be more specific and actionable.`;
-  }
-
-  return base;
 }
 
 // Plain-language rendering of each lever so the LLM applies it instead of
@@ -767,6 +925,9 @@ function buildUserPrompt(
   diagnostics: HabitDiagnostic[],
   identity:    IdentityAlignment | null,
   persona:     SpendingPersona | null,
+  notes:       AiNote[],
+  rejected:    string[],
+  feedback:    InsightFeedback[],
 ): string {
   const cycleLabel = cycle.cycleType === "payday"
     ? `Current Pay Cycle (${cycle.cycleStart} → ${cycle.cycleEnd}, payday on the ${cycle.payday})`
@@ -798,6 +959,25 @@ function buildUserPrompt(
       lines.push(`- Spending persona last cycle: ${memoriesMap.spending_persona}`);
     if (memoriesMap.identity_alignment)
       lines.push(`- Identity alignment last analysis: ${memoriesMap.identity_alignment}`);
+    lines.push("");
+  }
+
+  // ── Notebook + feedback (Part D) ──────────────────────────────────────────
+  if (notes.length > 0) {
+    lines.push("## Your Notes From Past Analyses (check each against this cycle's data)");
+    for (const n of notes) lines.push(`  [${n.label}] ${n.text} (noted ${n.written.slice(0, 10)})`);
+    lines.push("");
+  }
+  if (rejected.length > 0) {
+    lines.push("## Notes The User Rejected (they said these are wrong — never write them again)");
+    for (const r of rejected) lines.push(`  - ${r}`);
+    lines.push("");
+  }
+  if (feedback.length > 0) {
+    lines.push("## How The User Rated Your Last Analysis");
+    for (const f of feedback) {
+      lines.push(`  ${f.type} — ${f.useful ? "HELPFUL" : "NOT HELPFUL"}: "${f.said}"`);
+    }
     lines.push("");
   }
 
@@ -1033,8 +1213,10 @@ Deno.serve(async (req) => {
       userClient.from("budgets").select("category, amount")
         .eq("user_id", userId).eq("month", budgetMonth),
       userClient.from("profiles").select("currency_preference").eq("id", userId).single(),
-      serviceClient.from("ai_memories").select("memory_key, memory_value").eq("user_id", userId),
-      serviceClient.from("ai_insights").select("id, insight_type, was_useful").eq("user_id", userId),
+      serviceClient.from("ai_memories")
+        .select("id, memory_key, memory_value, source, expires_at, dismissed_at, last_updated")
+        .eq("user_id", userId),
+      serviceClient.from("ai_insights").select("id, insight_type, content, was_useful").eq("user_id", userId),
       userClient.from("habit_completions").select("habit_id, date")
         .eq("user_id", userId).gte("date", thirtyDaysAgoStr),
       userClient.from("habits").select("id, name, flag_level, start_date")
@@ -1128,24 +1310,45 @@ Deno.serve(async (req) => {
     const identity        = computeIdentityAlignment(personaRules, habitCompletions);
     const spendingPersona = computeSpendingPersona(snapshot, budgets, derived, cycleExpenses, currency);
 
-    // Memories map (Part B prompt context)
-    const memoriesMap: Record<string, string> = {};
-    for (const m of storedMemories ?? []) {
-      memoriesMap[m.memory_key] = m.memory_value;
+    // Memories (Part B computed facts, Part D notes + feedback). Expired rows
+    // are left out here and cleaned up in the background.
+    const nowIso      = new Date().toISOString();
+    const allMemories = (storedMemories ?? []) as MemoryRow[];
+    const expiredIds  = allMemories.filter((m) => m.expires_at && m.expires_at < nowIso).map((m) => m.id);
+    const liveMems    = allMemories.filter((m) => !expiredIds.includes(m.id));
+    if (expiredIds.length > 0) {
+      serviceClient.from("ai_memories").delete().in("id", expiredIds)
+        .then(({ error }: { error: { message: string } | null }) => {
+          if (error) console.error("ai_memories cleanup:", error.message);
+        });
     }
 
-    // Part C: collect unhelpful insight types (deduplicated)
-    type ExistingInsightRow = { id: string; insight_type: string; was_useful: boolean | null };
-    const typedInsights = (existingInsights ?? []) as ExistingInsightRow[];
+    const memoriesMap: Record<string, string> = {};
+    for (const m of liveMems.filter((m) => m.source === "computed")) {
+      memoriesMap[m.memory_key] = m.memory_value;
+    }
+    const aiNotes: AiNote[] = liveMems
+      .filter((m) => m.source === "ai" && !m.dismissed_at)
+      .sort((a, b) => a.last_updated.localeCompare(b.last_updated))
+      .map((m, i) => ({ label: `n${i + 1}`, id: m.id, text: m.memory_value, written: m.last_updated }));
+    const rejectedNotes = liveMems.filter((m) => m.source === "ai" && m.dismissed_at).map((m) => m.memory_value);
 
-    const unhelpfulTypes: string[] = [...new Set(
-      typedInsights.filter(r => r.was_useful === false).map(r => r.insight_type)
-    )];
+    // Part C: ratings on the current insights are folded into feedback rows
+    // (with the text that was rated) before those insights are replaced.
+    const typedInsights = (existingInsights ?? []) as ExistingInsightRow[];
+    const newFeedback   = feedbackRows(typedInsights, userId);
+    const feedbackByKey = new Map(
+      liveMems.filter((m) => m.source === "feedback").map((m) => [m.memory_key, m] as const),
+    );
+    for (const f of newFeedback) {
+      feedbackByKey.set(f.memory_key, f as unknown as MemoryRow);
+    }
+    const feedback = parseFeedback([...feedbackByKey.values()]);
 
     const idMap = new Map(typedInsights.map(r => [r.insight_type, r.id]));
 
     // 3. Build prompts ─────────────────────────────────────────────────────────
-    const systemPrompt = buildSystemPrompt(unhelpfulTypes);
+    const systemPrompt = buildSystemPrompt();
     const userPrompt   = buildUserPrompt(
       snapshot,
       monthlyExpenses,
@@ -1159,6 +1362,9 @@ Deno.serve(async (req) => {
       diagnostics,
       identity,
       spendingPersona,
+      aiNotes,
+      rejectedNotes,
+      feedback,
     );
 
     // 4. Call the LLM ──────────────────────────────────────────────────────────
@@ -1206,7 +1412,14 @@ Deno.serve(async (req) => {
       parsed.financial_health = { score: health.score, verdict: "" };
     }
 
-    // 6. Upsert ai_insights ────────────────────────────────────────────────────
+    // 6. Save ratings as feedback, then upsert ai_insights ─────────────────────
+    if (newFeedback.length > 0) {
+      const { error: fbErr } = await serviceClient
+        .from("ai_memories")
+        .upsert(newFeedback, { onConflict: "user_id,memory_key" });
+      if (fbErr) console.error("ai_memories feedback:", fbErr.message);
+    }
+
     const now       = new Date().toISOString();
     const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
 
@@ -1223,6 +1436,8 @@ Deno.serve(async (req) => {
                         : JSON.stringify(parsed[t]),
         generated_at: now,
         expires_at:   expiresAt,
+        // New words, new rating — the old one now lives in a feedback row
+        was_useful:   null,
       }));
 
     const { data: saved, error: saveErr } = await serviceClient
@@ -1258,6 +1473,15 @@ Deno.serve(async (req) => {
       if (memSaveErr) {
         console.error("ai_memories upsert:", memSaveErr.message);
       }
+    }
+
+    // 7b. Part D: apply the model's notebook changes (never fails the request)
+    try {
+      await applyMemoryUpdate(
+        serviceClient, userId, aiNotes, parseMemoryUpdate(parsed.memory, aiNotes, rejectedNotes),
+      );
+    } catch (noteErr) {
+      console.error("ai notes:", noteErr instanceof Error ? noteErr.message : noteErr);
     }
 
     // 8. Return ────────────────────────────────────────────────────────────────

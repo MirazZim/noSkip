@@ -39,11 +39,15 @@ type IngestStatus = "confirmed" | "pending" | "review" | "ignored" | "duplicate"
 interface MerchantRule {
   id: string;
   pattern: string;
+  label: string | null;
   category: string;
   action: "categorize" | "ignore";
+  confirm_count: number;
   auto_confirm: boolean;
   always_ask: boolean;
 }
+
+const MAX_AI_EXAMPLES = 15;
 
 const PROVIDER_LABELS: Record<string, string> = {
   bkash: "bKash", nagad: "Nagad", pathao_pay: "Pathao Pay", rocket: "Rocket", upay: "Upay", card: "Card",
@@ -101,7 +105,29 @@ function matchRule(rules: MerchantRule[], merchantKey: string | null): MerchantR
   return best;
 }
 
-async function aiGuessCategory(merchant: string): Promise<string | null> {
+// The user's own confirmed merchants, most-confirmed first, as examples of how
+// *they* file things. People are left out (no names to Google, and they say
+// nothing about shops).
+function aiExamples(rules: MerchantRule[]): Array<{ merchant: string; category: string }> {
+  return rules
+    .filter((r) => r.action === "categorize" && !r.always_ask && r.confirm_count > 0)
+    .sort((a, b) => b.confirm_count - a.confirm_count)
+    .slice(0, MAX_AI_EXAMPLES)
+    .map((r) => ({ merchant: (r.label ?? r.pattern).slice(0, 40), category: r.category.slice(0, 40) }));
+}
+
+function dhakaTimeOfDay(d: Date): string {
+  const h = new Date(d.getTime() + DHAKA_OFFSET_MS).getUTCHours();
+  return h < 5 ? "late night" : h < 11 ? "morning" : h < 15 ? "midday" : h < 18 ? "afternoon" : h < 22 ? "evening" : "late night";
+}
+
+async function aiGuessCategory(
+  merchant: string,
+  ctx: { amount: number; kind: string; txnAt: Date; rules: MerchantRule[] },
+): Promise<string | null> {
+  const examples = aiExamples(ctx.rules);
+  // Custom categories the user has confirmed are valid answers too
+  const allowed = new Set(examples.map((e) => e.category));
   try {
     const completion = await llm.chat.completions.create(
       {
@@ -110,13 +136,25 @@ async function aiGuessCategory(merchant: string): Promise<string | null> {
           {
             role: "system",
             content:
-              "You categorize a Bangladeshi card / mobile-wallet payment from the merchant name alone. " +
+              "You categorize a Bangladeshi card / mobile-wallet payment. " +
               "Pick the single most likely category id from this list:\n" +
               Object.entries(EXPENSE_CATEGORY_LABELS).map(([id, label]) => `${id} — ${label}`).join("\n") +
-              '\nIf the name gives no real clue, answer "other:uncategorized". ' +
+              "\nYou also get how this user filed other merchants. Their choices beat general knowledge: " +
+              "if a similar merchant is in their examples, follow it, and you may answer with one of their " +
+              "own categories. Use the amount and time of day as a tiebreaker (a small midday payment is " +
+              'more likely a meal than a large one). If nothing gives a real clue, answer "other:uncategorized". ' +
               'Respond ONLY with JSON: {"category": "<id>"}',
           },
-          { role: "user", content: merchant.slice(0, 80) },
+          {
+            role: "user",
+            content: JSON.stringify({
+              merchant: merchant.slice(0, 80),
+              amount_bdt: ctx.amount,
+              payment_type: KIND_LABELS[ctx.kind] ?? ctx.kind,
+              time_of_day: dhakaTimeOfDay(ctx.txnAt),
+              this_users_past_choices: examples,
+            }),
+          },
         ],
         response_format: { type: "json_object" },
       },
@@ -124,7 +162,7 @@ async function aiGuessCategory(merchant: string): Promise<string | null> {
     );
     const raw = completion.choices[0]?.message?.content ?? "{}";
     const category = JSON.parse(raw.replace(/^\s*```(?:json)?\s*|\s*```\s*$/gi, ""))?.category;
-    return typeof category === "string" && isKnownCategory(category) ? category : null;
+    return typeof category === "string" && (isKnownCategory(category) || allowed.has(category)) ? category : null;
   } catch (err) {
     console.error("ingest-sms AI guess failed:", err instanceof Error ? err.message : err);
     return null;
@@ -197,10 +235,11 @@ Deno.serve(async (req) => {
     // 2. Rules decide ignore / category / auto-confirm
     const { data: rulesData, error: rulesErr } = await admin
       .from("merchant_rules")
-      .select("id, pattern, category, action, auto_confirm, always_ask")
+      .select("id, pattern, label, category, action, confirm_count, auto_confirm, always_ask")
       .eq("user_id", userId);
     if (rulesErr) throw rulesErr;
-    const rule = matchRule((rulesData ?? []) as MerchantRule[], parsed.merchantKey);
+    const rules = (rulesData ?? []) as MerchantRule[];
+    const rule = matchRule(rules, parsed.merchantKey);
 
     const amount = parsed.amount!;
     const who = parsed.merchant ?? KIND_LABELS[parsed.kind] ?? PROVIDER_LABELS[parsed.provider] ?? "payment";
@@ -272,7 +311,7 @@ Deno.serve(async (req) => {
     } else {
       const fromDefaults = defaultCategoryFor(parsed.merchantKey, parsed.kind);
       const fromAi = !fromDefaults && parsed.merchant && !parsed.isPerson
-        ? await aiGuessCategory(parsed.merchant)
+        ? await aiGuessCategory(parsed.merchant, { amount, kind: parsed.kind, txnAt, rules })
         : null;
       category = fromDefaults ?? fromAi ?? FALLBACK_CATEGORY;
       categorySource = fromDefaults ? "default" : fromAi ? "ai" : "fallback";

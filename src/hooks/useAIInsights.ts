@@ -1,6 +1,8 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { format } from "date-fns";
+import { toast } from "sonner";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { loadCycleConfig, CYCLE_CHANGE_EVENT } from "@/components/expenses/BudgetManager";
@@ -109,6 +111,7 @@ export function useAIInsights() {
       }
       // Pull the freshly saved rows into the cache
       await queryClient.invalidateQueries({ queryKey: ["ai_insights", user.id] });
+      queryClient.invalidateQueries({ queryKey: ["ai_notes", user.id] });
     } catch (err) {
       setGenError(
         err instanceof Error ? err.message : "Failed to generate insights"
@@ -168,4 +171,62 @@ export function useAIInsights() {
     refresh:      generate,      // manual trigger — always regenerates regardless of staleness
     rateInsight,
   };
+}
+
+// ─── AI notes ─────────────────────────────────────────────────────────────────
+// Patterns the analyst wrote down about the user (ai_memories, source = 'ai').
+// The new columns aren't in the generated types until `supabase gen types`
+// runs after the migration, so this goes through an untyped client.
+
+const db = supabase as unknown as SupabaseClient;
+
+export interface AiNote {
+  id:           string;
+  memory_value: string;
+  last_updated: string;
+  expires_at:   string | null;
+}
+
+export function useAINotes(enabled = true) {
+  const { user }    = useAuth();
+  const queryClient = useQueryClient();
+  const queryKey    = ["ai_notes", user?.id];
+
+  const { data: notes } = useQuery({
+    queryKey,
+    enabled: !!user && enabled,
+    queryFn: async () => {
+      const { data, error } = await db
+        .from("ai_memories")
+        .select("id, memory_value, last_updated, expires_at")
+        .eq("source", "ai")
+        .is("dismissed_at", null)
+        .order("last_updated", { ascending: false });
+      if (error) throw error;
+      const now = new Date().toISOString();
+      return ((data ?? []) as AiNote[]).filter((n) => !n.expires_at || n.expires_at > now);
+    },
+    staleTime: 5 * 60 * 1000,
+  });
+
+  // Optimistic: the note disappears at once and comes back if the call fails
+  const dismiss = useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await db.rpc("dismiss_ai_note", { p_id: id });
+      if (error) throw error;
+    },
+    onMutate: async (id) => {
+      await queryClient.cancelQueries({ queryKey });
+      const previous = queryClient.getQueryData<AiNote[]>(queryKey);
+      queryClient.setQueryData<AiNote[]>(queryKey, (old) => (old ?? []).filter((n) => n.id !== id));
+      return { previous };
+    },
+    onError: (_err, _id, ctx) => {
+      queryClient.setQueryData(queryKey, ctx?.previous);
+      toast.error("Couldn't remove that note");
+    },
+    onSuccess: () => toast.success("Got it — the analyst won't assume that again"),
+  });
+
+  return { notes: notes ?? [], dismissNote: dismiss.mutate };
 }
