@@ -767,7 +767,7 @@ export function HabitDetailPanel({ habit, completions }: Props) {
         }
 
         .hdp-coach-3d {
-          position: relative; width: 72px; height: 72px; margin-top: 28px; border-radius: 50%;
+          position: relative; width: 84px; height: 84px; margin-top: 34px; border-radius: 50%;
           background:
             radial-gradient(circle at 50% 30%, hsl(var(--coach) / 0.45), hsl(var(--coach) / 0.12) 72%),
             hsl(var(--card));
@@ -775,12 +775,12 @@ export function HabitDetailPanel({ habit, completions }: Props) {
         }
         /* stage is taller than the circle: bottom clipped to the circle, top open */
         .hdp-coach-3d-stage {
-          position: absolute; left: -4px; bottom: 0; width: 80px; height: 104px;
+          position: absolute; left: -6px; bottom: 0; width: 96px; height: 124px;
           display: flex; align-items: flex-end; justify-content: center;
-          clip-path: inset(0 4px 0 4px round 0 0 36px 36px);
+          clip-path: inset(0 6px 0 6px round 0 0 42px 42px);
         }
         .hdp-coach-badge {
-          position: relative; width: 72px; height: 72px; border-radius: 50%;
+          position: relative; width: 84px; height: 84px; border-radius: 50%;
           display: grid; place-items: center;
           background:
             radial-gradient(circle at 35% 25%, hsl(0 0% 100% / 0.35), transparent 45%),
@@ -1131,8 +1131,8 @@ export function HabitDetailPanel({ habit, completions }: Props) {
                   talkKey={talkKey}
                   talkMs={Math.min(5000, coachLine.split(/\s+/).length * 32 + 900)}
                   fallback={<CoachBadge talkKey={talkKey} />}
-                  width={80}
-                  height={104}
+                  width={96}
+                  height={124}
                 />
               </Suspense>
             </div>
