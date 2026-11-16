@@ -1,7 +1,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { corsHeaders } from "../_shared/cors.ts";
 import { llm, LLM_MODEL } from "../_shared/llm.ts";
-import { parseSms, type ParsedSms } from "../_shared/smsParser.ts";
+import { cleanEmailText, parseSms, type ParsedSms } from "../_shared/smsParser.ts";
 import {
   EXPENSE_CATEGORY_LABELS, FALLBACK_CATEGORY, defaultCategoryFor, isKnownCategory,
 } from "../_shared/merchantCategories.ts";
@@ -18,12 +18,15 @@ const INGEST_SECRET    = Deno.env.get("SMS_INGEST_SECRET") ?? "";
 const INGEST_USER_ID   = Deno.env.get("SMS_INGEST_USER_ID") ?? "";
 
 const MAX_SMS_CHARS   = 1000;
+const MAX_EMAIL_CHARS = 8000;  // raw subject + body; cleaned down to the alert itself
 const AI_TIMEOUT_MS   = 4000;
+const TWIN_WINDOW_MS  = 30 * 60_000;
 const MAX_BACKDATE_MS = 60 * 86_400_000;
 const DHAKA_OFFSET_MS = 6 * 3_600_000;
 
 // ─── Contract ─────────────────────────────────────────────────────────────────
-// Input : { text: string, sender?: string }   (also accepts a text/plain body)
+// Input : { text: string, sender?: string, source?: "sms" | "email" }   (also accepts a text/plain body)
+//         source "email" = a bank alert email (subject + plain body) from the Gmail Apps Script
 // Output: { status, message, ... } — `message` is one human line the iPhone
 //         Shortcut can show as a notification.
 //
@@ -31,7 +34,8 @@ const DHAKA_OFFSET_MS = 6 * 3_600_000;
 //         pending    expense filed, waiting for a tap in the confirm dialog
 //         review     needs a decision in the app (credit, unclear, foreign currency)
 //         ignored    a merchant rule says to ignore this counterparty
-//         duplicate  already received (another automation fired for the same SMS)
+//         duplicate  already received (another automation fired for the same SMS), or the
+//                    same payment already came in by the other channel (SMS ↔ email)
 //         skipped    not a transaction (OTP, promo) — nothing stored
 
 type IngestStatus = "confirmed" | "pending" | "review" | "ignored" | "duplicate" | "skipped";
@@ -188,16 +192,143 @@ async function resolveUserId(req: Request): Promise<string | null> {
   return user?.id ?? null;
 }
 
-async function readBody(req: Request): Promise<{ text: string; sender: string | null }> {
+type Source = "sms" | "email";
+
+async function readBody(req: Request): Promise<{ text: string; sender: string | null; source: Source }> {
   const raw = await req.text();
   try {
     const body = JSON.parse(raw) as Record<string, unknown>;
     const text = [body.text, body.message, body.body, body.content].find((v) => typeof v === "string");
-    const sender = typeof body.sender === "string" ? body.sender : null;
-    return { text: (text as string | undefined) ?? "", sender };
+    const sender = typeof body.sender === "string" ? body.sender.slice(0, 200) : null;
+    return { text: (text as string | undefined) ?? "", sender, source: body.source === "email" ? "email" : "sms" };
   } catch {
-    return { text: raw, sender: null };
+    return { text: raw, sender: null, source: "sms" };
   }
+}
+
+// ─── SMS ↔ email twins ────────────────────────────────────────────────────────
+// A card payment can arrive as an SMS *and* an email. They share the amount and
+// the day (City Bank SMS carry no time), and the card when both name it. The
+// closest unpaired message from the other channel is the twin.
+
+interface Twin {
+  id: string;
+  merchant: string | null;
+  card_last4: string | null;
+  txn_at: string;
+  expense_id: string | null;
+}
+
+type Admin = ReturnType<typeof createClient>;
+
+async function findTwin(
+  admin: Admin,
+  userId: string,
+  p: { source: Source; amount: number; direction: string; txnAt: Date; cardLast4: string | null },
+): Promise<Twin | null> {
+  const t = p.txnAt.getTime();
+  const dayStart = Date.parse(`${dhakaDateString(p.txnAt)}T00:00:00Z`) - DHAKA_OFFSET_MS;
+  const from = new Date(Math.min(dayStart, t - TWIN_WINDOW_MS)).toISOString();
+  const to = new Date(Math.max(dayStart + 86_400_000 - 1, t + TWIN_WINDOW_MS)).toISOString();
+
+  const { data, error } = await admin
+    .from("sms_messages")
+    .select("id, merchant, card_last4, txn_at, expense_id")
+    .eq("user_id", userId)
+    .eq("amount", p.amount)
+    .eq("direction", p.direction)
+    .neq("source", p.source)
+    .neq("status", "duplicate")
+    .gte("txn_at", from)
+    .lte("txn_at", to)
+    .limit(20);
+  if (error) throw error;
+  const candidates = ((data ?? []) as Twin[])
+    .filter((c) => !c.card_last4 || !p.cardLast4 || c.card_last4 === p.cardLast4);
+  if (!candidates.length) return null;
+
+  // One twin each: skip messages another one already matched
+  const { data: taken, error: takenErr } = await admin
+    .from("sms_messages")
+    .select("duplicate_of")
+    .in("duplicate_of", candidates.map((c) => c.id));
+  if (takenErr) throw takenErr;
+  const used = new Set((taken ?? []).map((r: { duplicate_of: string }) => r.duplicate_of));
+  return candidates
+    .filter((c) => !used.has(c.id))
+    .sort((a, b) => Math.abs(Date.parse(a.txn_at) - t) - Math.abs(Date.parse(b.txn_at) - t))[0] ?? null;
+}
+
+// ─── Category + note ──────────────────────────────────────────────────────────
+
+async function chooseCategory(
+  parsed: ParsedSms,
+  rule: MerchantRule | null,
+  ctx: { amount: number; txnAt: Date; rules: MerchantRule[] },
+): Promise<{ category: string; confirmed: boolean; source: "rule" | "default" | "ai" | "fallback" }> {
+  if (rule) {
+    // May be a custom category (stored by name) — the user confirmed it, trust it
+    return { category: rule.category, confirmed: rule.auto_confirm && !rule.always_ask, source: "rule" };
+  }
+  const fromDefaults = defaultCategoryFor(parsed.merchantKey, parsed.kind);
+  const fromAi = !fromDefaults && parsed.merchant && !parsed.isPerson
+    ? await aiGuessCategory(parsed.merchant, { amount: ctx.amount, kind: parsed.kind, txnAt: ctx.txnAt, rules: ctx.rules })
+    : null;
+  return {
+    category: fromDefaults ?? fromAi ?? FALLBACK_CATEGORY,
+    confirmed: false,
+    source: fromDefaults ? "default" : fromAi ? "ai" : "fallback",
+  };
+}
+
+function buildNote(parsed: ParsedSms, who: string): string {
+  const providerLabel = PROVIDER_LABELS[parsed.provider] ?? parsed.provider;
+  // Some bank SMS name no merchant ("CITYTOUCH TXN … Withdrawal") — don't repeat the bank
+  return [
+    who,
+    who !== providerLabel ? providerLabel : null,
+    parsed.fee > 0 ? `incl. fee ${tk(parsed.fee)}` : null,
+  ].filter(Boolean).join(" · ").slice(0, 200);
+}
+
+/**
+ * The twin came first but didn't know the merchant (City Bank card SMS never do).
+ * Give its row the merchant, and its still-pending expense a proper note — and a
+ * category, if it had only been filed under the fallback.
+ */
+async function enrichTwin(
+  admin: Admin,
+  twin: Twin,
+  parsed: ParsedSms,
+  rule: MerchantRule | null,
+  ctx: { amount: number; txnAt: Date; rules: MerchantRule[] },
+): Promise<boolean> {
+  if (twin.merchant || !parsed.merchant) return false;
+  const { error: smsErr } = await admin
+    .from("sms_messages")
+    .update({ merchant: parsed.merchant, merchant_key: parsed.merchantKey, card_last4: twin.card_last4 ?? parsed.cardLast4 })
+    .eq("id", twin.id);
+  if (smsErr) throw smsErr;
+  if (!twin.expense_id) return true;
+
+  const { data: exp, error: expErr } = await admin
+    .from("expenses")
+    .select("id, category, review_status")
+    .eq("id", twin.expense_id)
+    .maybeSingle();
+  if (expErr) throw expErr;
+  // Never touch what the user already confirmed
+  if (!exp || exp.review_status !== "pending") return true;
+
+  const update: Record<string, unknown> = { note: buildNote(parsed, parsed.merchant) };
+  if (exp.category === FALLBACK_CATEGORY) {
+    const chosen = await chooseCategory(parsed, rule, ctx);
+    update.category = chosen.category;
+    if (chosen.confirmed) update.review_status = "confirmed";
+  }
+  const { error: updErr } = await admin.from("expenses").update(update).eq("id", exp.id);
+  if (updErr) throw updErr;
+  return true;
 }
 
 // ─── Main handler ─────────────────────────────────────────────────────────────
@@ -215,10 +346,12 @@ Deno.serve(async (req) => {
     const userId = await resolveUserId(req);
     if (!userId) return reply(401, { error: "Unauthorized", message: "NoSkip: wrong key" });
 
-    const { text, sender } = await readBody(req);
-    const trimmed = text.trim();
+    const { text, sender, source } = await readBody(req);
+    if (source === "email" && text.length > MAX_EMAIL_CHARS) return reply(413, { error: "Email too long" });
+    // An email is cut down to the alert itself (no footer, links or blank runs) so it reads like an SMS
+    const trimmed = (source === "email" ? cleanEmailText(text) : text).trim();
     if (!trimmed) return reply(400, { error: "text is required", message: "NoSkip: empty SMS" });
-    if (trimmed.length > MAX_SMS_CHARS) return reply(413, { error: "SMS too long" });
+    if (trimmed.length > MAX_SMS_CHARS) return reply(413, { error: source === "email" ? "Email too long" : "SMS too long" });
 
     // 1. Parse. OTPs and promos are dropped here and never stored.
     const parsed = parseSms(trimmed, sender);
@@ -250,7 +383,13 @@ Deno.serve(async (req) => {
     else if (parsed.direction === "debit" && parsed.currency === "BDT") smsStatus = "expense";
     else smsStatus = "review";
 
-    // 3. Store the SMS. The unique indexes on (user_id, trx_id) and
+    // 3. Same payment already in from the other channel (SMS ↔ email)? Then this
+    //    one is only kept as a record, and may fill in the merchant the first lacked.
+    const twin = await findTwin(admin, userId, {
+      source, amount, direction: parsed.direction, txnAt, cardLast4: parsed.cardLast4,
+    });
+
+    // 4. Store the message. The unique indexes on (user_id, trx_id) and
     //    (user_id, dedup_hash) turn repeat automations into a 23505.
     const dedupHash = await sha256Hex(trimmed.toLowerCase().replace(/\s+/g, " "));
     const { data: sms, error: smsErr } = await admin
@@ -259,6 +398,9 @@ Deno.serve(async (req) => {
         user_id: userId,
         raw_text: trimmed,
         sender,
+        source,
+        card_last4: parsed.cardLast4,
+        duplicate_of: twin?.id ?? null,
         provider: parsed.provider,
         kind: parsed.kind,
         direction: parsed.direction,
@@ -272,7 +414,7 @@ Deno.serve(async (req) => {
         balance: parsed.balance,
         txn_at: txnAt.toISOString(),
         dedup_hash: dedupHash,
-        status: smsStatus,
+        status: twin ? "duplicate" : smsStatus,
       })
       .select("id")
       .single();
@@ -282,6 +424,19 @@ Deno.serve(async (req) => {
         return reply(200, { status: "duplicate" satisfies IngestStatus, message: "NoSkip: already recorded" });
       }
       throw smsErr;
+    }
+
+    if (twin) {
+      const enriched = await enrichTwin(admin, twin, parsed, rule, { amount, txnAt, rules });
+      const other = source === "email" ? "SMS" : "email";
+      return reply(200, {
+        status: "duplicate" satisfies IngestStatus,
+        sms_id: sms.id,
+        duplicate_of: twin.id,
+        message: enriched
+          ? `NoSkip: ${tk(amount)} matched the ${other} you already have, added ${parsed.merchant}`
+          : `NoSkip: ${tk(amount)} already came in by ${other}`,
+      });
     }
 
     if (smsStatus === "ignored") {
@@ -299,33 +454,12 @@ Deno.serve(async (req) => {
       });
     }
 
-    // 4. Category: my rule → built-in merchant list → AI guess → Other
-    let category: string;
-    let confirmed = false;
-    let categorySource: "rule" | "default" | "ai" | "fallback";
-    if (rule) {
-      // May be a custom category (stored by name) — the user confirmed it, trust it
-      category = rule.category;
-      confirmed = rule.auto_confirm && !rule.always_ask;
-      categorySource = "rule";
-    } else {
-      const fromDefaults = defaultCategoryFor(parsed.merchantKey, parsed.kind);
-      const fromAi = !fromDefaults && parsed.merchant && !parsed.isPerson
-        ? await aiGuessCategory(parsed.merchant, { amount, kind: parsed.kind, txnAt, rules })
-        : null;
-      category = fromDefaults ?? fromAi ?? FALLBACK_CATEGORY;
-      categorySource = fromDefaults ? "default" : fromAi ? "ai" : "fallback";
-    }
+    // 5. Category: my rule → built-in merchant list → AI guess → Other
+    const { category, confirmed, source: categorySource } = await chooseCategory(parsed, rule, { amount, txnAt, rules });
 
     // Fee included — that's what actually left the account
     const total = Math.round((amount + parsed.fee) * 100) / 100;
-    const providerLabel = PROVIDER_LABELS[parsed.provider] ?? parsed.provider;
-    // Some bank SMS name no merchant ("CITYTOUCH TXN … Withdrawal") — don't repeat the bank
-    const note = [
-      who,
-      who !== providerLabel ? providerLabel : null,
-      parsed.fee > 0 ? `incl. fee ${tk(parsed.fee)}` : null,
-    ].filter(Boolean).join(" · ").slice(0, 200);
+    const note = buildNote(parsed, who);
 
     const { data: expense, error: expErr } = await admin
       .from("expenses")

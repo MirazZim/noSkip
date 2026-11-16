@@ -43,7 +43,11 @@ export interface SmsMessage {
   trx_id: string | null;
   balance: number | null;
   txn_at: string;
-  status: "expense" | "review" | "income" | "ignored";
+  /** duplicate: the same payment already came in by the other channel (SMS ↔ email); see duplicate_of */
+  status: "expense" | "review" | "income" | "ignored" | "duplicate";
+  source?: "sms" | "email";
+  card_last4?: string | null;
+  duplicate_of?: string | null;
   expense_id: string | null;
   income_id: string | null;
   created_at: string;

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { parseSms } from "./smsParser";
+import { cleanEmailText, parseSms } from "./smsParser";
 
 // Samples follow the public bKash / Nagad / BD-bank SMS formats. Replace or add
 // real (anonymized) messages here whenever a format changes.
@@ -233,5 +233,157 @@ describe("parseSms — things to drop", () => {
 
   it("drops messages with no amount", () => {
     expect(parseSms("Your bKash account PIN was changed.").isTransaction).toBe(false);
+  });
+});
+
+// ─── Bank alert emails (Gmail → Apps Script → ingest-sms with source "email") ──
+// Gmail's plain-text version of an HTML alert: table cells become lines or tabs,
+// and a footer with phone numbers and links trails the alert.
+
+const CITY_EMAIL_SUBJECT = "BDT 400.00 Transaction from Your CARD Ending in **4470";
+const CITY_EMAIL_FOOTER =
+  "For further assistance, please contact our 24/7 Call Centre at 16234 (local) or +88 02 8331040 (overseas).\n" +
+  "Enjoy up to 20% off with your card! T&C apply. https://www.citybankplc.com/offers";
+
+describe("parseSms — City Bank card alert email", () => {
+  const LINES =
+    `${CITY_EMAIL_SUBJECT}\n\n[image: city bank]\n\nTransaction Alert\n\nYou made a BDT 400.00\nTransaction\n\n` +
+    "Card\n410520XXXXXX4470 VISA Debit Card\nDate\n14-NOV-2026 07:40 PM\nMerchant\nSHAPE AND SHINE\nAmount\nBDT 400.00\n\n" +
+    CITY_EMAIL_FOOTER;
+  const TABS =
+    `${CITY_EMAIL_SUBJECT}\n\nTransaction Alert\nYou made a BDT 400.00 Transaction\n` +
+    "Card\t410520XXXXXX4470 VISA Debit Card\nDate\t14-NOV-2026 07:40 PM\nMerchant\tSHAPE AND SHINE\nAmount\tBDT 400.00\n" +
+    CITY_EMAIL_FOOTER;
+
+  for (const [layout, raw] of [["one field per line", LINES], ["label <tab> value", TABS]] as const) {
+    it(`reads the payment (${layout})`, () => {
+      const p = parseSms(cleanEmailText(raw), "City Bank PLC <noreply@citybankplc.com>");
+      expect(p.isTransaction).toBe(true);
+      expect(p.provider).toBe("city_bank");
+      expect(p.direction).toBe("debit");
+      expect(p.kind).toBe("payment");
+      expect(p.amount).toBe(400);
+      expect(p.currency).toBe("BDT");
+      expect(p.merchant).toBe("SHAPE AND SHINE");
+      expect(p.merchantKey).toBe("shape and shine");
+      expect(p.cardLast4).toBe("4470");
+      // 07:40 PM Dhaka = 13:40 UTC
+      expect(p.txnAt?.toISOString()).toBe("2026-11-14T13:40:00.000Z");
+      expect(p.txnHasTime).toBe(true);
+    });
+  }
+
+  it("ATM withdrawal: cash out, with the ATM as the place", () => {
+    const raw =
+      "BDT 500.00 Transaction from Your CARD Ending in **4470\n\nTransaction Alert\nYou have withdrawn BDT 500.00\n" +
+      "Card\t410520XXXXXX4470 VISA Debit Card\nDate\t11-NOV-2026 05:16 PM\nLocation\tShantinagar RATM\nAmount\tBDT 500.00\n\n" +
+      CITY_EMAIL_FOOTER;
+    const p = parseSms(cleanEmailText(raw), "City Bank PLC <noreply@citybankplc.com>");
+    expect(p.isTransaction).toBe(true);
+    expect(p.provider).toBe("city_bank");
+    expect(p.kind).toBe("cash_out");
+    expect(p.direction).toBe("debit");
+    expect(p.amount).toBe(500);
+    expect(p.merchant).toBe("Shantinagar RATM");
+    expect(p.isPerson).toBe(false);
+    expect(p.cardLast4).toBe("4470");
+    expect(p.txnAt?.toISOString()).toBe("2026-11-11T11:16:00.000Z");
+  });
+
+  it("cleanEmailText drops the footer (its promo words would otherwise skip the alert) and links", () => {
+    const t = cleanEmailText(LINES);
+    expect(t).not.toMatch(/Call Centre|20% off|https?:/);
+    expect(t).toMatch(/^BDT 400\.00 Transaction/);
+    expect(t).not.toMatch(/\n\n\n/);
+  });
+});
+
+describe("parseSms — times and cards", () => {
+  it("reads 12-hour times", () => {
+    expect(parseSms("Payment Tk 50.00 to SHOP successful at 01/11/2026 12:05 AM").txnAt?.toISOString())
+      .toBe("2026-10-31T18:05:00.000Z");
+    expect(parseSms("Payment Tk 50.00 to SHOP successful at 01/11/2026 12:30 PM").txnAt?.toISOString())
+      .toBe("2026-11-01T06:30:00.000Z");
+  });
+
+  it("takes the last 4 digits only from a card, never from an account mask", () => {
+    expect(parseSms("Your VISA Card ending 1234 has been used for BDT 1,200.00 at SHWAPNO on 12-Oct-26 14:14").cardLast4).toBe("1234");
+    expect(parseSms("1,250.00 BDT debited from card xx4321 at DARAZ BANGLADESH LTD on 11-Oct-2026").cardLast4).toBe("4321");
+    expect(parseSms("16-Oct-2026\nE-COMM/POS TXN\nTk. 210 Purchased\nTk. 6,767 Balance\nA/C: 2304***0000").cardLast4).toBeNull();
+    expect(parseSms("You have transferred BDT 220.00 to Account/Card 220400***9001").cardLast4).toBeNull();
+  });
+});
+
+// CITYTOUCH (City Bank internet banking) alert emails come from another address
+describe("parseSms — City Bank CITYTOUCH emails", () => {
+  const SENDER = "CITYTOUCH <citytouch@thecitybank.com>";
+  const FOOTER =
+    "For further assistance, please contact our 24/7 Call Centre at 16234 (local) or +88 02 8331040 (overseas).\n" +
+    "You can also email us at: citytouch@citybankplc.com\n\nRegards\nCity Bank PLC.";
+
+  it("wallet transfer to a bKash number: a debit to a person, City Bank not bKash", () => {
+    const raw =
+      "You made a Wallet Transfer\n\nTransaction Alert\nYou have transferred BDT 1,020.00 to 01689154442\n" +
+      "Transaction Type\tbKash\nTransferred Amount\tBDT 1,020.00\nService Charge\tBDT 0.00\nVAT\tBDT 0.00\n" +
+      "Total Amount\tBDT 1,020.00\nRemarks\nFrom Account/Card\t230447***3001\nBeneficiary Wallet Number\t01689154442\n" +
+      "Date and Time\t2026-11-10 15:37:35\nReference Number\tCT100021327010\n\n" + FOOTER;
+    const p = parseSms(cleanEmailText(raw), SENDER);
+    expect(p.isTransaction).toBe(true);
+    expect(p.provider).toBe("city_bank");
+    expect(p.kind).toBe("transfer");
+    expect(p.direction).toBe("debit");
+    expect(p.amount).toBe(1020);
+    expect(p.fee).toBe(0);
+    expect(p.merchant).toBe("01689154442");
+    expect(p.isPerson).toBe(true);
+    expect(p.cardLast4).toBeNull();
+    expect(p.txnAt?.toISOString()).toBe("2026-11-10T09:37:00.000Z");
+  });
+
+  it("transfer to another City Bank account", () => {
+    const raw =
+      "You made a Fund Transfer\n\nCitytouch Alert\nYou have transferred BDT 220.00 to Account/Card 220400***9001\n" +
+      "Transaction Type\tCity Bank Transfer\nTransferred Amount\tBDT 220.00\nService Charge\tBDT 0.00\nVAT\tBDT 0.00\n" +
+      "Grand Total\tBDT 220.00\nRemarks\nFrom Account/Card\t230447***3001\nTo Account\t220400***9001\n" +
+      "Date & Time\t2026-11-10 15:33:48\nReference Number\tCT100021326181\n\n" + FOOTER;
+    const p = parseSms(cleanEmailText(raw), SENDER);
+    expect(p.isTransaction).toBe(true);
+    expect(p.provider).toBe("city_bank");
+    expect(p.kind).toBe("transfer");
+    expect(p.direction).toBe("debit");
+    expect(p.amount).toBe(220);
+    expect(p.cardLast4).toBeNull();
+    expect(p.txnAt?.toISOString()).toBe("2026-11-10T09:33:00.000Z");
+  });
+
+  it("mobile recharge: names the operator, not the phone number", () => {
+    const raw =
+      "You made a Mobile Recharge\n\nTransaction Alert\nYou made a Mobile Recharge of BDT 200.00\n" +
+      "Mobile Number\t01977766048\nOperator Name\tBanglalink\nRecharge Amount\tBDT 200.00\nConnection Type\tPREPAID\n" +
+      "From Account/Card\t230447***3001\nDate & Time\t2026-11-10 15:47:04\nRef Number\tCT100021329154\n\n" + FOOTER;
+    const p = parseSms(cleanEmailText(raw), SENDER);
+    expect(p.isTransaction).toBe(true);
+    expect(p.provider).toBe("city_bank");
+    expect(p.kind).toBe("recharge");
+    expect(p.direction).toBe("debit");
+    expect(p.amount).toBe(200);
+    expect(p.merchant).toBe("Banglalink");
+    expect(p.isPerson).toBe(false);
+    expect(p.cardLast4).toBeNull();
+    expect(p.txnAt?.toISOString()).toBe("2026-11-10T09:47:00.000Z");
+  });
+
+  it("deposit: money in, with the balance kept apart from the amount", () => {
+    const raw =
+      "Deposit Alert\n\nDeposit Alert\nYou received BDT 34,871.00 as Deposit\n" +
+      "Account\t23044*****001 GENERAL SAVINGS A/C\nDate\t10-NOV-2026 03:26 PM\nAmount\tBDT 34,871.00\n" +
+      "Available Balance\tBDT 34,880.14\n\n" + FOOTER;
+    const p = parseSms(cleanEmailText(raw), SENDER);
+    expect(p.isTransaction).toBe(true);
+    expect(p.provider).toBe("city_bank");
+    expect(p.direction).toBe("credit");
+    expect(p.amount).toBe(34871);
+    expect(p.balance).toBe(34880.14);
+    expect(p.txnAt?.toISOString()).toBe("2026-11-10T09:26:00.000Z");
   });
 });

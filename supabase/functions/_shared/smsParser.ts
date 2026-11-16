@@ -1,4 +1,4 @@
-// Bank / MFS SMS → structured transaction.
+// Bank / MFS SMS (or a bank's alert email) → structured transaction.
 //
 // Pure module (no Deno APIs, no imports) so the same file runs in the
 // `ingest-sms` edge function and in Vitest (smsParser.test.ts).
@@ -36,6 +36,8 @@ export interface ParsedSms {
   txnAt: Date | null;
   /** false when the SMS gives only a date (City Bank) — txnAt is then noon that day. */
   txnHasTime: boolean;
+  /** Last 4 digits of the card used, when the text names a card ("**4470", "XXXXXX4470"). */
+  cardLast4: string | null;
 }
 
 // ─── Money ────────────────────────────────────────────────────────────────────
@@ -120,7 +122,7 @@ const PROMO_RE =
   /(?:\boffer\b|\benjoy\b|\bget up ?to\b|\bupto\b|\bup to\b|\bwin\b|\bdiscount\b|%\s*off|\d+\s*%|\bhurry\b|\bvalid (?:till|until)\b|\bdial \*|\bt&c\b|\bcampaign\b|\bchance\b|\bcoupon\b|\bpromo\b)/i;
 
 const KEYWORDS: { re: RegExp; kind: SmsKind; direction: SmsDirection }[] = [
-  { re: /\bcash ?out\b|\batm\b|\bcash withdrawal\b/i, kind: "cash_out", direction: "debit" },
+  { re: /\bcash ?out\b|\batm\b|\bcash withdrawal\b|\byou have withdrawn\b/i, kind: "cash_out", direction: "debit" },
   { re: /\bcash ?in\b/i, kind: "cash_in", direction: "credit" },
   { re: /\bsend money\b|\bmoney sent\b|\byou have sent\b|\bsent (?:tk|bdt)/i, kind: "send_money", direction: "debit" },
   { re: /\b(?:mobile )?recharge\b|\btop-?up\b/i, kind: "recharge", direction: "debit" },
@@ -129,8 +131,13 @@ const KEYWORDS: { re: RegExp; kind: SmsKind; direction: SmsDirection }[] = [
   { re: /\brefund(?:ed)?\b|\breversal\b|\breversed\b|\bcash ?back\b/i, kind: "refund", direction: "credit" },
   { re: /\breceived\b|\bcredited\b|\bdeposited\b|\bdeposit\b/i, kind: "received", direction: "credit" },
   { re: /\btransferred to\b|\bfund transfer\b|\btransfer to\b/i, kind: "transfer", direction: "debit" },
+  // City Bank CITYTOUCH emails: "You made a Wallet Transfer" / "You have transferred BDT 1,020.00 to …"
+  { re: /\byou have transferred\b|\byou made an? (?:wallet |fund |bank )?transfer\b/i, kind: "transfer", direction: "debit" },
   { re: /\bpayment\b|\bpaid\b|\bpurchase[ds]?\b|\bspent\b|\bused (?:for|at)\b|\bpos\b|\be-?com\b/i, kind: "payment", direction: "debit" },
   { re: /\bdebited\b|\bwithdrawn\b|\bwithdrawal\b|\bdeducted\b|\b(?:txn|transaction) of\b/i, kind: "payment", direction: "debit" },
+  // (not the subject "… Transaction from Your CARD …": ATM withdrawals share it)
+  // "You made a BDT 400.00 Transaction" (may wrap before "Transaction")
+  { re: /\byou(?: have)? made an? (?:tk\.?|bdt|৳|[a-z]{3})\s*[\d,]+(?:\.\d+)?\s+transaction\b/i, kind: "payment", direction: "debit" },
 ];
 
 function classify(text: string): { kind: SmsKind; direction: SmsDirection } {
@@ -146,6 +153,9 @@ function classify(text: string): { kind: SmsKind; direction: SmsDirection } {
 }
 
 function detectProvider(text: string, sender: string | null): string {
+  // The bank's own email sender beats the text: a City Bank → bKash wallet transfer
+  // says "bKash" in its body but is a City Bank account debit
+  if (sender && /citytouch|city ?bank|citybankplc|thecitybank/i.test(sender)) return "city_bank";
   const hay = `${sender ?? ""} ${text}`;
   if (/bkash/i.test(hay)) return "bkash";
   if (/nagad/i.test(hay)) return "nagad";
@@ -172,7 +182,9 @@ const TRX_RE =
 
 // Where a merchant / counterparty name stops
 const STOP = String.raw`(?=\s+(?:is\s+)?successful|\s+successfully|\s+on\s+\d|\s+on\s+[A-Z][a-z]{2}\b|\s+(?:Fee|Ref|TrxID|TxnID|Trx|Txn|Balance|Bal|Avl|Available|Amount|Date|Time)\b|[.;,]\s|\.$|\s{2,}|\n|$)`;
-const MERCHANT_LABEL_RE = /\b(?:Merchant(?:\s*Name)?|Receiver|Sender|Payee)\s*:\s*([^\n]+?)(?=\s{2,}|\n|\s*(?:TxnID|TrxID|Txn|Trx|Balance|Bal|Amount|Fee|Date|Time)\b|$)/i;
+// "Location" is where a City Bank card email puts the ATM ("Shantinagar RATM"),
+// "Operator Name" where a CITYTOUCH recharge email names the mobile operator
+const MERCHANT_LABEL_RE = /\b(?:Merchant(?:\s*Name)?|Receiver|Sender|Payee|Location|Operator(?:\s*Name)?)(?:[ \t]*:[ \t]*|[ \t]*\n[ \t]*|\t+[ \t]*| {2,})([^\n]+?)(?=\s{2,}|\n|\s*(?:TxnID|TrxID|Txn|Trx|Balance|Bal|Amount|Fee|Date|Time)\b|$)/i;
 const TO_RE = new RegExp(String.raw`\bto\s+(?!your\b)([^\n]+?)${STOP}`, "i");
 const AT_RE = new RegExp(String.raw`\bat\s+(?!\d{1,2}[:/.-])([^\n]+?)${STOP}`, "i");
 const FROM_RE = new RegExp(String.raw`\bfrom\s+(?!your\b)([^\n]+?)${STOP}`, "i");
@@ -222,24 +234,58 @@ function dhakaDate(y: number, mo: number, d: number, h: number, mi: number): Dat
   return new Date(Date.UTC(y, mo, d, h - 6, mi));
 }
 
+/** "07:40 PM" → 19 · "12:05 AM" → 0 · "14:14" stays 14. */
+function to24h(h: number, ampm?: string): number {
+  if (!ampm) return h;
+  const pm = /^p/i.test(ampm);
+  if (h === 12) return pm ? 12 : 0;
+  return pm ? h + 12 : h;
+}
+
+// "14:14", "07:40 PM", "7:40pm" — the optional time that can follow a date
+const TIME = String.raw`(?:[\s,]+(\d{1,2}):(\d{2})(?::\d{2})?(?:\s*([AaPp])\.?[Mm]\.?)?)?`;
+const DATE_DMY_NUM = new RegExp(String.raw`\b(\d{1,2})[/.-](\d{1,2})[/.-](\d{2,4})` + TIME);
+const DATE_DMY_MON = new RegExp(String.raw`\b(\d{1,2})[\s-]([A-Za-z]{3})[A-Za-z]*[\s-](\d{2,4})` + TIME);
+const DATE_YMD = new RegExp(String.raw`\b(\d{4})-(\d{2})-(\d{2})(?:[T\s]+(\d{1,2}):(\d{2})(?::\d{2})?(?:\s*([AaPp])\.?[Mm]\.?)?)?`);
+
 /** A date with no time ("16-Oct-2026") is placed at noon and flagged. */
 function parseDate(text: string): { at: Date | null; hasTime: boolean } {
-  const at = (y: number, mo: number, d: number, h?: string, mi?: string) => ({
-    at: dhakaDate(y, mo, d, h ? +h : 12, mi ? +mi : 0),
+  const at = (y: number, mo: number, d: number, h?: string, mi?: string, ampm?: string) => ({
+    at: dhakaDate(y, mo, d, h ? to24h(+h, ampm) : 12, mi ? +mi : 0),
     hasTime: h !== undefined,
   });
   // 12/10/2026 14:14  ·  12-10-2026  ·  12.10.26 (day first, as BD banks write it)
-  let m = /\b(\d{1,2})[/.-](\d{1,2})[/.-](\d{2,4})(?:[\s,]+(\d{1,2}):(\d{2}))?/.exec(text);
-  if (m) return at(+m[3], +m[2] - 1, +m[1], m[4], m[5]);
-  // 12-Oct-26 14:14  ·  12 Oct 2026
-  m = /\b(\d{1,2})[\s-]([A-Za-z]{3})[a-z]*[\s-](\d{2,4})(?:[\s,]+(\d{1,2}):(\d{2}))?/.exec(text);
+  let m = DATE_DMY_NUM.exec(text);
+  if (m) return at(+m[3], +m[2] - 1, +m[1], m[4], m[5], m[6]);
+  // 12-Oct-26 14:14  ·  12 Oct 2026  ·  14-NOV-2026 07:40 PM
+  m = DATE_DMY_MON.exec(text);
   if (m && MONTHS[m[2].toLowerCase()] !== undefined) {
-    return at(+m[3], MONTHS[m[2].toLowerCase()], +m[1], m[4], m[5]);
+    return at(+m[3], MONTHS[m[2].toLowerCase()], +m[1], m[4], m[5], m[6]);
   }
   // 2026-10-12 14:14
-  m = /\b(\d{4})-(\d{2})-(\d{2})(?:[T\s]+(\d{1,2}):(\d{2}))?/.exec(text);
-  if (m) return at(+m[1], +m[2] - 1, +m[3], m[4], m[5]);
+  m = DATE_YMD.exec(text);
+  if (m) return at(+m[1], +m[2] - 1, +m[3], m[4], m[5], m[6]);
   return { at: null, hasTime: false };
+}
+
+// Only digits that follow a *card* mention: "A/C: 2304***0000" is an account, and
+// "Account/Card 220400***9001" (CITYTOUCH transfers) can be either, so neither counts
+const CARD_LAST4_RE = /(?<!account\/)\bcard\b[\s\S]{0,40}?(?:[Xx*•]{2,}|ending\s*(?:in|with)?\s*[Xx*•]*\s*)(\d{4})(?!\d)/i;
+
+/** The bank alert part of an email: no footer, links or blank-line runs, so it reads like an SMS. */
+export function cleanEmailText(raw: string): string {
+  const text = raw.replace(/\r\n?/g, "\n").replace(/\u00a0/g, " ");
+  const footer = /^\s*(?:for (?:further|any) (?:assistance|queries|query)|this is (?:a|an) (?:system|auto)[- ]?generated|please do not reply|disclaimer|to unsubscribe|follow us|download (?:our|the) app|call centre|contact us)/im;
+  const cut = footer.exec(text);
+  return (cut ? text.slice(0, cut.index) : text)
+    .replace(/<?https?:\/\/\S+>?/g, "")
+    .replace(/\[image:[^\]]*\]/gi, "")
+    .split("\n")
+    // a table cell break ("Merchant<TAB>SHAPE AND SHINE") becomes "Merchant: SHAPE AND SHINE"
+    .map((l) => l.replace(/ *\t+ */g, ": ").replace(/ {3,}/g, "  ").trim())
+    .filter((l, i, all) => l !== "" || (i > 0 && all[i - 1] !== ""))
+    .join("\n")
+    .trim();
 }
 
 function extractCounterparty(text: string, direction: SmsDirection) {
@@ -264,7 +310,7 @@ export function parseSms(rawText: string, sender: string | null = null): ParsedS
     isTransaction: false, skipReason: null, provider: detectProvider(text, sender),
     kind: "unknown", direction: "unknown", amount: null, currency: "BDT", fee: 0,
     balance: null, merchant: null, merchantKey: null, isPerson: false, trxId: null, txnAt: null,
-    txnHasTime: false,
+    txnHasTime: false, cardLast4: CARD_LAST4_RE.exec(text)?.[1] ?? null,
   };
 
   if (OTP_RE.test(text)) return { ...base, skipReason: "otp" };

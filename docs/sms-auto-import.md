@@ -103,6 +103,48 @@ Supabase secret `SMS_INGEST_SECRET`. Never put it in `.env`, the repo or a scree
 
 ---
 
+## Gmail import
+
+The Shortcut only works if the phone is online when the SMS arrives; offline, that SMS is
+never forwarded. Bank alert **emails** wait in Gmail instead, and City Bank's email names the
+shop, the card and the exact time. So a small Google Apps Script in my own Gmail reads them
+every 5 minutes, on Google's servers, and sends them to the same `ingest-sms` function.
+
+**One-time setup (5 minutes, on a computer):**
+
+1. Go to [script.google.com](https://script.google.com) signed in with the Gmail that gets
+   the bank alerts → **New project** → name it `NoSkip Gmail import`.
+2. Delete the sample code, paste all of [`docs/gmail-import.gs`](gmail-import.gs), and save.
+3. ⚙ **Project Settings** → **Script properties** → add two:
+   - `NOSKIP_URL` = `https://<project-ref>.supabase.co/functions/v1/ingest-sms`
+     (the same URL as the Shortcut)
+   - `NOSKIP_KEY` = the key from `noskip-sms-key.txt` (the same one as the Shortcut header)
+4. Back in the editor, choose the `install` function in the toolbar → **Run**.
+5. Google asks for permission → pick the account → **Advanced** → **Go to NoSkip Gmail import
+   (unsafe)** → **Allow**. ("Unsafe" only means Google hasn't reviewed my own script.) It
+   needs to read Gmail, add a label, and call NoSkip.
+6. Check **Executions** (left sidebar): the first run lists each alert it sent. Imported
+   threads get a **NoSkip** label in Gmail.
+
+**What it does:**
+
+- Every 5 minutes it looks at the last 3 days of alerts from the senders in `SENDERS`, and
+  sends each message it hasn't sent before. It remembers the last 500 message IDs.
+- If NoSkip is down or the key is wrong, it doesn't mark the message as sent, so the next run
+  tries again. Re-sending is safe: NoSkip answers "duplicate".
+- **SMS and email of the same payment don't make two expenses.** Same amount, same day
+  (or within 30 minutes), same card when both name one, other channel → the second one is
+  kept as `status = 'duplicate'` with `duplicate_of` pointing at the first, and files nothing.
+- **If the SMS came first without the shop name** (every City Bank card SMS), the email fills
+  it in: the SMS row gets the merchant, and if its expense is still waiting for me, its note
+  becomes the shop name, and a still-"Uncategorized" category gets a proper guess. Expenses I
+  already confirmed are never changed.
+- Another bank: add its sender address to `SENDERS`, paste one of its alert emails as a test
+  case in `smsParser.test.ts` (run through `cleanEmailText`), and fix the parser if needed.
+- Stop it: run `uninstall` in the script editor.
+
+---
+
 ## Daily use
 
 - **Pay normally.** The phone forwards the SMS in the background. If the notification step
@@ -121,9 +163,12 @@ Supabase secret `SMS_INGEST_SECRET`. Never put it in `.env`, the repo or a scree
 
 ## Known limits
 
-- **City Bank SMS don't name the shop** ("Tk. 800 Withdrawal"). Every City Bank payment
-  shows up, but each one asks for a category, and NoSkip can't tell a shop payment from
-  ATM cash.
+- **City Bank SMS don't name the shop** ("Tk. 800 Withdrawal"). With the Gmail import on,
+  the card alert email fills in the shop for card payments. ATM cash and account transfers
+  have no email, so those still ask for a category.
+- **The SMS ↔ email match is by amount and day.** Two card payments of the exact same amount
+  on the same day, one seen only by SMS and the other only by email, would be paired by
+  mistake. Each message pairs with at most one other, so with both channels on this is rare.
 - **USD card charges** (e.g. Netflix) go to the review list. I type the BDT amount.
 - **Cash** never sends an SMS, so it still needs manual entry.
 
@@ -141,7 +186,9 @@ Supabase secret `SMS_INGEST_SECRET`. Never put it in `.env`, the repo or a scree
 | Added or renamed expense categories | Update `EXPENSE_CATEGORY_LABELS` in `merchantCategories.ts` too; a test fails if they drift |
 | Redeploy the function | `npx supabase functions deploy ingest-sms --no-verify-jwt` |
 | Key leaked, so replace it | Generate a new key → `npx supabase secrets set SMS_INGEST_SECRET=<new>` → update the header in every iPhone automation and in `noskip-sms-key.txt` |
-| Turn it off | Disable the iPhone automations (nothing else needs to change) |
+| Turn it off | Disable the iPhone automations, and run `uninstall` in the Gmail script |
+| Is the Gmail import running? | script.google.com → the project → **Executions** (one every 5 min). Logs show NoSkip's reply per email |
+| Key replaced | Also update `NOSKIP_KEY` in the Gmail script's Script properties |
 
 ### Troubleshooting
 
@@ -167,9 +214,12 @@ Supabase secret `SMS_INGEST_SECRET`. Never put it in `.env`, the repo or a scree
 | Confirm dialog + paste box | `src/components/expenses/ReviewQueueDialog.tsx` (+ `.test.tsx`) |
 | Banner / auto-open | `src/components/expenses/ReviewQueueLauncher.tsx` (mounted in `AppLayout`) |
 | Settings section + rules | `src/components/expenses/SmsImportSettings.tsx` |
+| Gmail import script | `docs/gmail-import.gs` (runs in my Google account, not in this repo's deploy) |
+| Email columns + duplicate status | `supabase/migrations/20261116120000_email_import.sql` |
 
 **Database tables:**
-- `sms_messages`: raw + parsed SMS, with status `expense`, `review`, `income` or `ignored`
+- `sms_messages`: raw + parsed SMS **and alert emails** (`source` = `sms` / `email`), with
+  status `expense`, `review`, `income`, `ignored` or `duplicate` (+ `duplicate_of`, `card_last4`)
 - `merchant_rules`: learned shop → category, with confirm count, auto and always-ask flags
 - new columns on `expenses`: `origin`, `review_status`, `sms_message_id`
 - new columns on `incomes`: `origin`, `sms_message_id`
