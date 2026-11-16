@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { format } from "date-fns";
-import { CalendarIcon, Plus, Check, ChevronDown, X, Tag, Palette, Loader2, Trash2 } from "lucide-react";
+import { CalendarIcon, Plus, Check, ChevronDown, X, Tag, Palette, Loader2, Trash2, Search } from "lucide-react";
 import { z } from "zod";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -21,6 +21,7 @@ import {
   type CustomCategory,
 } from "@/hooks/useCustomCategories";
 import { toast } from "sonner";
+import { searchCategories } from "@/lib/categorySearch";
 
 // ─── Palette ──────────────────────────────────────────────────────────────────
 
@@ -59,7 +60,7 @@ interface CreateCategoryPanelProps {
   existingNames: string[];
 }
 
-function CreateCategoryPanel({ onCreated, onCancel, existingNames }: CreateCategoryPanelProps) {
+export function CreateCategoryPanel({ onCreated, onCancel, existingNames }: CreateCategoryPanelProps) {
   const [name, setName] = useState("");
   const [color, setColor] = useState(PALETTE[5]);
   const [error, setError] = useState("");
@@ -213,14 +214,41 @@ export function CategorySelector({
   const [open, setOpen] = useState(false);
   const [creating, setCreating] = useState(false);
   const [expandedParentId, setExpandedParentId] = useState<string | null>(null);
+  const [query, setQuery] = useState("");
+  const [activeIdx, setActiveIdx] = useState(0);
   const deleteCategory = useDeleteCustomCategory();
 
   const selectedColor = value ? getCategoryColor(value, customCategories) : null;
+  const matches = searchCategories(query, customCategories);
+  const searching = query.trim().length > 0;
 
   useEffect(() => {
     const { parentId } = parseCategoryValue(value);
     setExpandedParentId(parentId || null);
   }, [value]);
+
+  // A fresh search every time the picker opens
+  useEffect(() => { if (!open) setQuery(""); }, [open]);
+  useEffect(() => { setActiveIdx(0); }, [query]);
+
+  const pick = (val: string) => {
+    onChange(val);
+    setOpen(false);
+  };
+
+  const onSearchKey = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+      e.preventDefault();
+      if (matches.length) setActiveIdx((i) => (i + (e.key === "ArrowDown" ? 1 : matches.length - 1)) % matches.length);
+    } else if (e.key === "Enter") {
+      e.preventDefault(); // never submit the surrounding expense form
+      if (matches[activeIdx]) pick(matches[activeIdx].value);
+    } else if (e.key === "Escape" && query) {
+      e.preventDefault();
+      e.stopPropagation(); // clear the search, don't close the dialog
+      setQuery("");
+    }
+  };
 
   const handleCreated = (cat: CustomCategory) => {
     onCategoryCreated(cat);
@@ -278,12 +306,96 @@ export function CategorySelector({
           onWheel={(e) => e.stopPropagation()}
           onTouchMove={(e) => e.stopPropagation()}
         >
+          {!creating && (
+            <div className="relative mb-2">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                // Desktop: type straight away. Touch: don't throw the keyboard up just for opening.
+                autoFocus={typeof window !== "undefined" && window.matchMedia?.("(pointer: fine)").matches}
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                onKeyDown={onSearchKey}
+                placeholder="Search categories…"
+                aria-label="Search categories"
+                role="combobox"
+                aria-expanded={searching}
+                aria-controls="category-search-results"
+                aria-activedescendant={searching && matches[activeIdx] ? `category-opt-${activeIdx}` : undefined}
+                enterKeyHint="done"
+                className="h-11 rounded-xl border-transparent bg-foreground/[0.06] pl-9 pr-9 placeholder:text-muted-foreground/70 focus-visible:border-primary/40 focus-visible:ring-0 focus-visible:ring-offset-0"
+                // Prevent iOS zoom on focus
+                style={{ fontSize: "16px" }}
+              />
+              {query && (
+                <button
+                  type="button"
+                  onClick={() => setQuery("")}
+                  className="absolute right-2 top-1/2 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-full hover:bg-muted"
+                  aria-label="Clear search"
+                >
+                  <X className="h-3.5 w-3.5 text-muted-foreground" />
+                </button>
+              )}
+            </div>
+          )}
+
           {creating ? (
             <CreateCategoryPanel
               onCreated={handleCreated}
               onCancel={() => setCreating(false)}
               existingNames={allNames}
             />
+          ) : searching ? (
+            <div id="category-search-results" role="listbox" aria-label="Matching categories" className="flex flex-col gap-0.5">
+              {matches.length === 0 ? (
+                <div className="flex flex-col items-center gap-2 px-3 py-4 text-center">
+                  <p className="text-sm text-muted-foreground">No category matches “{query.trim()}”.</p>
+                  <button
+                    type="button"
+                    onClick={() => setCreating(true)}
+                    className="flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-sm font-medium text-primary hover:bg-primary/10 transition-colors"
+                  >
+                    <Plus className="h-3.5 w-3.5" /> Create a custom category
+                  </button>
+                </div>
+              ) : (
+                matches.map((m, i) => {
+                  const isSelected = value === m.value;
+                  return (
+                    <button
+                      key={m.value}
+                      id={`category-opt-${i}`}
+                      type="button"
+                      role="option"
+                      aria-selected={isSelected}
+                      onClick={() => pick(m.value)}
+                      onMouseEnter={() => setActiveIdx(i)}
+                      className={cn(
+                        "flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left text-sm transition-colors",
+                        i === activeIdx ? "bg-muted" : "hover:bg-muted",
+                        isSelected && "font-semibold",
+                      )}
+                      style={isSelected ? { color: m.color } : {}}
+                    >
+                      {m.emoji ? (
+                        <span className="w-6 text-center text-lg leading-none">{m.emoji}</span>
+                      ) : (
+                        <span className="flex w-6 justify-center">
+                          <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: m.color }} />
+                        </span>
+                      )}
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate">{m.label}</span>
+                        <span className="block truncate text-[11px] font-normal text-muted-foreground">
+                          {m.parent || "Custom"}
+                        </span>
+                      </span>
+                      {isSelected && <Check className="h-3.5 w-3.5 shrink-0" />}
+                    </button>
+                  );
+                })
+              )}
+            </div>
           ) : expandedParentId ? (
             (() => {
               const parentCat = EXPENSE_CATEGORIES.find((c) => c.id === expandedParentId);

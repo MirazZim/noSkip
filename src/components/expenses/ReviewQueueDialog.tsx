@@ -1,19 +1,19 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { format, parseISO } from "date-fns";
-import { Check, ClipboardPaste, Hand, Loader2, PartyPopper, Smartphone, Trash2, Undo2 } from "lucide-react";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { format, isToday, isYesterday, parseISO } from "date-fns";
+import { CalendarDays, Check, ClipboardPaste, Hand, Loader2, MessageSquareText, PartyPopper, Trash2, Undo2, X } from "lucide-react";
+import { Dialog, DialogClose, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { CardStack, type CardStackHandle, type StackItem } from "@/components/ui/card-stack";
-import { CategorySelector } from "@/components/expenses/AddExpenseDialog";
-import { EXPENSE_CATEGORIES, getCategoryColor, getCategoryDisplayLabel } from "@/hooks/useExpenses";
+import { CategoryPickerPanel, CategoryPill, IOS_FONT } from "@/components/expenses/CategoryPickerPanel";
+import { getCategoryColor, getCategoryDisplayLabel } from "@/hooks/useExpenses";
 import { INCOME_SOURCES } from "@/hooks/useIncomes";
 import { useCustomCategories } from "@/hooks/useCustomCategories";
 import { useCurrency } from "@/hooks/useCurrency";
 import {
-  AUTO_CONFIRM_AFTER, findRule, providerLabel,
+  findRule, providerLabel,
   usePendingExpenses, useReviewSms, useMerchantRules,
   useConfirmSmsExpense, useConfirmAllSmsExpenses, useDismissSmsExpense, useUndoDismissSmsExpense,
   useLogSmsAsExpense, useLogSmsAsIncome, useIgnoreSms, useUndoIgnoreSms, useIngestSms,
@@ -53,13 +53,14 @@ const EMERALD = "hsl(152, 69%, 40%)";
 const GLASS_EDGE = "inset 0 1px 0 hsl(0 0% 100% / 0.35), inset 0 -1px 0 hsl(0 0% 100% / 0.06)";
 const GLASS_BTN =
   "rounded-full border border-foreground/10 bg-foreground/[0.06] text-foreground backdrop-blur-xl hover:bg-foreground/[0.12] shadow-[inset_0_1px_0_hsl(0_0%_100%/0.25)]";
+// Apple's system blue, the one accent on an otherwise grey card
 const PRIMARY_BTN =
-  "rounded-full shadow-[0_8px_24px_-8px_hsl(var(--primary)/0.7),inset_0_1px_0_hsl(0_0%_100%/0.3)]";
+  "ios-press rounded-full border-0 bg-gradient-to-b from-[#3d9bff] to-[#0a7aff] text-[17px] font-semibold tracking-[-0.01em] text-white shadow-[0_8px_22px_-8px_rgba(10,122,255,0.75),inset_0_1px_0_rgba(255,255,255,0.28)] hover:from-[#4da3ff] hover:to-[#0a84ff] disabled:opacity-60";
 // Removing is the rare action: a quiet text link under the big primary button,
 // never a twin button beside it (that's where mis-taps came from). Undo backs it up.
 const QUIET_LINK =
-  "w-full py-1.5 text-center text-xs text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50";
-const DANGER_LINK = cn(QUIET_LINK, "font-medium text-destructive hover:text-destructive/80");
+  "w-full py-1.5 text-center text-[13px] text-muted-foreground hover:text-foreground active:opacity-50 transition-opacity disabled:opacity-50";
+const DANGER_LINK = cn(QUIET_LINK, "text-[15px] text-[#ff3b30] hover:text-[#ff3b30]/80 dark:text-[#ff453a]");
 const UNDO_MS = 6000;
 const CARD_SHADOW = "0 24px 48px -18px rgba(0, 0, 0, 0.45), 0 8px 18px -10px rgba(0, 0, 0, 0.25)";
 
@@ -69,26 +70,6 @@ const tint = (color: string, alpha: number) => `color-mix(in srgb, ${color} ${Ma
 function whenLabel(iso: string | undefined | null): string {
   if (!iso) return "";
   try { return format(parseISO(iso), "EEE d MMM, h:mm a"); } catch { return ""; }
-}
-
-function learningHint(
-  rule: MerchantRule | null, merchant: string | null, category: string, isPerson: boolean,
-): string {
-  const name = merchant ?? "this merchant";
-  if (isPerson && (!rule || rule.always_ask)) {
-    return "Payments to people always ask. NoSkip remembers the category you pick.";
-  }
-  if (rule?.always_ask) return `${name} is set to always ask.`;
-  if (!rule || rule.action === "ignore") {
-    return `New merchant. Confirm ${AUTO_CONFIRM_AFTER}× and NoSkip files ${name} automatically.`;
-  }
-  if (rule.category !== category) {
-    return `NoSkip will learn ${getCategoryDisplayLabel(category)} for ${name} instead.`;
-  }
-  const left = Math.max(1, AUTO_CONFIRM_AFTER - rule.confirm_count);
-  return left === 1
-    ? `Confirm once more and ${name} goes on autopilot.`
-    : `${left} more confirms and ${name} is filed automatically.`;
 }
 
 interface Props {
@@ -223,27 +204,38 @@ export function ReviewQueueDialog({ open, onOpenChange }: Props) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
+        hideClose
         className="sm:max-w-md overflow-visible rounded-[28px] border-foreground/10 bg-background/70 backdrop-blur-2xl backdrop-saturate-150"
         style={{ boxShadow: `0 30px 80px -20px rgba(0,0,0,0.5), ${GLASS_EDGE}` }}
       >
-        <DialogHeader>
-          <DialogTitle className="font-display flex items-center gap-2">
-            <Smartphone className="h-4 w-4" style={{ color: AMBER }} />
-            {items.length ? "Confirm payments" : "All caught up"}
-            {items.length > 0 && (
-              <span
-                className="ml-auto rounded-full px-2 py-0.5 text-xs font-black tabular-nums"
-                style={{ background: `${AMBER}1f`, color: AMBER }}
-              >
-                {items.length}
-              </span>
-            )}
-          </DialogTitle>
-          <DialogDescription>
-            {items.length
-              ? "From your SMS. Confirm the top card, or swipe it away to come back to it later."
-              : "Every imported payment is confirmed."}
-          </DialogDescription>
+        {/* iOS sheet header: large title, a one-line subtitle, a round close button */}
+        <DialogHeader className="flex-row items-start gap-3 space-y-0 text-left" style={{ fontFamily: IOS_FONT }}>
+          <div className="min-w-0 flex-1">
+            <DialogTitle className="text-[26px] font-bold leading-tight tracking-[-0.03em]">
+              {items.length ? "Confirm payments" : "All caught up"}
+            </DialogTitle>
+            <DialogDescription className="mt-0.5 flex items-center gap-1.5 text-[14px]">
+              {items.length ? (
+                <>
+                  <span
+                    className="inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full px-1.5 text-[11px] font-bold tabular-nums text-white"
+                    style={{ background: AMBER }}
+                  >
+                    {items.length}
+                  </span>
+                  {items.length === 1 ? "payment" : "payments"} from your SMS
+                </>
+              ) : (
+                "Every imported payment is confirmed."
+              )}
+            </DialogDescription>
+          </div>
+          <DialogClose
+            className="mt-1 flex h-[30px] w-[30px] shrink-0 items-center justify-center rounded-full bg-foreground/[0.09] text-muted-foreground transition-colors hover:bg-foreground/[0.14] hover:text-foreground active:scale-90 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
+            aria-label="Close"
+          >
+            <X className="h-4 w-4" strokeWidth={2.75} />
+          </DialogClose>
         </DialogHeader>
 
         {items.length > 0 ? (
@@ -376,6 +368,8 @@ function GlassAmbient({ accent }: { accent: string }) {
           -ms-overflow-style: none;
         }
         .glass-face::-webkit-scrollbar { display: none; }
+        .ios-press { transition: transform 0.18s cubic-bezier(0.32, 0.72, 0, 1), background-color 0.15s; }
+        .ios-press:active { transform: scale(0.97); }
         [data-top] .glass-face {
           /* Solid enough to stay readable even before the blur kicks in */
           background: linear-gradient(150deg, hsl(var(--card) / 0.88), hsl(var(--card) / 0.72));
@@ -400,6 +394,7 @@ function CardFace({ accent, children }: { accent: string; children: React.ReactN
     <div
       className="glass-face relative h-full overflow-y-auto p-5"
       style={{
+        fontFamily: IOS_FONT,
         borderRadius: 26,
         border: "1px solid hsl(var(--foreground) / 0.12)",
         boxShadow: GLASS_EDGE,
@@ -411,7 +406,7 @@ function CardFace({ accent, children }: { accent: string; children: React.ReactN
         className="pointer-events-none absolute inset-0"
         style={{
           borderRadius: 26,
-          background: `linear-gradient(125deg, hsl(0 0% 100% / 0.22) 0%, hsl(0 0% 100% / 0.04) 32%, transparent 55%), radial-gradient(120% 70% at 100% 0%, ${tint(accent, 0.22)}, transparent 60%)`,
+          background: `linear-gradient(180deg, hsl(0 0% 100% / 0.1) 0%, hsl(0 0% 100% / 0.02) 28%, transparent 50%), radial-gradient(110% 60% at 50% 0%, ${tint(accent, 0.08)}, transparent 65%)`,
         }}
       />
       <div className="relative z-10 flex min-h-full flex-col gap-4">{children}</div>
@@ -419,17 +414,80 @@ function CardFace({ accent, children }: { accent: string; children: React.ReactN
   );
 }
 
+// Reads like an iOS notification: app-style icon, sender, time on the right
 function CardHeader({ chip, chipColor, when }: { chip: string; chipColor: string; when: string }) {
   return (
-    <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
+    <div className="flex items-center gap-2">
       <span
-        className="rounded-full border px-2.5 py-0.5 font-bold uppercase tracking-wider backdrop-blur-md"
-        style={{ background: tint(chipColor, 0.16), borderColor: tint(chipColor, 0.3), color: chipColor }}
+        className="flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-[6px] text-white"
+        style={{ background: `linear-gradient(160deg, ${tint(chipColor, 0.95)}, ${chipColor})`, boxShadow: "inset 0 0.5px 0 hsl(0 0% 100% / 0.4)" }}
       >
-        {chip}
+        <MessageSquareText className="h-3 w-3" strokeWidth={2.5} />
       </span>
-      <span className="truncate">{when}</span>
+      <span className="truncate text-[13px] font-semibold uppercase tracking-[0.02em] text-foreground/75">{chip}</span>
+      <span className="ml-auto shrink-0 text-[13px] text-muted-foreground">{when}</span>
     </div>
+  );
+}
+
+/** The hero figure: big tight digits, the currency symbol lighter beside them, decimals (if any) dimmed. */
+function Amount({ text }: { text: string }) {
+  const [, sym = "", whole = text, frac = ""] = text.match(/^([^\d-]*)([\d,-]+)(\.\d+)?/) ?? [];
+  return (
+    <p className="leading-none tabular-nums">
+      {/* read (and found) as one figure; the styled split below is visual only */}
+      <span className="sr-only">{text}</span>
+      <span aria-hidden className="flex items-center justify-center gap-1">
+        {sym && <span className="text-[2rem] font-medium text-muted-foreground/80">{sym.trim()}</span>}
+        <span className="text-[3.6rem] font-semibold tracking-[-0.04em]">{whole}</span>
+        {frac && <span className="self-end pb-2 text-[1.5rem] font-semibold text-muted-foreground">{frac}</span>}
+      </span>
+    </p>
+  );
+}
+
+/** Who you paid: a Contacts-style monogram, the merchant, and how it was paid. */
+function MerchantHeader({ name, source }: { name: string; source: string }) {
+  const initials = name.replace(/[^\p{L}\p{N}\s]/gu, "").split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join("").toUpperCase() || "•";
+  return (
+    <div className="flex items-center gap-3">
+      <span
+        aria-hidden
+        className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-[16px] font-semibold tracking-[0.01em] text-white"
+        style={{
+          background: "linear-gradient(180deg, #a5abb8 0%, #858994 100%)",
+          boxShadow: "inset 0 0.5px 0 hsl(0 0% 100% / 0.35), 0 1px 3px hsl(0 0% 0% / 0.2)",
+        }}
+      >
+        {initials}
+      </span>
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-[15px] font-semibold tracking-[-0.01em]">{name}</p>
+        <p className="truncate text-[13px] text-muted-foreground">Paid via {source}</p>
+      </div>
+    </div>
+  );
+}
+
+/** When it happened, right under the amount: "Today", "Yesterday" or the date, then the time. */
+function WhenLine({ iso }: { iso: string | null | undefined }) {
+  let day = "", time = "", full = "";
+  try {
+    const d = parseISO(iso ?? "");
+    day = isToday(d) ? "Today" : isYesterday(d) ? "Yesterday" : format(d, "EEE, d MMM yyyy");
+    time = format(d, "h:mm a");
+    full = format(d, "EEEE d MMMM yyyy, h:mm a");
+  } catch { return null; }
+  return (
+    <p
+      className="flex items-center gap-1.5 rounded-full border border-foreground/[0.08] bg-foreground/[0.05] px-3 py-1 text-[14px] font-semibold tabular-nums"
+      title={full}
+    >
+      <CalendarDays className="h-4 w-4 text-muted-foreground" strokeWidth={2.25} />
+      {day}
+      <span className="text-muted-foreground">·</span>
+      <span className="text-foreground/80">{time}</span>
+    </p>
   );
 }
 
@@ -450,11 +508,11 @@ function ExpenseCard({
   const confirm = useConfirmSmsExpense();
   const dismiss = useDismissSmsExpense();
   const merchant = expense.sms?.merchant ?? expense.note ?? "Payment";
-  const isPerson = expense.sms?.is_person ?? false;
   const busy = confirm.isPending || dismiss.isPending;
   const accent = getCategoryColor(category, customCategories);
-
-  const allNames = [...EXPENSE_CATEGORIES.map((c) => c.id), ...customCategories.map((c) => c.name)];
+  const [picking, setPicking] = useState(false);
+  // The importer's note is usually "MERCHANT · provider": only show it when it says something new
+  const extraNote = expense.note && !expense.note.toLowerCase().startsWith(merchant.toLowerCase()) ? expense.note : null;
 
   const handleConfirm = async () => {
     try {
@@ -483,40 +541,42 @@ function ExpenseCard({
     }
   };
 
-  return (
-    <CardFace accent={accent}>
-      <CardHeader
-        chip={expense.sms ? providerLabel(expense.sms.provider) : "SMS"}
-        chipColor={AMBER}
-        when={whenLabel(expense.sms?.txn_at ?? expense.created_at)}
-      />
-
-      <div className="space-y-1">
-        <p className="text-4xl font-black tabular-nums tracking-tight">{formatAmount(expense.amount)}</p>
-        <p className="text-base font-semibold truncate">{merchant}</p>
-        {expense.note && expense.note !== merchant && (
-          <p className="text-xs text-muted-foreground truncate">{expense.note}</p>
-        )}
-      </div>
-
-      <div className="mt-auto space-y-1.5">
-        <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Category</p>
-        <CategorySelector
+  if (picking) {
+    return (
+      <CardFace accent={accent}>
+        <CategoryPickerPanel
           value={category}
           onChange={onCategoryChange}
           customCategories={customCategories}
-          allNames={allNames}
-          onCategoryCreated={() => {}}
+          onClose={() => setPicking(false)}
         />
-        <p className="text-xs text-muted-foreground">{learningHint(rule, expense.sms?.merchant ?? null, category, isPerson)}</p>
+      </CardFace>
+    );
+  }
+
+  return (
+    <CardFace accent={accent}>
+      <MerchantHeader
+        name={merchant}
+        source={expense.sms ? providerLabel(expense.sms.provider) : "SMS"}
+      />
+
+      <div className="flex flex-1 flex-col items-center justify-center gap-3 py-1">
+        <div className="flex flex-col items-center gap-2.5">
+          <Amount text={formatAmount(expense.amount)} />
+          <WhenLine iso={expense.sms?.txn_at ?? expense.created_at} />
+        </div>
+        {extraNote && <p className="max-w-full truncate text-[13px] text-muted-foreground">{extraNote}</p>}
+        <CategoryPill value={category} customCategories={customCategories} onClick={() => setPicking(true)} />
       </div>
 
+
       <div>
-        <Button className={cn(PRIMARY_BTN, "h-12 w-full text-base")} onClick={handleConfirm} disabled={busy || !category}>
+        <Button className={cn(PRIMARY_BTN, "h-[52px] w-full")} onClick={handleConfirm} disabled={busy || !category}>
           {confirm.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
           Confirm
         </Button>
-        <div className="mt-2">
+        <div className="mt-1.5">
           <button className={DANGER_LINK} onClick={() => handleDismiss(false)} disabled={busy}>
             Not an expense
           </button>
@@ -552,8 +612,7 @@ function SmsReviewCard({
   const [amount, setAmount] = useState(!isForeign && sms.amount ? String(sms.amount + (sms.direction === "debit" ? sms.fee : 0)) : "");
   const [category, setCategory] = useState("other:uncategorized");
   const [source, setSource] = useState<string>("Other");
-
-  const allNames = [...EXPENSE_CATEGORIES.map((c) => c.id), ...customCategories.map((c) => c.name)];
+  const [picking, setPicking] = useState(false);
   const date = (() => { try { return format(parseISO(sms.txn_at), "yyyy-MM-dd"); } catch { return format(new Date(), "yyyy-MM-dd"); } })();
   const who = sms.merchant ?? providerLabel(sms.provider);
   const headline = isCredit ? "Money in" : isForeign ? "Foreign-currency charge" : "Couldn't read this one";
@@ -581,6 +640,19 @@ function SmsReviewCard({
       toast.error("Couldn't ignore it");
     }
   };
+
+  if (picking) {
+    return (
+      <CardFace accent={accent}>
+        <CategoryPickerPanel
+          value={category}
+          onChange={setCategory}
+          customCategories={customCategories}
+          onClose={() => setPicking(false)}
+        />
+      </CardFace>
+    );
+  }
 
   return (
     <CardFace accent={accent}>
@@ -632,10 +704,7 @@ function SmsReviewCard({
             />
           </div>
           {mode === "expense" ? (
-            <CategorySelector
-              value={category} onChange={setCategory}
-              customCategories={customCategories} allNames={allNames} onCategoryCreated={() => {}}
-            />
+            <CategoryPill value={category} customCategories={customCategories} onClick={() => setPicking(true)} />
           ) : (
             <Select value={source} onValueChange={setSource}>
               <SelectTrigger aria-label="Income source" className="h-11 rounded-xl"><SelectValue /></SelectTrigger>
@@ -653,7 +722,7 @@ function SmsReviewCard({
       </div>
 
       <div>
-        <Button className={cn(PRIMARY_BTN, "h-12 w-full text-base")} onClick={handleSave} disabled={busy}>
+        <Button className={cn(PRIMARY_BTN, "h-[52px] w-full")} onClick={handleSave} disabled={busy}>
           {(logExpense.isPending || logIncome.isPending) ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
           Save {mode}
         </Button>

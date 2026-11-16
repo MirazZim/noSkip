@@ -101,20 +101,12 @@ beforeEach(() => {
 // ─── Tests ────────────────────────────────────────────────────────────────────
 
 describe("ReviewQueueDialog", () => {
-  it("shows the payment and explains learning for a new merchant", () => {
+  it("shows the payment", () => {
     state.pending = [pendingExpense("e1", "FOODPANDA LIMITED", "foodpanda", "food-drinks:meal-delivery")];
     renderDialog();
     expect(screen.getByText("Confirm payments")).toBeInTheDocument();
     expect(screen.getByText("৳120")).toBeInTheDocument();
     expect(screen.getByText("FOODPANDA LIMITED")).toBeInTheDocument();
-    expect(screen.getByText(/New merchant\. Confirm 3× and NoSkip files FOODPANDA LIMITED automatically/)).toBeInTheDocument();
-  });
-
-  it("says 'once more' when the merchant is one confirm from autopilot", () => {
-    state.pending = [pendingExpense("e1", "FOODPANDA LIMITED", "foodpanda", "food-drinks:meal-delivery")];
-    state.rules = [rule("foodpanda", "food-drinks:meal-delivery", 2)];
-    renderDialog();
-    expect(screen.getByText(/Confirm once more and FOODPANDA LIMITED goes on autopilot/)).toBeInTheDocument();
   });
 
   it("Confirm sends the suggested category and moves to the next payment", async () => {
