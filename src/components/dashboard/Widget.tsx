@@ -1,14 +1,23 @@
-import type { ReactNode } from "react";
+import type { PointerEventHandler, ReactNode } from "react";
 import { cn } from "@/lib/utils";
 import { PRIMARY } from "@/lib/macColors";
 
 // A macOS Sonoma-style desktop widget: frosted squircle tile that pops in.
 export function Widget({
-  children, className, onClick, delay = 0,
-}: { children: ReactNode; className?: string; onClick?: () => void; delay?: number }) {
+  children, className, onClick, delay = 0, onPointerMove, onPointerLeave,
+}: {
+  children: ReactNode;
+  className?: string;
+  onClick?: () => void;
+  delay?: number;
+  onPointerMove?: PointerEventHandler<HTMLDivElement>;
+  onPointerLeave?: PointerEventHandler<HTMLDivElement>;
+}) {
   return (
     <div
       onClick={onClick}
+      onPointerMove={onPointerMove}
+      onPointerLeave={onPointerLeave}
       role={onClick ? "button" : undefined}
       tabIndex={onClick ? 0 : undefined}
       onKeyDown={onClick ? (e) => { if (e.key === "Enter") onClick(); } : undefined}

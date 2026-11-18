@@ -22,7 +22,7 @@ function ActiveSlice(props: any) {
 const categoryName = (name: string) => getSubCategoryLabel(name) ?? getParentLabel(name);
 
 /* ─── Category Breakdown Dialog ──────────────────────────────────────── */
-function CategoryBreakdownDialog({
+export function CategoryBreakdownDialog({
   open,
   onOpenChange,
   categoryData,
