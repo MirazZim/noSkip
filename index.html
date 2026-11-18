@@ -22,10 +22,56 @@
   <meta name="twitter:card" content="summary_large_image" />
   <meta name="twitter:site" content="@Lovable" />
   <meta name="twitter:image" content="https://lovable.dev/opengraph-image-p98pqg.png" />
+
+  <!-- Loader styles: shared by the splash below and src/components/AppLoader.tsx -->
+  <link rel="stylesheet" href="/loader.css" />
 </head>
 
 <body>
-  <div id="root"></div>
+  <div id="root">
+    <!-- Shown until the app starts; React replaces it. -->
+    <div class="nsk-splash">
+      <div class="socket" role="status" aria-label="Loading">
+        <div class="gel r0" style="margin-left:-15px;margin-top:-15px"><div class="hex-brick h1"></div><div class="hex-brick h2"></div><div class="hex-brick h3"></div></div>
+        <div class="gel r1" style="margin-left:-47px;margin-top:-15px"><div class="hex-brick h1"></div><div class="hex-brick h2"></div><div class="hex-brick h3"></div></div>
+        <div class="gel r1" style="margin-left:-31px;margin-top:-43px"><div class="hex-brick h1"></div><div class="hex-brick h2"></div><div class="hex-brick h3"></div></div>
+        <div class="gel r1" style="margin-left:1px;margin-top:-43px"><div class="hex-brick h1"></div><div class="hex-brick h2"></div><div class="hex-brick h3"></div></div>
+        <div class="gel r1" style="margin-left:17px;margin-top:-15px"><div class="hex-brick h1"></div><div class="hex-brick h2"></div><div class="hex-brick h3"></div></div>
+        <div class="gel r1" style="margin-left:-31px;margin-top:13px"><div class="hex-brick h1"></div><div class="hex-brick h2"></div><div class="hex-brick h3"></div></div>
+        <div class="gel r1" style="margin-left:1px;margin-top:13px"><div class="hex-brick h1"></div><div class="hex-brick h2"></div><div class="hex-brick h3"></div></div>
+        <div class="gel r2" style="margin-left:-63px;margin-top:-43px"><div class="hex-brick h1"></div><div class="hex-brick h2"></div><div class="hex-brick h3"></div></div>
+        <div class="gel r2" style="margin-left:33px;margin-top:-43px"><div class="hex-brick h1"></div><div class="hex-brick h2"></div><div class="hex-brick h3"></div></div>
+        <div class="gel r2" style="margin-left:-15px;margin-top:41px"><div class="hex-brick h1"></div><div class="hex-brick h2"></div><div class="hex-brick h3"></div></div>
+        <div class="gel r2" style="margin-left:-63px;margin-top:13px"><div class="hex-brick h1"></div><div class="hex-brick h2"></div><div class="hex-brick h3"></div></div>
+        <div class="gel r2" style="margin-left:33px;margin-top:13px"><div class="hex-brick h1"></div><div class="hex-brick h2"></div><div class="hex-brick h3"></div></div>
+        <div class="gel r2" style="margin-left:-15px;margin-top:-71px"><div class="hex-brick h1"></div><div class="hex-brick h2"></div><div class="hex-brick h3"></div></div>
+        <div class="gel r2" style="margin-left:-47px;margin-top:-71px"><div class="hex-brick h1"></div><div class="hex-brick h2"></div><div class="hex-brick h3"></div></div>
+        <div class="gel r2" style="margin-left:17px;margin-top:-71px"><div class="hex-brick h1"></div><div class="hex-brick h2"></div><div class="hex-brick h3"></div></div>
+        <div class="gel r2" style="margin-left:-47px;margin-top:41px"><div class="hex-brick h1"></div><div class="hex-brick h2"></div><div class="hex-brick h3"></div></div>
+        <div class="gel r2" style="margin-left:17px;margin-top:41px"><div class="hex-brick h1"></div><div class="hex-brick h2"></div><div class="hex-brick h3"></div></div>
+        <div class="gel r2" style="margin-left:-79px;margin-top:-15px"><div class="hex-brick h1"></div><div class="hex-brick h2"></div><div class="hex-brick h3"></div></div>
+        <div class="gel r2" style="margin-left:49px;margin-top:-15px"><div class="hex-brick h1"></div><div class="hex-brick h2"></div><div class="hex-brick h3"></div></div>
+        <div class="gel r3" style="margin-left:-63px;margin-top:-99px"><div class="hex-brick h1"></div><div class="hex-brick h2"></div><div class="hex-brick h3"></div></div>
+        <div class="gel r3" style="margin-left:33px;margin-top:-99px"><div class="hex-brick h1"></div><div class="hex-brick h2"></div><div class="hex-brick h3"></div></div>
+        <div class="gel r3" style="margin-left:1px;margin-top:-99px"><div class="hex-brick h1"></div><div class="hex-brick h2"></div><div class="hex-brick h3"></div></div>
+        <div class="gel r3" style="margin-left:-31px;margin-top:-99px"><div class="hex-brick h1"></div><div class="hex-brick h2"></div><div class="hex-brick h3"></div></div>
+        <div class="gel r3" style="margin-left:-63px;margin-top:69px"><div class="hex-brick h1"></div><div class="hex-brick h2"></div><div class="hex-brick h3"></div></div>
+        <div class="gel r3" style="margin-left:33px;margin-top:69px"><div class="hex-brick h1"></div><div class="hex-brick h2"></div><div class="hex-brick h3"></div></div>
+        <div class="gel r3" style="margin-left:1px;margin-top:69px"><div class="hex-brick h1"></div><div class="hex-brick h2"></div><div class="hex-brick h3"></div></div>
+        <div class="gel r3" style="margin-left:-31px;margin-top:69px"><div class="hex-brick h1"></div><div class="hex-brick h2"></div><div class="hex-brick h3"></div></div>
+        <div class="gel r3" style="margin-left:-95px;margin-top:-43px"><div class="hex-brick h1"></div><div class="hex-brick h2"></div><div class="hex-brick h3"></div></div>
+        <div class="gel r3" style="margin-left:-95px;margin-top:13px"><div class="hex-brick h1"></div><div class="hex-brick h2"></div><div class="hex-brick h3"></div></div>
+        <div class="gel r3" style="margin-left:49px;margin-top:41px"><div class="hex-brick h1"></div><div class="hex-brick h2"></div><div class="hex-brick h3"></div></div>
+        <div class="gel r3" style="margin-left:-79px;margin-top:-71px"><div class="hex-brick h1"></div><div class="hex-brick h2"></div><div class="hex-brick h3"></div></div>
+        <div class="gel r3" style="margin-left:-111px;margin-top:-15px"><div class="hex-brick h1"></div><div class="hex-brick h2"></div><div class="hex-brick h3"></div></div>
+        <div class="gel r3" style="margin-left:65px;margin-top:-43px"><div class="hex-brick h1"></div><div class="hex-brick h2"></div><div class="hex-brick h3"></div></div>
+        <div class="gel r3" style="margin-left:65px;margin-top:13px"><div class="hex-brick h1"></div><div class="hex-brick h2"></div><div class="hex-brick h3"></div></div>
+        <div class="gel r3" style="margin-left:-79px;margin-top:41px"><div class="hex-brick h1"></div><div class="hex-brick h2"></div><div class="hex-brick h3"></div></div>
+        <div class="gel r3" style="margin-left:49px;margin-top:-71px"><div class="hex-brick h1"></div><div class="hex-brick h2"></div><div class="hex-brick h3"></div></div>
+        <div class="gel r3" style="margin-left:81px;margin-top:-15px"><div class="hex-brick h1"></div><div class="hex-brick h2"></div><div class="hex-brick h3"></div></div>
+      </div>
+    </div>
+  </div>
   <script type="module" src="/src/main.tsx"></script>
 </body>
 

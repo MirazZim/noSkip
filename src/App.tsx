@@ -10,6 +10,7 @@ import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import { ThemeProvider } from "@/contexts/ThemeContext";
 import { AdminAuthProvider } from "@/contexts/AdminAuthContext";
 import { AdminProtectedRoute } from "@/components/AdminProtectedRoute";
+import { AppLoader } from "@/components/AppLoader";
 
 // Pages are split into their own chunks so the first load only downloads the
 // page being opened (admin, charts and the 3D coach stay out of the main bundle).
@@ -52,7 +53,7 @@ const NON_PERSISTED_KEYS = new Set(["feature_flags_resolved", "ai_insights"]);
 function PageSpinner() {
   return (
     <div className="flex min-h-screen items-center justify-center bg-background">
-      <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
+      <AppLoader className="text-foreground" />
     </div>
   );
 }

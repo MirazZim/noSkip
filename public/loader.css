@@ -1,0 +1,43 @@
+/* Honeycomb loader (design from Uiverse.io by Nawsome).
+   Shared by the splash in index.html and the in-app loader (src/components/AppLoader.tsx).
+   Lives in public/ so it's styled from the very first paint, before the app's own CSS loads.
+   The hexagons are drawn in `currentColor` and fade by opacity (the original faded between
+   near-black greys, which vanish on a dark background), so it works on any theme. */
+.nsk-splash { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; background: #0a0a0a; color: #fff; }
+
+.socket { position: relative; width: 200px; height: 200px; }
+
+.gel {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 30px;
+  height: 30px;
+  animation: pulse00 2s infinite;
+}
+
+.hex-brick {
+  position: absolute;
+  top: 5px;
+  width: 30px;
+  height: 17px;
+  background: currentColor;
+  animation: fade00 2s infinite;
+}
+.h2 { transform: rotate(60deg); }
+.h3 { transform: rotate(-60deg); }
+
+/* each ring pulses a beat after the one inside it */
+.r1, .r1 > .hex-brick { animation-delay: 0.2s; }
+.r2, .r2 > .hex-brick { animation-delay: 0.4s; }
+.r3, .r3 > .hex-brick { animation-delay: 0.6s; }
+
+@keyframes pulse00 {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(0.01); }
+}
+@keyframes fade00 {
+  0% { opacity: 0.35; }
+  50% { opacity: 0.15; }
+  100% { opacity: 0.45; }
+}
