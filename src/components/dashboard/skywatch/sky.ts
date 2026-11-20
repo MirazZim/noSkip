@@ -38,7 +38,7 @@ const KEYS: SkyKey[] = [
 
 const hex = (h: string) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16));
 const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
-const mixHex = (a: string, b: string, t: number) => {
+export const mixHex = (a: string, b: string, t: number) => {
   const A = hex(a), B = hex(b);
   return "#" + A.map((v, i) => Math.round(lerp(v, B[i], t)).toString(16).padStart(2, "0")).join("");
 };
@@ -83,6 +83,91 @@ export function skyAt(minute: number): Sky {
 /** The whole day's sky as a horizontal gradient (for the timeline). */
 export const DAY_SPECTRUM = `linear-gradient(90deg, ${KEYS.map((k) => `${k.light} ${(k.m / 14.4).toFixed(2)}%`).join(", ")})`;
 
+// ── The sun in the sky, for the dial's all-sky view ──────────────────────────
+// A mid-latitude sky at the equinox, so the sun rises due east at 6:00, crosses
+// the south at noon and sets due west at 18:00 (matching SUNRISE / SUNSET).
+const LATITUDE = 24;
+const RAD = Math.PI / 180;
+const clamp01 = (v: number) => Math.max(0, Math.min(1, v));
+
+/** Sun altitude above the horizon and azimuth (0 = north, 90 = east), in degrees. */
+export function sunPosition(minute: number): { alt: number; az: number } {
+  const h = ((mod(minute, 1440) - 720) / 1440) * 2 * Math.PI;   // hour angle
+  const phi = LATITUDE * RAD;
+  const alt = Math.asin(Math.cos(phi) * Math.cos(h)) / RAD;
+  const az = mod(Math.atan2(Math.sin(h), Math.cos(h) * Math.sin(phi)) / RAD + 180, 360);
+  return { alt, az };
+}
+
+export interface Atmosphere {
+  zenith: string;     // straight up: the dial's centre
+  mid: string;
+  horizon: string;    // the dial's rim
+  /** The sun on an all-sky view (looking up, north at the top, east on the left):
+   *  a unit disc whose edge is the horizon; beyond 1 once the sun has set. */
+  sun: { x: number; y: number };
+  day: number;        // 0..1 — the sun is up (drives the halo around it)
+  twilight: number;   // 0..1 — sunrise / sunset glow on the sun's side of the horizon
+  cloudLit: string;   // sunlit side of the clouds
+  cloudShade: string; // their shadowed undersides
+  lightAz: number;    // light direction for shading the clouds (SVG feDistantLight)
+  lightEl: number;
+}
+
+// Sky colour overhead and at the horizon by the sun's altitude. The sky stays
+// blue overhead through sunrise and sunset — the warm colours come from the
+// glow on the sun's side (drawn separately), not from tinting the whole dome.
+const SKY_BY_ALT: { alt: number; zenith: string; horizon: string }[] = [
+  { alt: -90, zenith: "#02040F", horizon: "#0E1533" },
+  { alt: -18, zenith: "#02040F", horizon: "#0E1533" },   // astronomical night
+  { alt: -12, zenith: "#0A1030", horizon: "#1F2A5C" },   // nautical twilight
+  { alt: -6, zenith: "#1A2456", horizon: "#4A4F8F" },    // blue hour
+  { alt: -1, zenith: "#2A3F84", horizon: "#9A93C4" },
+  { alt: 4, zenith: "#2E5AA6", horizon: "#C9D9EE" },     // golden hour
+  { alt: 15, zenith: "#1F5FB5", horizon: "#B5DAFB" },
+  { alt: 40, zenith: "#1458B8", horizon: "#A6D4FF" },
+  { alt: 90, zenith: "#0F55B8", horizon: "#9ED0FF" },
+];
+
+function skyByAltitude(alt: number) {
+  let i = 0;
+  while (i < SKY_BY_ALT.length - 2 && SKY_BY_ALT[i + 1].alt <= alt) i++;
+  const a = SKY_BY_ALT[i], b = SKY_BY_ALT[i + 1];
+  const t = clamp01((alt - a.alt) / (b.alt - a.alt));
+  return { zenith: mixHex(a.zenith, b.zenith, t), horizon: mixHex(a.horizon, b.horizon, t) };
+}
+
+/** Everything the dial needs to paint a believable sky at a minute of the day. */
+export function atmosphere(minute: number): Atmosphere {
+  const { alt, az } = sunPosition(minute);
+  const r = (90 - alt) / 90;
+  const sun = { x: -Math.sin(az * RAD) * r, y: -Math.cos(az * RAD) * r };
+  const day = clamp01(alt / 12);
+  const twilight = clamp01(1 - Math.abs(alt + 2) / 14);
+  const { zenith, horizon } = skyByAltitude(alt);
+  return {
+    zenith,
+    mid: mixHex(zenith, horizon, 0.45),
+    horizon,
+    sun,
+    day,
+    twilight,
+    cloudLit: mixHex("#FFFFFF", "#FFB27A", twilight * 0.85),
+    cloudShade: mixHex("#AEB9CB", "#6B4E7A", twilight),
+    lightAz: Math.atan2(sun.y, sun.x) / RAD,
+    lightEl: Math.max(4, Math.min(60, alt)),
+  };
+}
+
+/** The card's greeting for the hour it is now. */
+export function greetingAt(d: Date) {
+  const h = d.getHours();
+  if (h < 5) return "Still up";
+  if (h < 12) return "Good morning";
+  if (h < 17) return "Good afternoon";
+  return "Good evening";
+}
+
 /** Where the sun (by day) or moon (by night) is on its arc: p runs 0 → 1, rise → set. */
 export function celestial(minute: number): { isSun: boolean; p: number } {
   const m = mod(minute, 1440);
@@ -122,17 +207,30 @@ export function moonLitPath(cx: number, cy: number, r: number, p: number) {
 
 // ── Star furniture ────────────────────────────────────────────────────────────
 
-/** Deterministic "aventurine" sparkle across the dial (120×120 space). */
-export const DIAL_STARS = (() => {
-  let seed = 11;
+// Star colours by temperature, hot blue-white to cool orange, and how common each is.
+const STAR_COLOURS: [string, number][] = [
+  ["#A9BFFF", 0.08], ["#CAD7FF", 0.17], ["#F2F4FF", 0.35], ["#FFF6EA", 0.22], ["#FFE2B8", 0.12], ["#FFC58A", 0.06],
+];
+
+/** A deterministic star field across the dial (120×120 space). `b` is brightness 0..1 —
+ *  most stars are faint, a few are bright, so they come out in that order at dusk. */
+export const STAR_FIELD = (() => {
+  let seed = 23;
   const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
-  const out: { x: number; y: number; r: number; d: number }[] = [];
-  while (out.length < 70) {
-    const x = 8 + rnd() * 104, y = 8 + rnd() * 104;
-    if ((x - 60) ** 2 + (y - 60) ** 2 < 50 ** 2) out.push({ x, y, r: rnd() < 0.15 ? 0.8 : 0.35, d: rnd() * 3 });
+  const out: { x: number; y: number; r: number; b: number; color: string; tw: number; d: number }[] = [];
+  while (out.length < 160) {
+    const x = 6 + rnd() * 108, y = 6 + rnd() * 108;
+    if ((x - 60) ** 2 + (y - 60) ** 2 >= 52 ** 2) continue;
+    const b = Math.pow(rnd(), 3.2);
+    let pick = rnd(), color = STAR_COLOURS[0][0];
+    for (const [c, w] of STAR_COLOURS) { if ((pick -= w) <= 0) { color = c; break; } }
+    out.push({ x, y, r: 0.2 + b * 0.75, b, color, tw: 2 + rnd() * 3, d: rnd() * 4 });
   }
   return out;
 })();
+
+/** How visible a star of brightness `b` is when the sky shows `stars` (0..1). */
+export const starVisibility = (b: number, stars: number) => clamp01((stars * 1.25 - (1 - b)) * 2.5);
 
 /** Constellations as offsets from the dial centre: stars + the lines joining them. */
 export const CONSTELLATIONS: { stars: [number, number][]; lines: [number, number][] }[] = [
@@ -209,5 +307,31 @@ export const SKYWATCH_CSS = `
 @keyframes sko-lume { from { filter: brightness(1.3) saturate(1.25); } to { filter: brightness(0.82) saturate(0.9); } }
 @keyframes sko-cloud { from { transform: translateX(-100%); } to { transform: translateX(100%); } }
 @keyframes sko-twinkle { 0%, 100% { opacity: 0.25; } 50% { opacity: 1; } }
+@keyframes sko-scint { 0%, 100% { opacity: 1; } 50% { opacity: 0.55; } }
+@keyframes sko-rain { from { transform: translateY(0); } to { transform: translateY(150px); } }
+@keyframes sko-snow {
+  0% { transform: translate(0, 0); }
+  25% { transform: translate(2px, 37px); }
+  50% { transform: translate(-1.5px, 75px); }
+  75% { transform: translate(2px, 112px); }
+  100% { transform: translate(0, 150px); }
+}
+@keyframes sko-slide {
+  0% { transform: translateY(0); opacity: 0; }
+  12% { opacity: 1; }
+  70% { transform: translateY(12px); opacity: 1; }
+  100% { transform: translateY(20px); opacity: 0; }
+}
+@keyframes sko-fog { from { transform: translateX(-8px); } to { transform: translateX(8px); } }
+@keyframes sko-glint {
+  0%, 70%, 100% { transform: scale(0) rotate(0deg); opacity: 0; }
+  80% { transform: scale(1) rotate(45deg); opacity: 1; }
+  90% { transform: scale(0.2) rotate(90deg); opacity: 0; }
+}
+@keyframes sko-sweep {
+  0% { transform: rotate(-30deg); opacity: 0; }
+  8%, 47% { opacity: 1; }
+  55%, 100% { transform: rotate(330deg); opacity: 0; }
+}
 @media (prefers-reduced-motion: reduce) { .sko-anim { animation: none !important; } }
 `;

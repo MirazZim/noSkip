@@ -3,13 +3,16 @@ import { Bell, BellRing, Cog, RotateCcw, Sparkles } from "lucide-react";
 import { Widget } from "@/components/dashboard/Widget";
 import { MAC } from "@/lib/macColors";
 import { cn } from "@/lib/utils";
-import { LUME, SKYWATCH_CSS, moonName, moonPhase, skyAt } from "./skywatch/sky";
+import { LUME, SKYWATCH_CSS, greetingAt, moonName, moonPhase, skyAt } from "./skywatch/sky";
 import { useRepeater } from "./skywatch/repeater";
 import { Dial, type Burst, type HabitPlanet } from "./skywatch/Dial";
 import { Caseback } from "./skywatch/Caseback";
 import { CardSky } from "./skywatch/CardSky";
 import { RollingTime } from "./skywatch/RollingTime";
 import { DayTimeline } from "./skywatch/DayTimeline";
+import { forecastSummary, weatherAt } from "./skywatch/weather";
+import { WeatherCanvas, type Strike } from "./skywatch/WeatherCanvas";
+import { useForecast } from "@/hooks/useWeather";
 
 export type { HabitPlanet } from "./skywatch/Dial";
 
@@ -22,6 +25,10 @@ export type { HabitPlanet } from "./skywatch/Dial";
 //  • ✦ lume: a glow-in-the-dark dial that slowly fades, like real lume.
 //  • ⚙ turns the watch over to show the movement, engraved for you.
 //  • Habits orbit as planets; finish them all and an aurora lights the dial.
+//  • With a weather city set in Settings, the sky shows that city's real
+//    weather — and travelling through the day shows that hour's forecast.
+//    Rain falls behind the card and splashes on the watch; storms throw
+//    lightning that flashes the dial too; a line sums up the rest of the day.
 
 const MemoDial = memo(Dial);
 const MemoCaseback = memo(Caseback);
@@ -90,9 +97,8 @@ function Ctl({ label, active, glow, onClick, children }: { label: string; active
 }
 
 export function DayCard({
-  greeting, name, habits, bestStreak, since, delay = 0,
+  name, habits, bestStreak, since, delay = 0,
 }: {
-  greeting: string;
   name: string;
   habits: HabitPlanet[];
   bestStreak: number;
@@ -111,6 +117,12 @@ export function DayCard({
   const [flipping, setFlipping] = useState(false);
   const repeater = useRepeater();
   const bursts = usePlanetBursts(habits);
+  const { data: forecast } = useForecast();
+  const watchRef = useRef<HTMLButtonElement>(null);
+  const barRef = useRef<HTMLDivElement>(null);
+  const textRef = useRef<HTMLDivElement>(null);         // lightning keeps clear of the text…
+  const summaryRef = useRef<HTMLParagraphElement>(null); // …and of the forecast line
+  const [lightning, setLightning] = useState<Strike | null>(null);
 
   // The carriage angle follows real seconds but counts up from when the card
   // opened, so it never spins backwards at midnight.
@@ -126,6 +138,9 @@ export function DayCard({
   const allDone = habits.length > 0 && habitsLeft === 0;
   const shifted = Math.abs(offset) >= 1;
   const timeLabel = shown.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+  const weather = forecast ? weatherAt(forecast, shown.getTime(), now.getTime()) : null;
+  const summary = forecast ? forecastSummary(forecast, now.getTime()) : null;
+  const greeting = greetingAt(now);   // from the card's own ticking clock, so it changes on the hour
 
   // ── Time travel ──────────────────────────────────────────────────────────
   const offsetRef = useRef(0);
@@ -133,14 +148,24 @@ export function DayCard({
   useEffect(() => { offsetRef.current = offset; }, [offset]);
   useEffect(() => { realRef.current = realMinute; }, [realMinute]);
 
-  const timers = useRef<{ back?: number; raf?: number }>({});
+  const timers = useRef<{ back?: number; raf?: number; strike?: number }>({});
   useEffect(() => {
     const tm = timers.current;
     return () => {
       window.clearTimeout(tm.back);
+      window.clearTimeout(tm.strike);
       if (tm.raf) cancelAnimationFrame(tm.raf);
     };
   }, []);
+
+  // A lightning strike in the card's storm: the dial mounts its strike layers
+  // (their brightness follows --strike frame by frame), then drops them once
+  // the strike — leader, re-strikes and afterglow — is over.
+  const onStrike = (s: Strike) => {
+    setLightning(s);
+    window.clearTimeout(timers.current.strike);
+    timers.current.strike = window.setTimeout(() => setLightning(null), 1500);
+  };
 
   const cancelReturn = () => {
     window.clearTimeout(timers.current.back);
@@ -244,11 +269,12 @@ export function DayCard({
       onPointerLeave={() => setPar({ x: 0, y: 0 })}
     >
       <style>{SKYWATCH_CSS}</style>
-      <CardSky sky={sky} minute={t} par={par} />
+      <CardSky sky={sky} minute={t} par={par} weather={weather} />
+      <WeatherCanvas weather={weather} night={sky.stars} watch={watchRef} ledge={barRef} text={textRef} footer={summaryRef} onStrike={onStrike} />
 
       <div className="relative flex flex-1 items-center gap-3 sm:gap-5">
         {/* ── Left: greeting, habits, the time, controls ── */}
-        <div className="flex min-w-0 flex-1 flex-col self-stretch">
+        <div ref={textRef} className="flex min-w-0 flex-1 flex-col self-stretch">
           <p className="text-[13px] font-medium text-muted-foreground">{greeting},</p>
           <p className="truncate text-[20px] font-semibold leading-tight tracking-tight">{name}</p>
           {habits.length > 0 && (
@@ -308,6 +334,7 @@ export function DayCard({
             aria-hidden="true"
           />
           <button
+            ref={watchRef}
             type="button"
             onPointerDown={onWatchDown}
             onPointerMove={onWatchMove}
@@ -344,7 +371,9 @@ export function DayCard({
                   crownOut={scrubbing}
                   strike={repeater.strike}
                   chiming={repeater.chiming}
-                  label={`${timeLabel} · ${moonLabel}`}
+                  label={`${timeLabel} · ${weather ? `${weather.label} · ` : ""}${moonLabel}`}
+                  weather={weather}
+                  lightning={lightning}
                 />
               </div>
             </div>
@@ -366,14 +395,28 @@ export function DayCard({
         </div>
       </div>
 
+      {/* ── The rest of the day's weather, in a sentence ── */}
+      {summary && (
+        <p ref={summaryRef} className="relative mt-3 border-b border-foreground/10 pb-2 text-[12px] font-medium leading-snug text-foreground/85">
+          {summary}
+        </p>
+      )}
+
       {/* ── Today as a strip of sky you can drag through ── */}
       <DayTimeline
+        barRef={barRef}
         minute={Math.max(0, Math.min(1439.9, t))}
         realMinute={realMinute}
         glow={sky.sun}
         onScrub={(m) => { beginScrub(); setOffset(clampOffset(m - realRef.current)); }}
         onScrubEnd={endScrub}
       />
+
+      {/* In a storm, each flash lights up the whole card, text and watch included */}
+      {weather?.storm && (
+        <div aria-hidden="true" className="pointer-events-none absolute inset-0 z-20"
+          style={{ background: "#E2E8FF", mixBlendMode: "soft-light", opacity: "calc(var(--strike, 0) * 0.5)" }} />
+      )}
     </Widget>
   );
 }

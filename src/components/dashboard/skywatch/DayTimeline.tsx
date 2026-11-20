@@ -1,4 +1,4 @@
-import { useRef, type KeyboardEvent, type PointerEvent } from "react";
+import { useRef, type KeyboardEvent, type PointerEvent, type Ref } from "react";
 import { DAY_SPECTRUM, SUNRISE, SUNSET } from "./sky";
 
 // ─── Today as a strip of sky ──────────────────────────────────────────────────
@@ -13,13 +13,14 @@ const fmt = (m: number) => {
 };
 
 export function DayTimeline({
-  minute, realMinute, glow, onScrub, onScrubEnd,
+  minute, realMinute, glow, onScrub, onScrubEnd, barRef,
 }: {
   minute: number;              // the time being shown, minutes after midnight
   realMinute: number;          // the actual time now
   glow: string;                // sun / moon colour for the knob's halo
   onScrub: (minute: number) => void;
   onScrubEnd: () => void;
+  barRef?: Ref<HTMLDivElement>;  // the coloured bar itself (rain splashes on it)
 }) {
   const bar = useRef<HTMLDivElement>(null);
   const active = useRef(false);
@@ -65,7 +66,7 @@ export function DayTimeline({
         onKeyDown={onKey}
         className="relative h-6 cursor-grab touch-none select-none rounded-full outline-none focus-visible:ring-2 focus-visible:ring-primary/60 active:cursor-grabbing"
       >
-        <div className="absolute inset-x-0 top-1/2 h-1.5 -translate-y-1/2 rounded-full ring-1 ring-inset ring-white/10" style={{ background: DAY_SPECTRUM }} />
+        <div ref={barRef} className="absolute inset-x-0 top-1/2 h-1.5 -translate-y-1/2 rounded-full ring-1 ring-inset ring-white/10" style={{ background: DAY_SPECTRUM }} />
         {[SUNRISE, SUNSET].map((m) => (
           <span key={m} className="absolute top-1/2 h-3 w-px -translate-y-1/2 bg-foreground/35" style={{ left: pct(m) }} />
         ))}

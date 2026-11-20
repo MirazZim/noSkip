@@ -1,17 +1,32 @@
-import { CARD_STARS, CITY_LIGHTS, CLOUDS, celestial, type Sky } from "./sky";
+import { CARD_STARS, CITY_LIGHTS, CLOUDS, celestial, mixHex, type Sky } from "./sky";
+import type { SkyWeather } from "./weather";
 
 // ─── The card's own sky ───────────────────────────────────────────────────────
 // A small diorama behind the watch: the time-of-day sky, the sun (or moon)
 // glowing as it crosses the card on its arc, drifting clouds by day, stars and
 // shooting stars by night, and a skyline whose windows light up after dark.
+// With a weather city set it also carries the real weather: an overcast wash,
+// a darker storm sky, greyer clouds and fog. The rain, snow and lightning
+// themselves are drawn over this by WeatherCanvas.
 // Layers shift slightly with the pointer for depth.
 
-export function CardSky({ sky, minute, par }: { sky: Sky; minute: number; par: { x: number; y: number } }) {
+export function CardSky({ sky, minute, par, weather }: {
+  sky: Sky;
+  minute: number;
+  par: { x: number; y: number };
+  weather: SkyWeather | null;
+}) {
   const c = celestial(minute);
   const left = 6 + c.p * 88;                        // % across the card
   const top = 80 - Math.sin(Math.PI * c.p) * 64;    // % down the card (an arc)
   const glowColor = c.isSun ? sky.sun : "#E0E7FF";
-  const glowAmt = c.isSun ? sky.glow : 0.45;
+  const cover = weather?.cloud ?? 0;
+  const night = sky.stars;
+  const glowAmt = (c.isSun ? sky.glow : 0.45) * (1 - 0.7 * cover);
+  const clouds = weather ? Math.max(sky.clouds, cover) * (0.9 - 0.5 * night) : sky.clouds * 0.9;
+  const cloudTint = weather ? mixHex("#FFFFFF", "#3A4252", Math.max(night, (weather.rain + (weather.storm ? 0.4 : 0)) * 0.6)) : null;
+  const gloom = weather ? Math.min(0.75, cover * cover * 0.45 + weather.rain * 0.25 + (weather.storm ? 0.2 : 0)) : 0;
+  const ceiling = weather ? Math.min(1, weather.rain * 0.7 + (weather.storm ? 0.5 : 0)) : 0;   // heavy cloud base overhead
   const shift = (d: number) => ({
     transform: `translate(${par.x * d}px, ${par.y * d * 0.5}px)`,
     transition: "transform 400ms ease-out",
@@ -31,26 +46,43 @@ export function CardSky({ sky, minute, par }: { sky: Sky; minute: number; par: {
       />
 
       {/* Stars */}
-      <div className="absolute inset-0" style={{ ...shift(-3), opacity: sky.stars }}>
+      <div className="absolute inset-0" style={{ ...shift(-3), opacity: sky.stars * (1 - 0.85 * cover) }}>
         {CARD_STARS.map((s, i) => (
           <span key={i} className="sko-anim absolute rounded-full bg-white"
             style={{ left: `${s.x}%`, top: `${s.y}%`, width: s.s, height: s.s, animation: `sko-twinkle 2.6s ease-in-out ${s.d}s infinite` }} />
         ))}
       </div>
-      {sky.dark && (
+      {sky.dark && cover < 0.6 && (
         <span className="sko-anim absolute right-[12%] top-[10%] h-px w-16"
           style={{ background: "linear-gradient(90deg, #fff, transparent)", animation: "sko-card-shoot 11s ease-out 4s infinite" }} />
       )}
 
-      {/* Clouds, tinted by the light of the hour */}
-      <div className="absolute inset-0" style={{ ...shift(-6), opacity: sky.clouds * 0.9 }}>
+      {/* Overcast wash */}
+      {gloom > 0.01 && (
+        <div className="absolute inset-0 transition-opacity duration-1000"
+          style={{ background: mixHex("#6E7887", "#0A0E16", night), opacity: gloom * 0.6 }} />
+      )}
+
+      {/* Clouds, tinted by the light of the hour (and greyed by the weather) */}
+      <div className="absolute inset-0" style={{ ...shift(-6), opacity: clouds }}>
         {CLOUDS.map((cl, i) => (
           <span key={i} className="sko-anim absolute inset-x-0" style={{ top: cl.top, animation: `sko-cloud ${cl.dur}s linear ${cl.delay}s infinite` }}>
             <span className="absolute left-1/2 rounded-full blur-xl"
-              style={{ width: cl.w, height: cl.h, background: `color-mix(in srgb, ${sky.light} 30%, white)`, opacity: 0.45 }} />
+              style={{ width: cl.w, height: cl.h, background: cloudTint ?? `color-mix(in srgb, ${sky.light} 30%, white)`, opacity: 0.45 }} />
           </span>
         ))}
       </div>
+
+      {/* Rain and storms: a dark, heavy cloud base overhead */}
+      {ceiling > 0.01 && (
+        <div className="absolute inset-0 transition-opacity duration-1000"
+          style={{ background: "linear-gradient(180deg, rgba(8,11,18,0.6) 0%, rgba(8,11,18,0.25) 40%, transparent 70%)", opacity: ceiling }} />
+      )}
+
+      {/* Fog */}
+      {weather && weather.fog > 0 && (
+        <div className="absolute inset-0" style={{ background: mixHex("#D5DBE3", "#2A3140", night), opacity: weather.fog * 0.3 }} />
+      )}
 
       {/* Skyline */}
       <svg className="absolute -left-[5%] bottom-0 h-14 w-[110%]" viewBox="0 0 220 40" preserveAspectRatio="none">

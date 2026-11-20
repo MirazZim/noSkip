@@ -18,16 +18,6 @@ import { MAC, SF_STACK } from "@/lib/macColors";
 import { lifeScore } from "@/lib/lifeScore";
 import { getAvatarUrl, getDisplayName, getInitials } from "@/lib/userProfile";
 
-// ─── UTILS ────────────────────────────────────────────────────────────────────
-function getTimeState() {
-  const h = new Date().getHours();
-  if (h < 5) return { urgency: "danger", label: "Late night", greeting: "Still up" };
-  if (h < 12) return { urgency: "low", label: "Morning", greeting: "Good morning" };
-  if (h < 17) return { urgency: "medium", label: "Afternoon", greeting: "Good afternoon" };
-  if (h < 20) return { urgency: "high", label: "Evening", greeting: "Good evening" };
-  return { urgency: "danger", label: "Tonight", greeting: "Good evening" };
-}
-
 const CONFETTI = [MAC.orange, MAC.green, MAC.blue, MAC.purple, MAC.pink];
 
 // ─── DASHBOARD ────────────────────────────────────────────────────────────────
@@ -89,9 +79,6 @@ export default function Dashboard() {
     [todayStr, activeHabits.length, doneByDate, dayTotals]
   );
   const overallBudget = budgets?.find(b => b.category === "Overall")?.amount ?? null;
-
-  // ── Time ─────────────────────────────────────────────────────────────────
-  const ts = getTimeState();
 
   // ── Sky watch: habits orbit as planets (streak sizes them) + caseback engraving ─
   const planets = useMemo(
@@ -198,7 +185,6 @@ export default function Dashboard() {
 
           {/* ── Row 1: the sky-orrery watch (habits orbit as planets) ───── */}
           <DayCard
-            greeting={ts.greeting}
             name={name.split(" ")[0]}
             habits={planets}
             bestStreak={bestStreak}

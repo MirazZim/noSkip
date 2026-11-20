@@ -1,5 +1,5 @@
 import { useId, type CSSProperties } from "react";
-import { CaseFlanks } from "./Dial";
+import { CaseFlanks, CaseLugs } from "./Dial";
 import { WATCH_VIEWBOX } from "./sky";
 import type { Tone } from "./repeater";
 
@@ -120,6 +120,7 @@ export function Caseback({ tilt, name, bestStreak, habitCount, sinceYear, strike
       <g transform="matrix(-1 0 0 1 120 0)">
         <CaseFlanks rg={rg} cab={`url(#cab-${uid})`} crownOut={false} chiming={chiming} />
       </g>
+      <CaseLugs rg={rg} />
 
       {/* Case back with the engraving */}
       <circle cx={C} cy={C} r={59} fill={rg} />
