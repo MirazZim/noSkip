@@ -33,6 +33,9 @@ export const EXPENSE_CATEGORIES: ParentCategory[] = [
       { id: "drinks",         label: "Drinks",                emoji: "🥤" },
       { id: "breakfast",      label: "Breakfast",             emoji: "🍳" },
       { id: "lunch",          label: "Lunch",                 emoji: "🍱" },
+      { id: "dinner",         label: "Dinner",                emoji: "🍛" },
+      { id: "iftar-sehri",    label: "Iftar / Sehri",         emoji: "🌙" },
+      { id: "fruits",         label: "Fruits",                emoji: "🍎" },
     ],
   },
   {
@@ -48,6 +51,10 @@ export const EXPENSE_CATEGORIES: ParentCategory[] = [
       { id: "vehicle-maint",  label: "Vehicle Maintenance",   emoji: "🔧" },
       { id: "parking",        label: "Parking",               emoji: "🅿️" },
       { id: "toll-fees",      label: "Toll / Highway Fees",   emoji: "🛣️" },
+      { id: "driver-fees",    label: "Driver Salary / Fees",  emoji: "🧑‍✈️" },
+      { id: "car-rental",     label: "Car Rental / Hire",     emoji: "🚙" },
+      { id: "vehicle-tax",    label: "Vehicle Registration / Tax", emoji: "🪪" },
+      { id: "car-wash",       label: "Car Wash",              emoji: "🧽" },
     ],
   },
   {
@@ -65,6 +72,9 @@ export const EXPENSE_CATEGORIES: ParentCategory[] = [
       { id: "furniture",      label: "Furniture",             emoji: "🛋️" },
       { id: "domestic-help",  label: "Domestic Help",         emoji: "🧑‍🍳" },
       { id: "laundry",        label: "Laundry / Dry Cleaning", emoji: "🧺" },
+      { id: "gas-cylinder",   label: "Gas Cylinder (LPG)",    emoji: "🔥" },
+      { id: "service-charge", label: "Building Service Charge", emoji: "🏢" },
+      { id: "security-guard", label: "Security / Guard",      emoji: "💂" },
     ],
   },
   {
@@ -78,6 +88,9 @@ export const EXPENSE_CATEGORIES: ParentCategory[] = [
       { id: "lab-tests",      label: "Lab Tests",             emoji: "🧪" },
       { id: "gym",            label: "Gym / Fitness Center",  emoji: "🏋️" },
       { id: "mental-health",  label: "Mental Health",         emoji: "🧠" },
+      { id: "hospital",       label: "Hospital / Surgery",    emoji: "🏥" },
+      { id: "dental",         label: "Dental",                emoji: "🦷" },
+      { id: "eye-care",       label: "Eye Care / Glasses",    emoji: "👓" },
     ],
   },
   {
@@ -91,6 +104,9 @@ export const EXPENSE_CATEGORIES: ParentCategory[] = [
       { id: "personal-care",  label: "Personal Care / Grooming", emoji: "🪥" },
       { id: "books-stat",     label: "Books / Stationery",    emoji: "📖" },
       { id: "household-item", label: "Household Items",       emoji: "🪴" },
+      { id: "tailor",         label: "Tailor",                emoji: "🧵" },
+      { id: "shoes",          label: "Shoes",                 emoji: "👟" },
+      { id: "jewelry",        label: "Jewelry / Accessories", emoji: "💍" },
     ],
   },
   {
@@ -136,6 +152,9 @@ export const EXPENSE_CATEGORIES: ParentCategory[] = [
       { id: "bank-charges",   label: "Bank Charges",          emoji: "🏧" },
       { id: "cash-withdrawal", label: "Cash Withdrawal",      emoji: "💵" },
       { id: "emergency-fund", label: "Emergency Fund",        emoji: "🚨" },
+      { id: "credit-card-bill", label: "Credit Card Bill",    emoji: "💳" },
+      { id: "wallet-fees",    label: "Mobile Wallet Fees",    emoji: "📲" },
+      { id: "fines",          label: "Fines / Penalties",     emoji: "🧾" },
     ],
   },
   {
@@ -147,6 +166,7 @@ export const EXPENSE_CATEGORIES: ParentCategory[] = [
       { id: "tuition",        label: "Tuition / Courses",     emoji: "🎓" },
       { id: "edu-books",      label: "Books / Materials",     emoji: "📕" },
       { id: "exam-fees",      label: "Exam Fees",             emoji: "📝" },
+      { id: "private-tutor",  label: "Private Tutor / Coaching", emoji: "🧑‍🏫" },
     ],
   },
   {
@@ -159,6 +179,19 @@ export const EXPENSE_CATEGORIES: ParentCategory[] = [
       { id: "charity",        label: "Charity / Donations",   emoji: "❤️" },
       { id: "social-outing",  label: "Social Outings",        emoji: "🥂" },
       { id: "religious-giving", label: "Religious / Festival Giving", emoji: "🕌" },
+      { id: "zakat",          label: "Zakat",                 emoji: "🌙" },
+      { id: "wedding-gifts",  label: "Wedding / Event Gifts", emoji: "💐" },
+    ],
+  },
+  {
+    id: "family",
+    label: "Family Support",
+    color: "hsl(355, 65%, 60%)",
+    emoji: "👨‍👩‍👧",
+    subcategories: [
+      { id: "parents",        label: "Parents",               emoji: "👵" },
+      { id: "siblings-relatives", label: "Siblings / Relatives", emoji: "👫" },
+      { id: "family-emergency", label: "Family Emergencies",  emoji: "🆘" },
     ],
   },
   {
@@ -182,6 +215,7 @@ export const EXPENSE_CATEGORIES: ParentCategory[] = [
     subcategories: [
       { id: "mobile-data",    label: "Mobile Recharge / Data", emoji: "📱" },
       { id: "broadband",      label: "Broadband",             emoji: "🌐" },
+      { id: "cable-tv",       label: "Cable TV / Dish",       emoji: "📡" },
     ],
   },
   {
@@ -193,7 +227,7 @@ export const EXPENSE_CATEGORIES: ParentCategory[] = [
       { id: "smoking",        label: "Smoking",               emoji: "🚬" },
       { id: "alcohol",        label: "Alcohol / Drinking",    emoji: "🍺" },
       { id: "weed",           label: "Weed",                  emoji: "🌿" },
-      { id: "other-drugs",    label: "Other Substances",      emoji: "💉" },
+      { id: "other-drugs",    label: "Other Substances",      emoji: "🌀" },
       { id: "gambling",       label: "Gambling / Betting",    emoji: "🎰" },
       { id: "other-habits",   label: "Other Habits",          emoji: "🔄" },
     ],

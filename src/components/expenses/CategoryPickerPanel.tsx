@@ -26,6 +26,7 @@ const SHORT: Record<string, string> = {
   "personal-habits": "Habits",
   communication: "Phone & Net",
   entertainment: "Fun",
+  family: "Family",
 };
 
 /** Just the emoji, big, with a soft shadow; `glow` adds a halo in the category's colour. */
