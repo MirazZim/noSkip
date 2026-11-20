@@ -14,6 +14,7 @@ import { Check, Coins, Link2, LogOut, Palette, SlidersHorizontal, Smartphone } f
 import { SmsImportSettings } from "@/components/expenses/SmsImportSettings";
 import { LinkedAccounts } from "@/components/auth/LinkedAccounts";
 import { ProfileHeader } from "@/components/settings/ProfileHeader";
+import { WeatherCitySetting } from "@/components/settings/WeatherCitySetting";
 import { SettingsGroup, SettingsRow, SettingsSection } from "@/components/settings/SettingsSection";
 
 const TABS = [
@@ -202,6 +203,7 @@ function GeneralTab() {
             </SelectContent>
           </Select>
         </SettingsRow>
+        <WeatherCitySetting />
       </SettingsGroup>
     </SettingsSection>
   );

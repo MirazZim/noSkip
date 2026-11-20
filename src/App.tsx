@@ -48,7 +48,7 @@ const persister = createSyncStoragePersister({
 });
 
 // staleTime: Infinity queries would never refetch after a restore, so keep them in memory only.
-const NON_PERSISTED_KEYS = new Set(["feature_flags_resolved", "ai_insights"]);
+const NON_PERSISTED_KEYS = new Set(["feature_flags_resolved", "ai_insights", "city-search"]);
 
 function PageSpinner() {
   return (
